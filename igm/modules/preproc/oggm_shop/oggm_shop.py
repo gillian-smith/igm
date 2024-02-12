@@ -163,7 +163,7 @@ def initialize(params, state):
             thkobs = np.where(icemaskobs, thkobs, np.nan)
         except:
             thkobs = np.zeros_like(thk) * np.nan
-
+            raise # this error should really be raised - user should be made aware if they asked for thickness observations and didn't get them
     nc.close()
 
     ########################################################
@@ -402,9 +402,11 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         if hasattr(state, "logger"):
             state.logger.info("glathida data already at " + path_glathida)
 
-    files = [os.path.join(path_glathida, "glathida", "data", "point.csv")]
+    #files = [os.path.join(path_glathida, "glathida", "data", "point.csv")]
+    files = [os.path.join(path_glathida, "data", "point.csv")]
     files += glob.glob(
-        os.path.join(path_glathida, "glathida", "submissions", "*", "point.csv")
+        #os.path.join(path_glathida, "glathida", "submissions", "*", "point.csv")
+        os.path.join(path_glathida, "data", "*", "point.csv")
     )
     # Glathida has changed the folder structure, this would need to look like :
     # os.path.join(path_glathida, "data", "*", "point.csv")
@@ -426,10 +428,12 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         [pd.read_csv(file, low_memory=False) for file in files], ignore_index=True
     )
     mask = (
-        (lonmin <= df["lon"])
-        & (df["lon"] <= lonmax)
-        & (latmin <= df["lat"])
-        & (df["lat"] <= latmax)
+        #(lonmin <= df["lon"])
+        (lonmin <= df["longitude"])
+        & (df["longitude"] <= lonmax)
+        #& (latmin <= df["lat"])
+        & (latmin <= df["latitude"])
+        & (df["latitude"] <= latmax)
         & df["elevation"].notnull()
         & df["date"].notnull()
         & df["elevation_date"].notnull()
@@ -456,7 +460,8 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         if hasattr(state, "logger"):
             state.logger.info("Nb of profiles found : " + str(df.index.shape[0]))
 
-        xx, yy = transformer.transform(df["lon"], df["lat"])
+        #xx, yy = transformer.transform(df["lon"], df["lat"])
+        xx, yy = transformer.transform(df["longitude"], df["latitude"])
         bedrock = df["elevation"] - df["thickness"]
         elevation_normalized = fsurf(xx, yy, grid=False)
         thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)

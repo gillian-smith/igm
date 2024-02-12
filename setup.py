@@ -57,5 +57,6 @@ setup(
         "geopandas",
         "oggm",
         "importlib_resources",
+        "salem",
     ],
 )
