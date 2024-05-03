@@ -410,23 +410,24 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
     )
     # Glathida has changed the folder structure, this would need to look like :
     # os.path.join(path_glathida, "data", "*", "point.csv")
-   
+    
     os.path.expanduser
 
     transformer = Transformer.from_crs(proj, "epsg:4326", always_xy=True)
 
     lonmin, latmin = transformer.transform(min(x), min(y))
     lonmax, latmax = transformer.transform(max(x), max(y))
-
+    
     transformer = Transformer.from_crs("epsg:4326", proj, always_xy=True)
 
     #    print(x.shape, y.shape, usurf.shape)
 
-    fsurf = RectBivariateSpline(x, y, np.transpose(usurf))
+    fsurf = RectBivariateSpline(x, y, np.transpose(usurf)) # interpolated surface elevation as function of x,y
 
     df = pd.concat(
         [pd.read_csv(file, low_memory=False) for file in files], ignore_index=True
-    )
+    ) # df now contains ALL of glathida
+    
     mask = (
         #(lonmin <= df["lon"])
         (lonmin <= df["longitude"])
@@ -439,7 +440,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         & df["elevation_date"].notnull()
     )
     df = df[mask]
-
+    
     # Filter by date gap in second step for speed
     mask = (
         (
@@ -449,22 +450,22 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         .abs()
         .le(1)
     )
-    df = df[mask]
+    df = df[mask] # now we have pointwise thickness observations 
 
     if df.index.shape[0] == 0:
         print("No ice thickness profiles found")
         thkobs = np.ones_like(usurf)
         thkobs[:] = np.nan
 
-    else:
+    else: # rasterize the thickness observations
         if hasattr(state, "logger"):
             state.logger.info("Nb of profiles found : " + str(df.index.shape[0]))
 
         #xx, yy = transformer.transform(df["lon"], df["lat"])
         xx, yy = transformer.transform(df["longitude"], df["latitude"])
         bedrock = df["elevation"] - df["thickness"]
-        elevation_normalized = fsurf(xx, yy, grid=False)
-        thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)
+        elevation_normalized = fsurf(xx, yy, grid=False) # interpolated surface elevation
+        thickness_normalized = np.maximum(elevation_normalized - bedrock, 0) # thickness = surface - bedrock >= 0
 
         # Rasterize thickness
         thickness_gridded = (
