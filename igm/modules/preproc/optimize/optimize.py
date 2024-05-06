@@ -288,7 +288,7 @@ def initialize(params, state):
 
     state.costs = [] # cost function values
 
-    #state.grads = []
+    state.gradnorms = []
 
     state.tcomp_optimize = [] # time taken
 
@@ -304,7 +304,7 @@ def initialize(params, state):
 
     # main loop
     for i in range(params.opti_nbitmax):
-        with tf.GradientTape() as t, tf.GradientTape() as s:
+        with tf.GradientTape() as t, tf.GradientTape() as s: # t is for optimization, s is for retraining
             state.tcomp_optimize.append(time.time()) # time
             
             if params.opti_step_size_decay < 1: # reduce the learning rate at each step
@@ -557,7 +557,9 @@ def initialize(params, state):
                 var_to_opti.append(vars()[f]) # list of all control variables
 
             # Compute gradient of COST w.r.t. X
-            grads = tf.Variable(t.gradient(COST, var_to_opti)) # good idea to plot this?
+            gradss = t.gradient(COST, var_to_opti)
+            #grads = tf.Variable(t.gradient(COST, var_to_opti))
+            grads = tf.Variable(gradss)
 
             # restrict the optimization of controls to the mask, except for slidingco
             for ii in range(grads.shape[0]):
@@ -569,12 +571,13 @@ def initialize(params, state):
                 zip([grads[i] for i in range(grads.shape[0])], var_to_opti)
             )
 
-
-            # state.grads.append(
-            #     [
-
-            #     ]
-            # )
+            # gradient norm for plotting
+            gradnorm = tf.linalg.global_norm(gradss)
+            state.gradnorms.append(
+                [
+                    gradnorm.numpy(),
+                ]
+            )
 
             ###################
 
@@ -618,6 +621,9 @@ def initialize(params, state):
 
     # Plot cost functions on log scale
     _plot_cost_functions_log(params, state, state.costs)
+
+    # Plot gradient norm
+    _plot_gradnorms(params, state, state.gradnorms)
 
     plt.close("all")
 
@@ -893,6 +899,23 @@ def _plot_cost_functions_log(params, state, costs):
     os.system(
         "echo rm "
         + "convergence_log.png"
+        + " >> clean.sh"
+    )
+
+def _plot_gradnorms(params, state, gradnorms):
+    gradnorms = np.stack(gradnorms)
+
+    fig, ax = plt.subplots(1,1,figsize=(10,10))
+    ax.plot(gradnorms)
+    ax.set_ylabel('Gradient norm')
+    ax.set_yscale('log')
+    
+    fig.savefig("gradient_norm.png", pad_inches=0)
+    plt.close("all")
+
+    os.system(
+        "echo rm "
+        + "gradient_norm.png"
         + " >> clean.sh"
     )
 
