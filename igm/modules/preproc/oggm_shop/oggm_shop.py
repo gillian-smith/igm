@@ -158,20 +158,6 @@ def initialize(params, state):
     thkobs = np.zeros_like(thk) * np.nan
 
     if params.oggm_incl_glathida:
-<<<<<<< HEAD
-        with open(os.path.join(params.oggm_RGI_ID, "glacier_grid.json"), "r") as f:
-            data = json.load(f)
-        proj = data["proj"]
-
-        try:
-            thkobs = _read_glathida(
-                x, y, usurfobs, proj, params.oggm_path_glathida, state
-            )
-            thkobs = np.where(icemaskobs, thkobs, np.nan)
-        except:
-            thkobs = np.zeros_like(thk) * np.nan
-            raise # this error should really be raised - user should be made aware if they asked for thickness observations and didn't get them
-=======
         if params.oggm_RGI_version==6:
             with open(os.path.join(params.oggm_RGI_ID, "glacier_grid.json"), "r") as f:
                 data = json.load(f)
@@ -184,6 +170,7 @@ def initialize(params, state):
                 thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
+                raise # no thkobs found!
         elif params.oggm_RGI_version==7:
             path_glathida = os.path.join(params.oggm_RGI_ID, "glathida_data.csv")
     
@@ -194,8 +181,8 @@ def initialize(params, state):
                 thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
+                raise # no thkobs found!
 
->>>>>>> abea0d368f7f84fed6f9f6e080217ce9e6327402
     nc.close()
 
     ########################################################
@@ -440,7 +427,6 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         if hasattr(state, "logger"):
             state.logger.info("glathida data already at " + path_glathida)
 
-<<<<<<< HEAD
     #files = [os.path.join(path_glathida, "glathida", "data", "point.csv")]
     files = [os.path.join(path_glathida, "data", "point.csv")]
     files += glob.glob(
@@ -450,11 +436,9 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
     # Glathida has changed the folder structure, this would need to look like :
     # os.path.join(path_glathida, "data", "*", "point.csv")
     
-=======
-    files = glob.glob(os.path.join(path_glathida, "glathida", "data", "*", "point.csv"))
-    files += glob.glob(os.path.join(path_glathida, "glathida", "data", "point.csv"))
+    #files = glob.glob(os.path.join(path_glathida, "glathida", "data", "*", "point.csv"))
+    #files += glob.glob(os.path.join(path_glathida, "glathida", "data", "point.csv"))
    
->>>>>>> abea0d368f7f84fed6f9f6e080217ce9e6327402
     os.path.expanduser
 
     transformer = Transformer.from_crs(proj, "epsg:4326", always_xy=True)
@@ -470,22 +454,12 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
 
     df = pd.concat(
         [pd.read_csv(file, low_memory=False) for file in files], ignore_index=True
-<<<<<<< HEAD
-    ) # df now contains ALL of glathida
-    
-    mask = (
-        #(lonmin <= df["lon"])
-        (lonmin <= df["longitude"])
-        & (df["longitude"] <= lonmax)
-        #& (latmin <= df["lat"])
-=======
     )
-    
+    # df contains ALL of glathida
     
     mask = (
         (lonmin <= df["longitude"])
         & (df["longitude"] <= lonmax)
->>>>>>> abea0d368f7f84fed6f9f6e080217ce9e6327402
         & (latmin <= df["latitude"])
         & (df["latitude"] <= latmax)
         & df["elevation"].notnull()
@@ -514,10 +488,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         if hasattr(state, "logger"):
             state.logger.info("Nb of profiles found : " + str(df.index.shape[0]))
 
-<<<<<<< HEAD
         #xx, yy = transformer.transform(df["lon"], df["lat"])
-=======
->>>>>>> abea0d368f7f84fed6f9f6e080217ce9e6327402
         xx, yy = transformer.transform(df["longitude"], df["latitude"])
         bedrock = df["elevation"] - df["thickness"]
         elevation_normalized = fsurf(xx, yy, grid=False) # interpolated surface elevation
