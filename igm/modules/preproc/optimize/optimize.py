@@ -434,9 +434,10 @@ def _optimize(params, state):
             # sum all component into the main cost function
             COST = COST_U + COST_H + COST_D + COST_S + COST_O + COST_HPO + REGU_H + REGU_S
 
+            COST_GLEN = iceflow_energy_XY(params, X, Y)
             # Here one allow retraining of the ice flow emaultor
-            if params.opti_retrain_iceflow_model:
-                COST_GLEN = iceflow_energy_XY(params, X, Y)
+            if params.opti_retrain_iceflow_model: # and i % opti_retrain_iceflow_freq == 0
+                #COST_GLEN = iceflow_energy_XY(params, X, Y)
                 
                 grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
 
@@ -444,9 +445,11 @@ def _optimize(params, state):
                     zip(grads, state.iceflow_model.trainable_variables)
                 )
             else:
-                COST_GLEN = tf.Variable(0.0)
+                #COST_GLEN = tf.Variable(0.0)
+                pass
    
-            print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, i)
+            print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, COST, i) 
+            # this is called every iteration although it only prints costs every 50 (by default) iterations
  
             state.costs.append(
                 [
@@ -527,6 +530,9 @@ def _optimize(params, state):
             #     cost = [c[0] for c in costs]
             #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
             #         break;
+
+    # print costs for last iteration
+    print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, COST, params.opti_nbitmax)
 
     # invert scaling so all variables are back to their true scale
     for f in params.opti_control:
@@ -734,7 +740,7 @@ def regu_slidingco(params,state):
 
 ##################################
 
-def print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, i):
+def print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, COST, i):
             
     vol = np.sum(state.thk) * (state.dx**2) / 10**9
     
@@ -742,12 +748,12 @@ def print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, C
 
     if i == 0:
         print(
-            "                   Step  |  ICE_VOL |  COST_U  |  COST_H  |  COST_D  |  COST_S  |   REGU_H |   REGU_S | COST_GLEN | MEAN_SLIDCO   "
+            "                   Step  |  ICE_VOL |  COST_U  |  COST_H  |  COST_D  |  COST_S  |   REGU_H |   REGU_S | TOTAL COST | COST_GLEN | MEAN_SLIDCO   "
         )
 
     if i % params.opti_output_freq == 0:
         print(
-            "OPTI %s :   %6.0f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.4f |"
+            "OPTI %s :   %6.0f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f |   %6.2f   |   %6.2f |   %6.4f |"
             % (
                 datetime.datetime.now().strftime("%H:%M:%S"),
                 i,
@@ -758,6 +764,7 @@ def print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, C
                 COST_S.numpy(),
                 REGU_H.numpy(),
                 REGU_S.numpy(),
+                COST.numpy(),
                 COST_GLEN.numpy(),
                 mean_slidingco.numpy()
             )
@@ -1092,7 +1099,8 @@ def _update_plot_inversion(params, state, i):
         origin="lower",
         extent=state.extent,
         vmin=0,
-        vmax=np.quantile(state.thk, 0.98),
+        #vmax=np.quantile(state.thk, 0.98),
+        vmax=500,
         cmap=cmap,
     )
     if i == 0:
@@ -1156,7 +1164,8 @@ def _update_plot_inversion(params, state, i):
     ax4 = state.axes[1, 0]
 
     im1 = ax4.imshow(
-        velsurf_mag, # np.ma.masked_where(state.thk == 0, velsurf_mag),
+        #velsurf_mag,
+        np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
         norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000),
