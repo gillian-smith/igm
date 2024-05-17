@@ -144,6 +144,12 @@ def params(parser):
         help="Scaling factor for the ice thickness in the optimization, serve to adjust step-size of each controls relative to each other",
     )
     parser.add_argument(
+        "--opti_include_hpo",
+        type=str2bool,
+        default="True",
+        help="Include COST_HPO to enforce non-negative ice thickness"
+    )
+    parser.add_argument(
         "--opti_control",
         type=list,
         default=["thk"],  # "slidingco", "usurf"
@@ -412,7 +418,7 @@ def _optimize(params, state):
 
             # Here one enforces non-negative ice thickness, and possibly zero-thickness in user-defined ice-free areas
             # compare with first term of P^h
-            if "thk" in params.opti_control:
+            if "thk" in params.opti_control and params.opti_include_hpo:
                 COST_HPO = 10**10 * tf.math.reduce_mean( tf.where(state.thk >= 0, 0.0, state.thk**2) )
             else:
                 COST_HPO = tf.Variable(0.0)
@@ -494,7 +500,7 @@ def _optimize(params, state):
             )
 
             # gradient norm for plotting
-            gradnorm = tf.linalg.global_norm(gradss)
+            gradnorm = tf.linalg.global_norm(gradss) # l2 norm
             state.gradnorms.append(
                 [
                     gradnorm.numpy(),
@@ -1168,7 +1174,7 @@ def _update_plot_inversion(params, state, i):
         np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
-        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000),
+        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000), # if all velocities are well below 5000 this obscures a lot of detail
         cmap=cmap,
     )
     if i == 0:
