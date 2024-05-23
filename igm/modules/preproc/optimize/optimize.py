@@ -1018,7 +1018,6 @@ def _plot_cost_functions(params, state, costs):
     )
 
 def _plot_cost_functions_log(params, state, costs):
-    # Function by Gillian Smith
 
     costs = np.stack(costs)
 
@@ -1046,7 +1045,6 @@ def _plot_cost_functions_log(params, state, costs):
     )
 
 def _plot_gradnorms(params, state, gradnorms):
-    # Function by Gillian Smith
 
     gradnorms = np.stack(gradnorms)
 
