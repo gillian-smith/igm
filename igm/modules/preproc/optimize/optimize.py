@@ -3,8 +3,6 @@
 # Copyright (C) 2021-2023 Guillaume Jouvet <guillaume.jouvet@unil.ch>
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-# Minor amendments and comments 2024 Gillian Smith
-
 import numpy as np
 import os, copy
 import matplotlib.pyplot as plt
@@ -144,12 +142,6 @@ def params(parser):
         help="Scaling factor for the ice thickness in the optimization, serve to adjust step-size of each controls relative to each other",
     )
     parser.add_argument(
-        "--opti_include_hpo",
-        type=str2bool,
-        default="True",
-        help="Include COST_HPO to enforce non-negative ice thickness"
-    )
-    parser.add_argument(
         "--opti_control",
         type=list,
         default=["thk"],  # "slidingco", "usurf"
@@ -281,7 +273,6 @@ def initialize(params, state):
         if not hasattr(state, "divfluxobs"):
             state.divfluxobs = state.smb - state.dhdt
 
-    # initialize thk
     if hasattr(state, "thkinit"):
         state.thk = state.thkinit
     else:
@@ -346,7 +337,7 @@ def _optimize(params, state):
     # main loop
     for i in range(params.opti_nbitmax):
         with tf.GradientTape() as t, tf.GradientTape() as s: # t is for optimization, s is for retraining
-            state.tcomp_optimize.append(time.time()) # time
+            state.tcomp_optimize.append(time.time())
             
             if params.opti_step_size_decay < 1: # reduce the learning rate at each step
                 optimizer.lr = params.opti_step_size * (params.opti_step_size_decay ** (i / 100))
@@ -359,7 +350,6 @@ def _optimize(params, state):
             for f in params.opti_control:
                 vars(state)[f] = vars()[f] * sc[f]
 
-            # get fields in right configuration for input to iceflow_model
             fieldin = [vars(state)[f] for f in params.iflo_fieldin]
             X = fieldin_to_X(params, fieldin)
 
@@ -369,9 +359,8 @@ def _optimize(params, state):
             else:
                  Y = state.iceflow_model(tf.pad(X, state.PAD, "CONSTANT"))[:, :Ny, :Nx, :]
 
-            # get u and v
             U, V = Y_to_UV(params, Y)
-            # ?
+
             U = U[0]
             V = V[0]
            
@@ -443,7 +432,7 @@ def _optimize(params, state):
 
             COST_GLEN = iceflow_energy_XY(params, X, Y)
             # Here one allow retraining of the ice flow emaultor
-            if params.opti_retrain_iceflow_model: # and i % opti_retrain_iceflow_freq == 0
+            if params.opti_retrain_iceflow_model:
                 #COST_GLEN = iceflow_energy_XY(params, X, Y)
                 
                 grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
@@ -479,8 +468,8 @@ def _optimize(params, state):
 
             # Compute gradient of COST w.r.t. X
             gradss = t.gradient(COST, var_to_opti)
-            #grads = tf.Variable(t.gradient(COST, var_to_opti))
             grads = tf.Variable(gradss)
+            #grads = tf.Variable(t.gradient(COST, var_to_opti))
 
             # this serve to restict the optimization of controls to the mask
 
@@ -524,13 +513,13 @@ def _optimize(params, state):
             _compute_rms_std_optimization(state, i)
 
             state.tcomp_optimize[-1] -= time.time()
-            state.tcomp_optimize[-1] *= -1 # time between start and end of this iteration
+            state.tcomp_optimize[-1] *= -1
 
-            if i % params.opti_output_freq == 0: # by default every 50 iterations
+            if i % params.opti_output_freq == 0:
                 if params.opti_plot2d:
-                    _update_plot_inversion(params, state, i) # update the inversion 2d plot
+                    _update_plot_inversion(params, state, i)
                 if params.opti_save_iterat_in_ncdf:
-                    _update_ncdf_optimize(params, state, i) # update the .nc file
+                    _update_ncdf_optimize(params, state, i)
 
             # stopping criterion: stop if the cost no longer decrease
             # if i>params.opti_nbitmin:
@@ -538,10 +527,10 @@ def _optimize(params, state):
             #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
             #         break;
 
-    # print costs for last iteration
+    # print costs for final iteration
     print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, COST, params.opti_nbitmax)
 
-    # invert scaling so all variables are back to their true scale
+    # invert scaling
     for f in params.opti_control:
         vars(state)[f] = vars()[f] * sc[f]
 
@@ -1029,6 +1018,8 @@ def _plot_cost_functions(params, state, costs):
     )
 
 def _plot_cost_functions_log(params, state, costs):
+    # Function by Gillian Smith
+
     costs = np.stack(costs)
 
     costs_total = np.sum(costs,axis=1)
@@ -1040,7 +1031,7 @@ def _plot_cost_functions_log(params, state, costs):
     ax.plot(costs[:, 3], "-g", label="COST S")
     ax.plot(costs[:, 4], "--c", label="REGU H")
     ax.plot(costs[:, 5], "--m", label="REGU C")
-    #ax.plot(costs[:, 6], "-k", label="TOTAL COST") # this might be better but it's not working for some reason
+    #ax.plot(costs[:, 6], "-k", label="TOTAL COST")
     ax.plot(costs_total, "-k", label="TOTAL COST")
     ax.set_yscale('log')
     ax.legend()
@@ -1055,6 +1046,8 @@ def _plot_cost_functions_log(params, state, costs):
     )
 
 def _plot_gradnorms(params, state, gradnorms):
+    # Function by Gillian Smith
+
     gradnorms = np.stack(gradnorms)
 
     fig, ax = plt.subplots(1,1,figsize=(10,10))
@@ -1110,8 +1103,8 @@ def _update_plot_inversion(params, state, i):
         origin="lower",
         extent=state.extent,
         vmin=0,
-        #vmax=np.quantile(state.thk, 0.98),
-        vmax=500,
+        vmax=np.quantile(state.thk, 0.98),
+        #vmax=500,
         cmap=cmap,
     )
     if i == 0:
@@ -1175,11 +1168,11 @@ def _update_plot_inversion(params, state, i):
     ax4 = state.axes[1, 0]
 
     im1 = ax4.imshow(
-        #velsurf_mag,
-        np.ma.masked_where(state.thk == 0, velsurf_mag),
+        velsurf_mag,
+        #np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
-        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000), # if all velocities are well below 5000 this obscures a lot of detail
+        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000), # if all velocities are well below 5000 this obscures some detail
         cmap=cmap,
     )
     if i == 0:

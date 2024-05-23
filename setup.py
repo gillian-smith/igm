@@ -44,6 +44,5 @@ setup(
         "salem",
         "pyyaml",
         "importlib_resources",
-        "salem",
     ],
 )

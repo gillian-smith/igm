@@ -120,7 +120,7 @@ def initialize(params, state):
             vvelsurfobs = np.where(np.isnan(vvelsurfobs), 0, vvelsurfobs)            
             vvelsurfobs = np.where(icemaskobs, vvelsurfobs, 0)
             vars_to_save += ["vvelsurfobs"]
-    else: # implement better error messages in cases where its_live doesn't exist
+    else:
         if "itslive_vx" in nc.variables:
             uvelsurfobs = np.flipud(
                 np.squeeze(nc.variables["itslive_vx"]).astype("float32")
@@ -177,7 +177,7 @@ def initialize(params, state):
                 thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
-                raise # no thkobs found!
+
         elif params.oggm_RGI_version==7:
             path_glathida = os.path.join(params.oggm_RGI_ID, "glathida_data.csv")
     
@@ -188,7 +188,7 @@ def initialize(params, state):
                 thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
-                raise # no thkobs found!
+
 
     nc.close()
 
@@ -434,17 +434,8 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         if hasattr(state, "logger"):
             state.logger.info("glathida data already at " + path_glathida)
 
-    #files = [os.path.join(path_glathida, "glathida", "data", "point.csv")]
-    files = [os.path.join(path_glathida, "data", "point.csv")]
-    files += glob.glob(
-        #os.path.join(path_glathida, "glathida", "submissions", "*", "point.csv")
-        os.path.join(path_glathida, "data", "*", "point.csv")
-    )
-    # Glathida has changed the folder structure, this would need to look like :
-    # os.path.join(path_glathida, "data", "*", "point.csv")
-    
-    #files = glob.glob(os.path.join(path_glathida, "glathida", "data", "*", "point.csv"))
-    #files += glob.glob(os.path.join(path_glathida, "glathida", "data", "point.csv"))
+    files = glob.glob(os.path.join(path_glathida, "glathida", "data", "*", "point.csv"))
+    files += glob.glob(os.path.join(path_glathida, "glathida", "data", "point.csv"))
    
     os.path.expanduser
 
@@ -457,7 +448,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
 
     #    print(x.shape, y.shape, usurf.shape)
 
-    fsurf = RectBivariateSpline(x, y, np.transpose(usurf)) # interpolated surface elevation as function of x,y
+    fsurf = RectBivariateSpline(x, y, np.transpose(usurf))
 
     df = pd.concat(
         [pd.read_csv(file, low_memory=False) for file in files], ignore_index=True
@@ -474,8 +465,9 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         & df["elevation_date"].notnull()
     )
     df = df[mask]
-    
-    # Filter by date gap in second step for speed
+
+    # Filter by date gap in second step for speed - observations should be no more than a year away from elevation date
+    # But we still may have observations taken several years apart!
     mask = (
         (
             df["date"].str.slice(0, 4).astype(int)
@@ -484,7 +476,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         .abs()
         .le(1)
     )
-    df = df[mask] # now we have pointwise thickness observations 
+    df = df[mask]
 
     if df.index.shape[0] == 0:
         print("No ice thickness profiles found")
@@ -498,8 +490,8 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         #xx, yy = transformer.transform(df["lon"], df["lat"])
         xx, yy = transformer.transform(df["longitude"], df["latitude"])
         bedrock = df["elevation"] - df["thickness"]
-        elevation_normalized = fsurf(xx, yy, grid=False) # interpolated surface elevation
-        thickness_normalized = np.maximum(elevation_normalized - bedrock, 0) # thickness = surface - bedrock >= 0
+        elevation_normalized = fsurf(xx, yy, grid=False)
+        thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)
 
         # Rasterize thickness
         thickness_gridded = (
@@ -511,7 +503,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
                 }
             )
             .groupby(["row", "col"])["thickness"]
-            .mean()
+            .mean() # mean over each grid cell
         )
         thkobs = np.full((y.shape[0], x.shape[0]), np.nan)
         thickness_gridded[thickness_gridded == 0] = np.nan
