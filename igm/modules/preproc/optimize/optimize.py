@@ -1101,8 +1101,8 @@ def _update_plot_inversion(params, state, i):
         origin="lower",
         extent=state.extent,
         vmin=0,
-        #vmax=np.quantile(state.thk, 0.98),
-        vmax=500,
+        vmax=np.quantile(state.thk, 0.98),
+        #vmax=500,
         cmap=cmap,
     )
     if i == 0:
@@ -1166,11 +1166,11 @@ def _update_plot_inversion(params, state, i):
     ax4 = state.axes[1, 0]
 
     im1 = ax4.imshow(
-        #velsurf_mag,
-        np.ma.masked_where(state.thk == 0, velsurf_mag),
+        velsurf_mag,
+        #np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
-        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000), # if all velocities are well below 5000 this obscures some detail
+        norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000),
         cmap=cmap,
     )
     if i == 0:
