@@ -408,7 +408,7 @@ def _optimize(params, state):
 
             # Here one enforces non-negative ice thickness, and possibly zero-thickness in user-defined ice-free areas
             # compare with first term of P^h
-            if "thk" in params.opti_control and params.opti_include_hpo:
+            if "thk" in params.opti_control:
                 COST_HPO = 10**10 * tf.math.reduce_mean( tf.where(state.thk >= 0, 0.0, state.thk**2) )
             else:
                 COST_HPO = tf.Variable(0.0)
@@ -1101,8 +1101,8 @@ def _update_plot_inversion(params, state, i):
         origin="lower",
         extent=state.extent,
         vmin=0,
-        vmax=np.quantile(state.thk, 0.98),
-        #vmax=500,
+        #vmax=np.quantile(state.thk, 0.98),
+        vmax=500,
         cmap=cmap,
     )
     if i == 0:
@@ -1166,8 +1166,8 @@ def _update_plot_inversion(params, state, i):
     ax4 = state.axes[1, 0]
 
     im1 = ax4.imshow(
-        velsurf_mag,
-        #np.ma.masked_where(state.thk == 0, velsurf_mag),
+        #velsurf_mag,
+        np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
         norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000), # if all velocities are well below 5000 this obscures some detail
