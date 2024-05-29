@@ -233,6 +233,24 @@ def params(parser):
         help="Retrain the iceflow model simulatounously ?",
     ) 
     parser.add_argument(
+        "--opti_retrain_stop_iter",
+        type=int,
+        default=1000,
+        help="Iteration at which to stop retraining the iceflow model"
+    )
+    parser.add_argument(
+        "--opti_reset_optimizer_after_retrain",
+        type=str2bool,
+        default=True,
+        help="Reset the optimizer after retraining finished?"
+    )
+    # parser.add_argument(
+    #     "--opti_reset_optimizer_lr",
+    #     type=str2bool,
+    #     default=False,
+    #     help="Reset the learning rate when resetting the optimizer"
+    # )
+    parser.add_argument(
         "--opti_to_regularize",
         type=str,
         default='topg',
@@ -430,19 +448,29 @@ def _optimize(params, state):
             # sum all component into the main cost function
             COST = COST_U + COST_H + COST_D + COST_S + COST_O + COST_HPO + REGU_H + REGU_S
 
-            COST_GLEN = iceflow_energy_XY(params, X, Y)
-            # Here one allow retraining of the ice flow emaultor
-            if params.opti_retrain_iceflow_model:
-                #COST_GLEN = iceflow_energy_XY(params, X, Y)
-                
-                grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
+            COST_GLEN = iceflow_energy_XY(params, X, Y) # I want to know how COST_GLEN changes without retraining
 
-                opti_retrain.apply_gradients(
-                    zip(grads, state.iceflow_model.trainable_variables)
-                )
-            else:
-                #COST_GLEN = tf.Variable(0.0)
-                pass
+            if params.opti_retrain_iceflow_model:
+                if i < params.opti_retrain_stop_iter: # we are in the retraining phase
+                
+                    grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
+
+                    opti_retrain.apply_gradients(
+                        zip(grads, state.iceflow_model.trainable_variables)
+                    )
+                elif i == params.opti_retrain_stop_iter and params.opti_reset_optimizer_after_retrain: # stop retraining
+                    # reset optimizer to remove momentum
+                    #if params.opti_reset_optimizer_lr:
+                    #    lr = params.opti_step_size
+                    #else:
+                    lr = optimizer.lr # keep current learning rate
+
+                    if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
+                        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+                    else:
+                        optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=lr)
+                #else #i > params.opti_retrain_stop_iter and/or we chose not to reset
+                #    pass
    
             print_costs(params, state, COST_U, COST_H, COST_D, COST_S, REGU_H, REGU_S, COST_GLEN, COST, i) 
             # this is called every iteration although it only prints costs every 50 (by default) iterations
@@ -776,7 +804,7 @@ def save_costs(params, state):
         "costs.dat",
         np.stack(state.costs),
         fmt="%.10f",
-        header="        COST_U        COST_H      COST_D       COST_S       REGU_H       REGU_S          HPO           COSTGLEN         COST_TOTAL",
+        header="        COST_U        COST_H      COST_D       COST_S       REGU_H       REGU_S          COSTGLEN         COST_TOTAL",
     )
     
     os.system(
@@ -1023,18 +1051,26 @@ def _plot_cost_functions_log(params, state, costs):
 
     costs_total = np.sum(costs,axis=1)
 
-    fig, ax = plt.subplots(1,1,figsize=(10, 10))
-    ax.plot(costs[:, 0], "-y", label="COST U")
-    ax.plot(costs[:, 1], "-r", label="COST H")
-    ax.plot(costs[:, 2], "-b", label="COST D")
-    ax.plot(costs[:, 3], "-g", label="COST S")
-    ax.plot(costs[:, 4], "--c", label="REGU H")
-    ax.plot(costs[:, 5], "--m", label="REGU C")
-    #ax.plot(costs[:, 6], "-k", label="TOTAL COST")
-    ax.plot(costs_total, "-k", label="TOTAL COST")
-    ax.set_yscale('log')
-    ax.legend()
+    fig, ax1 = plt.subplots(1,1,figsize=(10, 10))
+    ax1.plot(costs[:, 0], "-y", label="COST U")
+    ax1.plot(costs[:, 1], "-r", label="COST H")
+    ax1.plot(costs[:, 2], "-b", label="COST D")
+    ax1.plot(costs[:, 3], "-g", label="COST S")
+    ax1.plot(costs[:, 4], "--c", label="REGU H")
+    ax1.plot(costs[:, 5], "--m", label="REGU C")
+    #ax1.plot(costs[:, 7], "-k", label="TOTAL COST")
+    ax1.plot(costs_total, "-k", label="TOTAL COST")
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Cost')
+    ax1.set_yscale('log')
+    ax1.legend(loc="lower right")
 
+    ax2 = ax1.twinx()
+    ax2.plot(costs[:, 6], label="COST GLEN", color="darkorange", linestyle="dotted")
+    ax2.set_ylabel('Variational cost', color="darkorange")
+    ax2.tick_params(axis='y', labelcolor="darkorange")
+
+    fig.tight_layout()
     fig.savefig("convergence_log.png", pad_inches=0)
     plt.close("all")
 
@@ -1101,8 +1137,8 @@ def _update_plot_inversion(params, state, i):
         origin="lower",
         extent=state.extent,
         vmin=0,
-        vmax=np.quantile(state.thk, 0.98),
-        #vmax=500,
+        #vmax=np.quantile(state.thk, 0.98),
+        vmax=500,
         cmap=cmap,
     )
     if i == 0:
@@ -1166,8 +1202,8 @@ def _update_plot_inversion(params, state, i):
     ax4 = state.axes[1, 0]
 
     im1 = ax4.imshow(
-        velsurf_mag,
-        #np.ma.masked_where(state.thk == 0, velsurf_mag),
+        #velsurf_mag,
+        np.ma.masked_where(state.thk == 0, velsurf_mag),
         origin="lower",
         extent=state.extent,
         norm=matplotlib.colors.LogNorm(vmin=1, vmax=5000),
