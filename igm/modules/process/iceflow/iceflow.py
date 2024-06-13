@@ -245,7 +245,7 @@ def params(parser):
     parser.add_argument(
         "--iflo_activation",
         type=str,
-        default="lrelu",
+        default="LeakyReLU",
         help="Activation function, it can be lrelu, relu, tanh, sigmoid, etc.",
     )
     parser.add_argument(
@@ -333,13 +333,13 @@ def params(parser):
 
     parser.add_argument(
         "--save_cost_emulator",
-        type=str2bool,
-        default=False
+        type=str,
+        default=""
     )
     parser.add_argument(
         "--save_cost_solver",
-        type=str2bool,
-        default=False
+        type=str,
+        default=""
     )
     
 
@@ -1019,8 +1019,8 @@ def _update_iceflow_solved(params, state):
             )
         )
         
-    if params.save_cost_solver:
-        np.savetxt('cost-'+str(state.it)+'.dat', np.array(Cost_Glen),  fmt="%5.10f")
+    if len(params.save_cost_solver)>0:
+        np.savetxt(params.save_cost_solver+'-'+str(state.it)+'.dat', np.array(Cost_Glen),  fmt="%5.10f")
 
     state.COST_Glen = Cost_Glen[-1].numpy()
 
@@ -1152,8 +1152,8 @@ def _update_iceflow_emulator(params, state):
             state.COST_EMULATOR.append(cost_emulator)
             
     
-    if params.save_cost_emulator:
-        np.savetxt('cost-'+str(state.it)+'.dat', np.array(state.COST_EMULATOR), fmt="%5.10f")
+    if len(params.save_cost_emulator)>0:
+        np.savetxt(params.save_cost_emulator+'-'+str(state.it)+'.dat', np.array(state.COST_EMULATOR), fmt="%5.10f")
 
 
 def _split_into_patches(X, nbmax):
@@ -1236,10 +1236,10 @@ def cnn(params, nb_inputs, nb_outputs):
 
     conv = inputs
 
-    if params.iflo_activation == "lrelu":
+    if params.iflo_activation == "LeakyReLU":
         activation = tf.keras.layers.LeakyReLU(alpha=0.01)
     else:
-        activation = tf.keras.layers.ReLU()
+        activation = getattr(tf.keras.layers,params.iflo_activation)()      
 
     for i in range(int(params.iflo_nb_layers)):
         conv = tf.keras.layers.Conv2D(
@@ -1285,7 +1285,7 @@ def unet(params, nb_inputs, nb_outputs):
         n_labels=nb_outputs,
         stack_num_down=2,
         stack_num_up=2,
-        activation="LeakyReLU",
+        activation=params.iflo_activation,
         output_activation=None,
         batch_norm=False,
         pool="max",
