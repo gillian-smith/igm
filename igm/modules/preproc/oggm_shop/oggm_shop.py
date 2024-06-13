@@ -319,7 +319,8 @@ def _oggm_util(RGIs, params):
                 rgi_ids,
                 prepro_border=40,
                 from_prepro_level=3,
-                prepro_rgi_version='70C',
+                #prepro_rgi_version='70C',
+                prepro_rgi_version='70' + params.oggm_RGI_ID[13], # the "C" or "G" character
                 prepro_base_url=base_url,
             )
 
@@ -439,6 +440,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
    
     os.path.expanduser
 
+    # transform into lat/lon coordinates
     transformer = Transformer.from_crs(proj, "epsg:4326", always_xy=True)
 
     lonmin, latmin = transformer.transform(min(x), min(y))
