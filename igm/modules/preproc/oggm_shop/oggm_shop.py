@@ -381,12 +381,7 @@ def _oggm_util(RGIs, params):
                 rgi_ids,
                 prepro_border=40,
                 from_prepro_level=3,
-<<<<<<< HEAD
-                #prepro_rgi_version='70C',
-                prepro_rgi_version='70' + params.oggm_RGI_ID[13], # the "C" or "G" character
-=======
                 prepro_rgi_version='70'+params.oggm_RGI_product,
->>>>>>> fcb5157181f9c73ad5b41ce738627bb274a44ad8
                 prepro_base_url=base_url,
             )
             if (params.oggm_sub_entity_mask == True) & (params.oggm_RGI_product == "C"):

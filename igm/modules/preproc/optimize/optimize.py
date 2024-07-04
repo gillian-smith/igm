@@ -236,7 +236,6 @@ def params(parser):
         type=int,
         default=1000,
         help="Iteration at which to stop retraining the iceflow model"
-<<<<<<< HEAD
     )
     parser.add_argument(
         "--opti_reset_optimizer_after_retrain",
@@ -250,14 +249,6 @@ def params(parser):
     #     default=False,
     #     help="Reset the learning rate when resetting the optimizer"
     # )
-    parser.add_argument(
-        "--opti_to_regularize",
-        type=str,
-        default='topg',
-        help="Field to regularize : topg or thk",
-=======
->>>>>>> fcb5157181f9c73ad5b41ce738627bb274a44ad8
-    )
     parser.add_argument(
         "--opti_reset_optimizer_after_retrain",
         type=str2bool,
@@ -479,10 +470,6 @@ def _optimize(params, state):
             else:
                 COST_HPO = tf.Variable(0.0)
     
-<<<<<<< HEAD
-            # Here one adds a regularization term for the bed topography to the cost function
-            # compare with R^h
-=======
             if params.opti_infer_params:
                 COST_VOL = cost_vol(params, state)
                 #COST_VOL = tf.Variable(0.0)
@@ -490,7 +477,7 @@ def _optimize(params, state):
                 COST_VOL = tf.Variable(0.0)
 
             # Here one adds a regularization terms for the bed toporgraphy to the cost function
->>>>>>> fcb5157181f9c73ad5b41ce738627bb274a44ad8
+            # Compare with R^h
             if "thk" in params.opti_control:
                 REGU_H = regu_thk(params, state)
             else:
@@ -508,21 +495,11 @@ def _optimize(params, state):
 
             COST_GLEN = iceflow_energy_XY(params, X, Y) # I want to know how COST_GLEN changes without retraining
 
-<<<<<<< HEAD
-            COST_GLEN = iceflow_energy_XY(params, X, Y) # I want to know how COST_GLEN changes without retraining
-
             if params.opti_retrain_iceflow_model:
                 if i < params.opti_retrain_stop_iter: # we are in the retraining phase
                 
                     grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
 
-=======
-            if params.opti_retrain_iceflow_model:
-                if i < params.opti_retrain_stop_iter: # we are in the retraining phase
-                
-                    grads = s.gradient(COST_GLEN, state.iceflow_model.trainable_variables)
-
->>>>>>> fcb5157181f9c73ad5b41ce738627bb274a44ad8
                     opti_retrain.apply_gradients(
                         zip(grads, state.iceflow_model.trainable_variables)
                     )
@@ -552,10 +529,7 @@ def _optimize(params, state):
                     REGU_H.numpy(),
                     REGU_S.numpy(),
                     COST_GLEN.numpy(),
-<<<<<<< HEAD
-=======
                     COST_VOL.numpy(),
->>>>>>> fcb5157181f9c73ad5b41ce738627bb274a44ad8
                     COST.numpy(),
                 ]
             )
