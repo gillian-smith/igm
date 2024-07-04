@@ -250,18 +250,6 @@ def params(parser):
     #     help="Reset the learning rate when resetting the optimizer"
     # )
     parser.add_argument(
-        "--opti_reset_optimizer_after_retrain",
-        type=str2bool,
-        default=True,
-        help="Reset the optimizer after retraining finished?"
-    )
-    # parser.add_argument(
-    #     "--opti_reset_optimizer_lr",
-    #     type=str2bool,
-    #     default=False,
-    #     help="Reset the learning rate when resetting the optimizer"
-    # )
-    parser.add_argument(
        "--opti_to_regularize",
        type=str,
        default='topg',
