@@ -481,7 +481,12 @@ def _optimize(params, state):
             # sum all component into the main cost function
             COST = COST_U + COST_H + COST_D + COST_S + COST_O + COST_HPO + COST_VOL + REGU_H + REGU_S
 
-            COST_GLEN = iceflow_energy_XY(params, X, Y) # I want to know how COST_GLEN changes without retraining
+            # I want to know how COST_GLEN changes without retraining
+
+            C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X, Y)
+
+            COST_GLEN = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
+                      + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
 
             if params.opti_retrain_iceflow_model:
                 if i < params.opti_retrain_stop_iter: # we are in the retraining phase
