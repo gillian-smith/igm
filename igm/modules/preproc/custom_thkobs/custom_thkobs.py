@@ -25,7 +25,7 @@ def params(parser):
     parser.add_argument(
         "--cthk_rgi_folder",
         type=str,
-        default="/home/s1639117/Documents/igm_folder/RGI/RGI2000-v7.0-G-15_south_asia_east", # TODO: test with oggm_shop downloaded RGI folder
+        default="", # TODO: test with oggm_shop downloaded RGI folder
         help="Filepath to RGI outline/s for this glacier/the whole region"
     )
     parser.add_argument(
@@ -34,7 +34,14 @@ def params(parser):
         default="/home/s1639117/Documents/igm_folder/hamish_data/Nepal2019_24Jan24_icethick_heli_and_ground_merge",
         help="Filepath to thkobs dataframe"
     )
-    # Parameters like oggm_RGI_ID are also used, for this reason you must run custom_thkobs AFTER oggm_shop
+    parser.add_argument(
+        "--cthk_thkobs_column",
+        type=str,
+        default="thick_m",
+        help="Column in dataframe where thkobs are stored"
+    )
+    # Always run ["oggm_shop", "custom_thkobs"]
+    # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_thkobs.nc"
     # You must have oggm_save_in_ncdf=True
     # If intending to use individual RGI outline as downloaded from oggm_shop you MUST set oggm_remove_RGI_folder=False
 
@@ -49,19 +56,25 @@ def initialize(params, state):
     nc = xr.open_dataset("input_saved.nc")
 
     rgi_folder = params.cthk_rgi_folder    
-    if rgi_folder=="/home/s1639117/Documents/igm_folder/RGI/RGI2000-v7.0-G-15_south_asia_east":
-        rgi_filepath = rgi_folder
-    else: # we use individual RGI outline as downloaded from oggm_shop
+    
+    if rgi_folder == "": # we use individual RGI outline as downloaded from oggm_shop
         # TODO: if oggm_remove_RGI_folder is True throw an error
         rgi_folder = params.oggm_RGI_ID
         os.system('mkdir ' + rgi_folder + '/outlines');
         os.system('tar -xvzf '+ rgi_folder + '/outlines.tar.gz -C ' + rgi_folder + '/outlines');
         rgi_filepath = rgi_folder + "/outlines"
-    
-    rgi = gpd.read_file(rgi_filepath)
-    rgi = rgi.to_crs(32645) # TODO: this crs is UTM45N for Everest area, may need to generalise for other regions
+        rgi = gpd.read_file(rgi_filepath)
+        # crs should already be local one
+    else: # usually import the file for the entire RGI region
+        rgi_filepath = rgi_folder 
+        rgi = gpd.read_file(rgi_filepath)        
+        rgi = rgi.to_crs(32645) # TODO: this crs is UTM45N for Everest area, may need to generalise for other regions
 
-    outline = rgi[rgi["rgi_id"]==params.oggm_RGI_ID]
+    if params.oggm_RGI_version==6:
+        outline = rgi[rgi["RGIId"]==params.oggm_RGI_ID]
+    else: # RGI 7
+        outline = rgi[rgi["rgi_id"]==params.oggm_RGI_ID]
+    
     outline.geometry = shapely.force_2d(outline.geometry)
 
     # x and y coordinates
@@ -76,7 +89,7 @@ def initialize(params, state):
     #usurf = state.usurf
     usurf = np.flipud(np.squeeze(nc.variables["usurf"]).astype("float32"))
     # interpolated surface elevation
-    fsurf = RectBivariateSpline(x, y, np.transpose(usurf))
+    #fsurf = RectBivariateSpline(x, y, np.transpose(usurf))
 
     # load thickness observations from file
     df = gpd.read_file(params.cthk_path_thkobs)
@@ -92,9 +105,8 @@ def initialize(params, state):
     #bedrock = df["surfaceDEM"] - df["thick_m"]
     #elevation_normalized = fsurf(xx, yy, grid=False)
     #thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)
-    thickness_normalized = df["thick_m"].copy() 
+    thickness_normalized = df[params.cthk_thkobs_column].copy() 
     # TODO: look into whether thickness needs to be normalized or not - where do DEM values come from
-    # TODO: param for if thickness column was called something other than "thick_m"
 
     # Rasterize thickness
     thickness_gridded = (

@@ -1046,21 +1046,9 @@ def _output_ncdf_optimize_final(params, state):
     """
     Write final geology after optimizing
     """
-    if params.opti_save_iterat_in_ncdf==False:
-        if "velbase_mag" in params.opti_vars_to_save:
-            state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
-
-        if "velsurf_mag" in params.opti_vars_to_save:
-            state.velsurf_mag = getmag(state.uvelsurf, state.vvelsurf)
-
-        if "velsurfobs_mag" in params.opti_vars_to_save:
-            state.velsurfobs_mag = getmag(state.uvelsurfobs, state.vvelsurfobs)
-        
-        if "sliding_ratio" in params.opti_vars_to_save:
-            state.sliding_ratio = tf.where(state.velsurf_mag > 10, state.velbase_mag / state.velsurf_mag, np.nan)
 
     nc = Dataset(
-        params.oggm_RGI_ID+"_optimised.nc",
+        params.opti_save_result_in_ncdf,
         "w",
         format="NETCDF4",
     )
@@ -1089,7 +1077,7 @@ def _output_ncdf_optimize_final(params, state):
 
     os.system(
         "echo rm "
-        + params.oggm_RGI_ID+"_optimised.nc"
+        + params.opti_save_result_in_ncdf
         + " >> clean.sh"
     )
 
