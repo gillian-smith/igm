@@ -61,7 +61,7 @@ def params(parser):
         "--opti_regu_param_slidingco",
         type=float,
         default=1,
-        help="Regularization weight for the strflowctrl field in the optimization",
+        help="Regularization weight for the slidingco field in the optimization",
     )
     parser.add_argument(
         "--opti_regu_param_div",
@@ -308,7 +308,8 @@ def initialize(params, state):
     ###### PREPARE DATA PRIOR OPTIMIZATIONS
 
     if "divfluxobs" in params.opti_cost:
-        state.divfluxobs = state.smb - state.dhdt
+        if not hasattr(state, "divfluxobs"):
+            state.divfluxobs = state.smb - state.dhdt
 
     if hasattr(state, "thkinit"):
         state.thk = state.thkinit
