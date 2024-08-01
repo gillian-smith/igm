@@ -130,7 +130,7 @@ def output_ncdf_optimize_final(params, state):
     )
 
 
-def plot_cost_functions():
+def plot_cost_functions(params):
 
 #    costs = np.stack(costs)
 
@@ -139,8 +139,12 @@ def plot_cost_functions():
     # Read the file and process the contents
     with open(file_path, 'r') as file:
         lines = file.readlines()
-        label = lines[0].strip().split()
-        costs = [np.array(line.strip().split(), dtype=float) for line in lines[1:]]
+        #label = lines[0].strip().split()
+        #costs = [np.array(line.strip().split(), dtype=float) for line in lines[1:]]
+
+        # GS: this works even if you forget to run bash clean.sh and then do igm_run again in the same directory
+        label = lines[-params.opti_nbitmax-2].strip().split()
+        costs = [np.array(line.strip().split(), dtype=float) for line in lines[-params.opti_nbitmax-1:]]
 
     costs = np.stack(costs)
 
@@ -165,6 +169,55 @@ def plot_cost_functions():
         + " >> clean.sh"
     )
 
+def plot_cost_functions_log(params):
+
+#    costs = np.stack(costs)
+
+    file_path = 'costs.dat'
+
+    # Read the file and process the contents
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        #label = lines[0].strip().split()
+        #costs = [np.array(line.strip().split(), dtype=float) for line in lines[1:]]
+
+        # GS: this works even if you forget to run bash clean.sh and then do igm_run again in the same directory
+        label = lines[-params.opti_nbitmax-2].strip().split()
+        costs = [np.array(line.strip().split(), dtype=float) for line in lines[-params.opti_nbitmax-1:]]
+
+    costs = np.stack(costs)
+
+    # Scaling btwn 0 and 1
+    #for i in range(costs.shape[1]):
+    #    costs[:, i] -= np.min(costs[:, i])
+    #    costs[:, i] /= np.where(np.max(costs[:, i]) == 0, 1.0, np.max(costs[:, i]))
+
+    colors = ["r", "b", "g", "c", "m", "r", "b", "g", "c", "m"]
+  
+    #fig = plt.figure(figsize=(10, 10))
+    fig, ax1 = plt.subplots(1,1,figsize=(10, 10))
+    ax2 = ax1.twinx()
+    for i in range(costs.shape[1]):
+        if label[i]=="glen":
+            ax2.plot(costs[:, i], label=label[i], c="k", ls='dashed')
+        else:    
+            ax1.plot(costs[:, i], label=label[i], c=colors[i])
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Cost')
+    ax1.set_yscale('log')
+    ax1.legend(loc="lower right")
+    ax2.set_ylabel('Variational cost', color="black")
+    ax2.tick_params(axis='y', labelcolor="black")
+
+    fig.tight_layout()
+    fig.savefig("convergence_log.png", pad_inches=0)
+    plt.close("all")
+
+    os.system(
+        "echo rm "
+        + "convergence_log.png"
+        + " >> clean.sh"
+    )
 
 def update_plot_inversion(params, state, i):
     """
@@ -267,6 +320,9 @@ def update_plot_inversion(params, state, i):
     cmap.set_bad(color="white")
 
     ax4 = state.axes[1, 0]
+
+    if params.opti_plot2d_masked_vel:
+        velsurf_mag = np.ma.masked_where(state.thk == 0, velsurf_mag)
 
     im1 = ax4.imshow(
         velsurf_mag, # np.ma.masked_where(state.thk == 0, velsurf_mag),

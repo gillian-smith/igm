@@ -192,6 +192,12 @@ def params_optimize(parser):
         help="plot 2d inversion",
     )
     parser.add_argument(
+        "--opti_plot2d_masked_vel",
+        type=str2bool,
+        default=False,
+        help="plot masked modelled velocity in 2d inversion",
+    )
+    parser.add_argument(
         "--opti_save_iterat_in_ncdf",
         type=str2bool,
         default=True,
@@ -221,6 +227,24 @@ def params_optimize(parser):
         default=True,
         help="Retrain the iceflow model simulatounously ?",
     )
+    parser.add_argument(
+        "--opti_retrain_stop_iter",
+        type=int,
+        default=1000,
+        help="Iteration at which to stop retraining the iceflow model"
+    )
+    parser.add_argument(
+        "--opti_reset_optimizer_after_retrain",
+        type=str2bool,
+        default=True,
+        help="Reset the optimizer after retraining finished?"
+    )
+    # parser.add_argument(
+    #     "--opti_reset_optimizer_lr",
+    #     type=str2bool,
+    #     default=False,
+    #     help="Reset the learning rate when resetting the optimizer"
+    # )
     parser.add_argument(
        "--opti_to_regularize",
        type=str,

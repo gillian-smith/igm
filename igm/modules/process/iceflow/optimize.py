@@ -178,18 +178,37 @@ def optimize(params, state):
   
             cost_total = tf.reduce_sum(tf.convert_to_tensor(list(cost.values())))
 
+            # GS: calculate variational cost even if not retraining ice flow emulator
+            C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X, Y)
+
+            cost["glen"] = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
+                         + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
+
             # Here one allow retraining of the ice flow emaultor
             if params.opti_retrain_iceflow_model:
-                C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X, Y)
 
-                cost["glen"] = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
-                             + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
+                if i < params.opti_retrain_stop_iter: # we are in the retraining phase
                 
-                grads = s.gradient(cost["glen"], state.iceflow_model.trainable_variables)
+                    grads = s.gradient(cost["glen"], state.iceflow_model.trainable_variables)
 
-                opti_retrain.apply_gradients(
-                    zip(grads, state.iceflow_model.trainable_variables)
-                )
+                    opti_retrain.apply_gradients(
+                        zip(grads, state.iceflow_model.trainable_variables)
+                    )
+
+                elif i == params.opti_retrain_stop_iter and params.opti_reset_optimizer_after_retrain: # stop retraining
+                    # reset optimizer to remove momentum
+                    #if params.opti_reset_optimizer_lr:
+                    #    lr = params.opti_step_size
+                    #else:
+                    lr = optimizer.lr # keep current learning rate
+
+                    if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
+                        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+                    else:
+                        optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=lr)
+
+                else: #i > params.opti_retrain_stop_iter and/or we chose not to reset
+                    pass
 
             print_costs(params, state, cost, i)
 
@@ -249,6 +268,9 @@ def optimize(params, state):
             #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
             #         break;
 
+    # print costs for final iteration
+    print_costs(params, state, cost, params.opti_nbitmax)
+
 #    for f in params.opti_control:
 #        vars(state)[f] = vars()[f] * sc[f]
 
@@ -258,7 +280,8 @@ def optimize(params, state):
     if not params.opti_save_result_in_ncdf=="":
         output_ncdf_optimize_final(params, state)
 
-    plot_cost_functions() 
+    plot_cost_functions(params) 
+    plot_cost_functions_log(params) 
 
     plt.close("all")
 
