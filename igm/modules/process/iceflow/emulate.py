@@ -230,6 +230,7 @@ def update_iceflow_emulator(params, state):
             
     
     if len(params.iflo_save_cost_emulator)>0:
+        os.makedirs(params.iflo_output_directory, exist_ok=True)
         np.savetxt(params.iflo_output_directory+"/"+params.iflo_save_cost_emulator+'-'+str(state.it)+'.dat', np.array(state.COST_EMULATOR), fmt="%5.10f")
 
 
