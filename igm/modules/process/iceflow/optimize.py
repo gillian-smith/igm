@@ -268,8 +268,16 @@ def optimize(params, state):
             #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
             #         break;
 
-    # print costs for final iteration
-    print_costs(params, state, cost, params.opti_nbitmax)
+    # for final iteration
+    i = params.opti_nbitmax
+
+    print_costs(params, state, cost, i)
+
+    if i % params.opti_output_freq == 0:
+        if params.opti_plot2d:
+            update_plot_inversion(params, state, i)
+        if params.opti_save_iterat_in_ncdf:
+            update_ncdf_optimize(params, state, i)
 
 #    for f in params.opti_control:
 #        vars(state)[f] = vars()[f] * sc[f]
@@ -414,12 +422,12 @@ def regu_thk(params,state):
     else:
         gamma = params.opti_convexity_weight * areaicemask**(params.opti_convexity_power-2.0)
 
-    if params.opti_to_regularize == 'topg':
+    if params.opti_to_regularize == 'topg': # smooth basal topography
         field = state.usurf - state.thk
-    elif params.opti_to_regularize == 'thk':
+    elif params.opti_to_regularize == 'thk': # smooth thickness
         field = state.thk
 
-    if params.opti_smooth_anisotropy_factor == 1:
+    if params.opti_smooth_anisotropy_factor == 1: # isotropic smoothing
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
 
@@ -437,7 +445,7 @@ def regu_thk(params,state):
                 tf.nn.l2_loss(dbdx) + tf.nn.l2_loss(dbdy)
                 - gamma * tf.math.reduce_sum(state.thk)
             )
-    else:
+    else: # anisotropic smoothing
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdx = (dbdx[1:, :] + dbdx[:-1, :]) / 2.0
         dbdy = (field[1:, :] - field[:-1, :])/state.dx

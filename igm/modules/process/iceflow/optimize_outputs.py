@@ -192,7 +192,7 @@ def plot_cost_functions_log(params):
     #    costs[:, i] -= np.min(costs[:, i])
     #    costs[:, i] /= np.where(np.max(costs[:, i]) == 0, 1.0, np.max(costs[:, i]))
 
-    colors = ["r", "b", "g", "c", "m", "r", "b", "g", "c", "m"]
+    colors = ["r", "b", "g", "c", "m", "y", "r", "b", "g", "c", "m", "y"]
   
     #fig = plt.figure(figsize=(10, 10))
     fig, ax1 = plt.subplots(1,1,figsize=(10, 10))
