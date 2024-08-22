@@ -32,6 +32,7 @@ def plot_cost_emulator(params,state):
 
     fig.tight_layout()
 
+    # ONLY WORKS FOR RETRAINING PRIOR TO OPTI
     save_path = params.iflo_output_directory+"/"+params.iflo_save_cost_emulator+'-'+str(state.it)+'.png'
     fig.savefig(save_path, pad_inches=0)
     plt.close("all")
