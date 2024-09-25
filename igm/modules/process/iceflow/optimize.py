@@ -295,7 +295,7 @@ def optimize(params, state):
 
     save_rms_std(params, state)
 
-    if params.opti_save_divflux_res:
+    if params.opti_save_divflux_res: # TODO this should happen every opti_output_freq iterations
         save_divflux_res(params, state)
 
     # Flag so we can check if initialize was already called

@@ -187,11 +187,6 @@ def update_iceflow_emulator(params, state):
             for i in range(X.shape[0]):
                 with tf.GradientTape() as t:
 
-                    #if params.iflo_multiple_window_size==0:
-                    #    Y = state.iceflow_model(X[i:i+1, :, :, :])
-                    #else:
-                    #    Y = state.iceflow_model(tf.pad(X[i:i+1, :, :, :], state.PAD, "CONSTANT"))[:, :Ny, :Nx, :]
-
                     Y = state.iceflow_model(tf.pad(X[i:i+1, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
                     
                     if iz>0:
