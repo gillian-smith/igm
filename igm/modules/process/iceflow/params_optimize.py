@@ -108,6 +108,12 @@ def params_optimize(parser):
         help="Add a penalty to the cost function to force the sum of the divergence of the flux to be zero",
     )
     parser.add_argument(
+        "--opti_save_divflux_res",
+        type=str2bool,
+        default="False",
+        help="Save linear regression (slope and intercept) of div flux?"
+    )
+    parser.add_argument(
         "--opti_scaling_thk",
         type=float,
         default=2.0,

@@ -40,7 +40,7 @@ setup(
         "rasterio",
         "pyproj",
         "geopandas",
-        "oggm",
+#        "oggm", # we will install oggm directly from source
         "salem",
         "pyyaml",
         "importlib_resources",

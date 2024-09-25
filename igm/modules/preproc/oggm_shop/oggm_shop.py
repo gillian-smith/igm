@@ -503,12 +503,11 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
    
     os.path.expanduser
 
-    # transform into lat/lon coordinates
     transformer = Transformer.from_crs(proj, "epsg:4326", always_xy=True)
 
     lonmin, latmin = transformer.transform(min(x), min(y))
     lonmax, latmax = transformer.transform(max(x), max(y))
-    
+
     transformer = Transformer.from_crs("epsg:4326", proj, always_xy=True)
 
     #    print(x.shape, y.shape, usurf.shape)

@@ -166,7 +166,7 @@ def update_iceflow_emulator(params, state):
 
         XX = fieldin_to_X(params, fieldin)
 
-        X = _split_into_patches(XX, params.iflo_retrain_emulator_framesizemax) # only split into patches if array is larger than this
+        X = _split_into_patches(XX, params.iflo_retrain_emulator_framesizemax)
         
         Ny = X.shape[1]
         Nx = X.shape[2]
@@ -182,9 +182,9 @@ def update_iceflow_emulator(params, state):
         iz = params.iflo_exclude_borders 
 
         for epoch in range(nbit):
-            cost_emulator = tf.Variable(0.0) # this will be the sum of the cost over all patches
+            cost_emulator = tf.Variable(0.0)
 
-            for i in range(X.shape[0]): # for each "patch" of X
+            for i in range(X.shape[0]):
                 with tf.GradientTape() as t:
 
                     #if params.iflo_multiple_window_size==0:
@@ -200,7 +200,7 @@ def update_iceflow_emulator(params, state):
                         C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X[i : i + 1, :, :, :], Y[:, :, :, :])
  
                     COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
-                         + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float) # the cost for this patch only
+                         + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
                     
                     if (epoch + 1) % 100 == 0:
                         print("---------- > ", tf.reduce_mean(C_shear).numpy(), tf.reduce_mean(C_slid).numpy(), tf.reduce_mean(C_grav).numpy(), tf.reduce_mean(C_float).numpy())
@@ -212,16 +212,16 @@ def update_iceflow_emulator(params, state):
 
                     # print(state.C_shear.shape, state.C_slid.shape, state.C_grav.shape, state.C_float.shape,state.thk.shape )
 
-                    cost_emulator = cost_emulator + COST # this is the sum of the cost over all patches
+                    cost_emulator = cost_emulator + COST
 
                     if (epoch + 1) % 100 == 0:
                         U, V = Y_to_UV(params, Y)
                         U = U[0]
                         V = V[0]
                         velsurf_mag = tf.sqrt(U[-1] ** 2 + V[-1] ** 2)
-                        print("train : ", epoch, COST.numpy(), np.max(velsurf_mag)) # print the cost and max speed for this patch only
+                        print("train : ", epoch, COST.numpy(), np.max(velsurf_mag))
 
-                grads = t.gradient(COST, state.iceflow_model.trainable_variables) # find the gradient of the cost for this patch only
+                grads = t.gradient(COST, state.iceflow_model.trainable_variables)
 
                 state.opti_retrain.apply_gradients(
                     zip(grads, state.iceflow_model.trainable_variables)
@@ -231,7 +231,7 @@ def update_iceflow_emulator(params, state):
                     0.95 ** (epoch / 1000)
                 )
 
-            state.COST_EMULATOR.append(cost_emulator) # at the end of each epoch, append the total emulator cost
+            state.COST_EMULATOR.append(cost_emulator)
             
     
     if len(params.iflo_save_cost_emulator)>0:

@@ -295,6 +295,9 @@ def optimize(params, state):
 
     save_rms_std(params, state)
 
+    if params.opti_save_divflux_res:
+        save_divflux_res(params, state)
+
     # Flag so we can check if initialize was already called
     state.optimize_initializer_called = True
  
@@ -597,6 +600,25 @@ def save_rms_std(params, state):
 
     os.system(
         "echo rm " + "rms_std.dat" + " >> clean.sh"
+    )
+
+def save_divflux_res(params,state):
+
+    np.savetxt(
+        "divflux_res.dat",
+        np.stack(
+            [
+                state.res.slope,
+                state.res.intercept
+            ],
+            axis=-1,
+        ),
+        fmt="%.10f",
+        header="       slope       intercept"
+    )
+
+    os.system(
+        "echo rm " + "divflux_res.dat" + " >> clean.sh"
     )
 
 def create_density_matrix(data, kernel_size):
