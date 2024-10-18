@@ -56,6 +56,12 @@ def optimize(params, state):
         state.dens_thkobs = state.dens_thkobs / tf.reduce_mean(state.dens_thkobs[state.dens_thkobs>0])
     else:
         state.dens_thkobs = tf.ones_like(state.thkobs)
+
+    if hasattr(state,"thkobs_std"):
+        state.thkobs_std_multiplier = tf.where(state.thkobs_std>0,1/state.thkobs_std**2,0)
+        #state.thkobs_NsN2 = tf.where(state.thkobs_std>0,state.thkobs_count*state.thkobs_std**2,0)
+    else:
+        state.thkobs_std_multiplier = tf.ones_like(state.thkobs)
         
     # force zero slidingco in the floating areas
     state.slidingco = tf.where( state.icemaskobs == 2, 0.0, state.slidingco)
@@ -158,7 +164,7 @@ def optimize(params, state):
                 cost["icemask"] = 10**10 * tf.math.reduce_mean( tf.where(state.icemaskobs > 0.5, 0.0, state.thk**2) )
 
             # Here one enforces non-negative ice thickness, and possibly zero-thickness in user-defined ice-free areas.
-            if "thk" in params.opti_control:
+            if "thk" in params.opti_control and params.opti_thk_positive:
                 cost["thk_positive"] = 10**10 * tf.math.reduce_mean( tf.where(state.thk >= 0, 0.0, state.thk**2) )
                 
             if params.opti_infer_params:
@@ -228,7 +234,7 @@ def optimize(params, state):
                         grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
                     else:
                         grads[ii].assign(tf.where((state.icemaskobs == 1), grads[ii], 0))
-            else:
+            else: # default
                 for ii in range(grads.shape[0]):
                     if not "slidingco" == params.opti_control[ii]:
                         grads[ii].assign(tf.where((state.icemaskobs > 0.5), grads[ii], 0))
@@ -241,7 +247,7 @@ def optimize(params, state):
             ###################
 
             # get back optimized variables in the pool of state.variables
-            if "thk" in params.opti_control:
+            if "thk" in params.opti_control and params.opti_mask_thk:
                 state.thk = tf.where(state.icemaskobs > 0.5, state.thk, 0)
 #                state.thk = tf.where(state.thk < 0.01, 0, state.thk)
 
@@ -290,6 +296,7 @@ def optimize(params, state):
 
     plot_cost_functions(params) 
     plot_cost_functions_log(params) 
+    plot_cost_functions_unscaled_log(params)
 
     plt.close("all")
 
@@ -329,7 +336,7 @@ def misfit_thk(params,state):
 
     ACT = ~tf.math.is_nan(state.thkobs)
 
-    return 0.5 * tf.reduce_mean( state.dens_thkobs[ACT] * 
+    return 0.5 * tf.reduce_mean( state.thkobs_std_multiplier[ACT] * state.dens_thkobs[ACT] * 
         ((state.thkobs[ACT] - state.thk[ACT]) / params.opti_thkobs_std) ** 2
     )
 
@@ -434,7 +441,7 @@ def regu_thk(params,state):
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
 
-        if params.sole_mask:
+        if params.sole_mask: # default False
             dbdx = tf.where( (state.icemaskobs[:, 1:] > 0.5) & (state.icemaskobs[:, :-1] > 0.5) , dbdx, 0.0)
             dbdy = tf.where( (state.icemaskobs[1:, :] > 0.5) & (state.icemaskobs[:-1, :] > 0.5) , dbdy, 0.0)
 
@@ -454,7 +461,7 @@ def regu_thk(params,state):
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
         dbdy = (dbdy[:, 1:] + dbdy[:, :-1]) / 2.0
 
-        if params.sole_mask:
+        if params.sole_mask: # default False
             MASK = (state.icemaskobs[1:, 1:] > 0.5) & (state.icemaskobs[1:, :-1] > 0.5) & (state.icemaskobs[:-1, 1:] > 0.5) & (state.icemaskobs[:-1, :-1] > 0.5)
             dbdx = tf.where( MASK, dbdx, 0.0)
             dbdy = tf.where( MASK, dbdy, 0.0)
@@ -484,7 +491,7 @@ def regu_slidingco(params,state):
     dadx = (state.slidingco[:, 1:] - state.slidingco[:, :-1])/state.dx
     dady = (state.slidingco[1:, :] - state.slidingco[:-1, :])/state.dx
 
-    if params.sole_mask:                
+    if params.sole_mask: # default False                
         dadx = tf.where( (state.icemaskobs[:, 1:] == 1) & (state.icemaskobs[:, :-1] == 1) , dadx, 0.0)
         dady = tf.where( (state.icemaskobs[1:, :] == 1) & (state.icemaskobs[:-1, :] == 1) , dady, 0.0)
 
@@ -503,7 +510,7 @@ def regu_slidingco(params,state):
         dady = (state.slidingco[1:, :] - state.slidingco[:-1, :])/state.dx
         dady = (dady[:, 1:] + dady[:, :-1]) / 2.0
  
-        if params.sole_mask:
+        if params.sole_mask: # default False
             MASK = (state.icemaskobs[1:, 1:] > 0.5) & (state.icemaskobs[1:, :-1] > 0.5) & (state.icemaskobs[:-1, 1:] > 0.5) & (state.icemaskobs[:-1, :-1] > 0.5)
             dadx = tf.where( MASK, dadx, 0.0)
             dady = tf.where( MASK, dady, 0.0)
@@ -533,7 +540,7 @@ def regu_arrhenius(params,state):
     dadx = (state.arrhenius[:, 1:] - state.arrhenius[:, :-1])/state.dx
     dady = (state.arrhenius[1:, :] - state.arrhenius[:-1, :])/state.dx
 
-    if params.sole_mask:                
+    if params.sole_mask: # default False               
         dadx = tf.where( (state.icemaskobs[:, 1:] == 1) & (state.icemaskobs[:, :-1] == 1) , dadx, 0.0)
         dady = tf.where( (state.icemaskobs[1:, :] == 1) & (state.icemaskobs[:-1, :] == 1) , dady, 0.0)
     

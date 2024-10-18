@@ -228,6 +228,18 @@ def params_optimize(parser):
         help="sole_mask",
     )
     parser.add_argument(
+        "--opti_thk_positive",
+        type=str2bool,
+        default=True,
+        help="include term in cost function to enforce non-negative thickness"
+    )
+    parser.add_argument(
+        "--opti_mask_thk",
+        type=str2bool,
+        default=True,
+        help="mask thickness using icemask"
+    )
+    parser.add_argument(
         "--opti_retrain_iceflow_model",
         type=str2bool,
         default=True,

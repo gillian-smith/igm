@@ -31,7 +31,8 @@ def params(parser):
     parser.add_argument(
         "--cthk_path_thkobs",
         type=str,
-        default="/home/s1639117/Documents/igm_folder/hamish_data/Nepal2019_24Jan24_icethick_heli_and_ground_merge",
+        #default="/home/s1639117/Documents/igm_folder/hamish_data/Nepal2019_24Jan24_icethick_heli_and_ground_merge",
+        default="/home/s1639117/Documents/igm_folder/DATA/Nepal_survey_thickness_final/Nepal2019_new_GS.shp",
         help="Filepath to thkobs dataframe"
     )
     parser.add_argument(
@@ -39,6 +40,12 @@ def params(parser):
         type=str,
         default="thick_m",
         help="Column in dataframe where thkobs are stored"
+    )
+    parser.add_argument(
+        "--cthk_thkobs_find_method",
+        type=str,
+        default="outline", # 'outline' or 'RGIId'
+        help="Method for finding thkobs for this glacier - RGI outline or RGI ID"
     )
     # Always run ["oggm_shop", "custom_thkobs"]
     # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_thkobs.nc"
@@ -53,7 +60,7 @@ def initialize(params, state):
     #from pyproj import Transformer
     from scipy.interpolate import RectBivariateSpline
 
-    nc = xr.open_dataset("input_saved.nc")
+    nc = xr.open_dataset(params.cthk_path_ncfile)
 
     rgi_folder = params.cthk_rgi_folder    
     
@@ -96,8 +103,12 @@ def initialize(params, state):
     df.geometry = shapely.force_2d(df.geometry)
     df = df.to_crs(outline.crs)
 
-    # spatial join - find data points inside outline
-    df = gpd.sjoin(df,outline)
+    if params.cthk_thkobs_find_method=="outline":
+        # spatial join - find data points inside outline
+        df = gpd.sjoin(df,outline)
+    elif params.cthk_thkobs_find_method=="RGIId":
+        # find points with same RGI ID as this glacier (even if they are outside the outline)
+        df = df[df["RGIId"]==params.oggm_RGI_ID]
 
     xx = df.geometry.x
     yy = df.geometry.y
@@ -108,8 +119,8 @@ def initialize(params, state):
     thickness_normalized = df[params.cthk_thkobs_column].copy() 
     # TODO: look into whether thickness needs to be normalized or not - where do DEM values come from
 
-    # Rasterize thickness
-    thickness_gridded = (
+    # Rasterize
+    gridded = (
     pd.DataFrame(
         {
             "col": np.floor((xx - np.min(x)) / (x[1] - x[0])).astype(int),
@@ -117,23 +128,36 @@ def initialize(params, state):
             "thickness": thickness_normalized,
         }
     )
-    .groupby(["row", "col"])["thickness"]
-    .mean() # mean over each grid cell
-    )
+    .groupby(["row", "col"])["thickness"])
 
+    # Thickness - mean over each grid cell
+    thickness_gridded = gridded.mean() # mean over each grid cell
     thkobs = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
-
-    thickness_gridded[thickness_gridded == 0] = np.nan # nans where we have zero thickness / no observations
-
+    thickness_gridded[thickness_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
-
     thkobs_xr = xr.DataArray(thkobs,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness",'units':"m",'standard_name':"thkobs"})
-
     nc["thkobs"] = thkobs_xr
+
+    # Std dev of each grid cell
+    thickness_stdev_gridded = gridded.std() # mean over each grid cell
+    thkobs_stdev = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
+    thickness_stdev_gridded[thickness_stdev_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
+    thkobs_stdev[tuple(zip(*thickness_stdev_gridded.index))] = thickness_stdev_gridded
+    thkobs_stdev_xr = xr.DataArray(thkobs_stdev,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness standard deviation",'units':"m",'standard_name':"thkobs_std"})
+    nc["thkobs_std"] = thkobs_stdev_xr
+
+    # Count of thkobs in each grid cell
+    thickness_count_gridded = gridded.count() # mean over each grid cell
+    thkobs_count = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
+    thickness_count_gridded[thickness_count_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
+    thkobs_count[tuple(zip(*thickness_count_gridded.index))] = thickness_count_gridded
+    thkobs_count_xr = xr.DataArray(thkobs_count,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness count",'units':"none",'standard_name':"thkobs_count"})
+    nc["thkobs_count"] = thkobs_count_xr
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
-    nc.to_netcdf("input_saved_with_thkobs.nc",mode="w",format="NETCDF4")
+    nc.to_netcdf(params.cthk_path_ncfile[:-3]+"_thkobs.nc",mode="w",format="NETCDF4")
+    os.system( "echo rm -r " + params.cthk_path_ncfile + " >> clean.sh" )
 
 def update(params, state):
     pass
