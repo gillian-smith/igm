@@ -38,9 +38,10 @@ setup(
         "netCDF4==1.6.0",
         "xarray",
         "rasterio",
+        "rioxarray", # for importing .tif files to xarray
         "pyproj",
         "geopandas",
-        "oggm", # we will install oggm directly from source
+        "oggm", # comment out if we will install oggm directly from source
         "salem",
         "pyyaml",
         "importlib_resources",
