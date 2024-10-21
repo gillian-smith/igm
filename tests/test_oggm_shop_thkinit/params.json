@@ -1,0 +1,20 @@
+{
+  "modules_preproc": [
+    "oggm_shop"
+  ],
+  "modules_process": ["iceflow"],
+  "modules_postproc": [],
+  "iflo_run_data_assimilation": true,
+
+  "oggm_RGI_ID": "RGI60-11.01238",
+  "oggm_RGI_version": 6,
+  "oggm_thk_source":"consensus_ice_thickness",
+
+  "opti_control": [ "thk" ],
+  "opti_cost": [ "velsurf","icemask" ],
+  "opti_nbitmax": 100,
+  "opti_output_freq": 1000,
+  "opti_plot2d": false,
+  "opti_save_result_in_ncdf": "",
+  "oggm_save_in_ncdf" : true
+}
