@@ -187,15 +187,34 @@ def plot_cost_functions_log(params):
 
     costs = np.stack(costs)
 
-    colors = ["r", "b", "g", "c", "m", "y", "r", "b", "g", "c", "m", "y"]
+    glen_i = label.index("glen")
+    # Calculate total cost excluding glen cost
+    total_cost = np.sum(np.concatenate((costs[:,:glen_i],costs[:,glen_i+1:]),axis=1),axis=1)
+    total_cost = np.expand_dims(total_cost,axis=1)
+    costs = np.concatenate((costs,total_cost),axis=1)
+    label.append("total_cost")
+
+    colors ={
+            "velsurf": "red",
+            "thk": "blue",
+            "divflux": "green",
+            "usurf": "cyan",
+            "icemask": "gray",
+            "thk_positive": "yellow",
+            "thk_regu": "magenta",
+            "slid_regu":"darkorange"
+            }
   
     fig, ax1 = plt.subplots(1,1,figsize=(10, 10))
     ax2 = ax1.twinx()
     for i in range(costs.shape[1]):
-        if label[i] == "glen":
-            ax2.plot(costs[:, i], label=label[i], c="k", ls='dashed')
+        this_label = label[i]
+        if this_label == "glen":
+            ax2.plot(costs[:, i], label=this_label, c="k", ls='dashed')
+        elif label[i] == "total_cost":
+            ax1.plot(costs[:, i], label=this_label, c="k", ls='solid', linewidth=2)
         else:    
-            ax1.plot(costs[:, i], label=label[i], c=colors[i])
+            ax1.plot(costs[:, i], label=this_label, c=colors[this_label])
     ax1.set_xlabel('Iteration')
     ax1.set_ylabel('Cost')
     ax1.set_yscale('log')
@@ -233,7 +252,23 @@ def plot_cost_functions_unscaled_log(params):
 
     costs = np.stack(costs)
 
-    colors = ["r", "b", "g", "c", "m", "y", "r", "b", "g", "c", "m", "y"]
+    glen_i = label.index("glen")
+    # Calculate total cost excluding glen cost
+    total_cost = np.sum(np.concatenate((costs[:,:glen_i],costs[:,glen_i+1:]),axis=1),axis=1)
+    total_cost = np.expand_dims(total_cost,axis=1)
+    costs = np.concatenate((costs,total_cost),axis=1)
+    label.append("total_cost")
+
+    colors ={
+            "velsurf": "red",
+            "thk": "blue",
+            "divflux": "green",
+            "usurf": "cyan",
+            "icemask": "gray",
+            "thk_positive": "yellow",
+            "thk_regu": "magenta",
+            "slid_regu":"darkorange"
+            }
 
     weights = {
         "velsurf" : 0.5 / params.opti_velsurfobs_std**2,
@@ -248,10 +283,11 @@ def plot_cost_functions_unscaled_log(params):
     fig, ax1 = plt.subplots(1,1,figsize=(10, 10))
     ax2 = ax1.twinx()
     for i in range(costs.shape[1]):
-        if label[i]=="glen":
-            ax2.plot(costs[:, i], label=label[i], c="k", ls='dashed')
-        elif label[i] not in ["thk_positive", "icemask"]:
-            ax1.plot(costs[:, i]/weights[label[i]], label=label[i], c=colors[i])
+        this_label = label[i]
+        if this_label=="glen":
+            ax2.plot(costs[:, i], label=this_label, c="k", ls='dashed')
+        elif this_label not in ["thk_positive", "icemask", "total_cost"]: # with this plot we are only interested in comparing unweighted misfit terms
+            ax1.plot(costs[:, i]/weights[this_label], label=this_label, c=colors[this_label])
     ax1.set_xlabel('Iteration')
     ax1.set_ylabel('Unscaled cost')
     ax1.set_yscale('log')
