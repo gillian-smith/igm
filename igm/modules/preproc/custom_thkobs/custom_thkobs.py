@@ -47,6 +47,12 @@ def params(parser):
         default="outline", # 'outline' or 'RGIId'
         help="Method for finding thkobs for this glacier - RGI outline or RGI ID"
     )
+    parser.add_argument(
+        "--cthk_profiles_to_use",
+        type=str,
+        default=[], # empty list means use all profiles, otherwise we can pass a list e.g. ["A","B","C"] to only use those profiles 
+        help="Profiles to use as thkobs"
+    )
     # Always run ["oggm_shop", "custom_thkobs"]
     # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_thkobs.nc"
     # You must have oggm_save_in_ncdf=True
@@ -109,6 +115,10 @@ def initialize(params, state):
     elif params.cthk_thkobs_find_method=="RGIId":
         # find points with same RGI ID as this glacier (even if they are outside the outline)
         df = df[df["RGIId"]==params.oggm_RGI_ID]
+
+    # Filter by profiles we are interested in
+    if params.cthk_profiles_to_use: # is not the empty list
+        df = df[df["profile_id"].str.endswith(tuple(params.cthk_profiles_to_use))]
 
     xx = df.geometry.x
     yy = df.geometry.y
