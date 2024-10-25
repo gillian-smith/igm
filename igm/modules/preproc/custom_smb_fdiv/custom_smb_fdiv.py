@@ -28,6 +28,12 @@ def params(parser):
         default="/home/s1639117/Documents/igm_folder/DATA/SMB/5119153/compressed_RGI131415_ALL2km_13-May-2020/",
         help="Path to SMB and FDIV .tif files"
     )
+    parser.add_argument(
+        "--csmb_shift_coords",
+        type=str2bool,
+        default=False,
+        help="Shift coordinates"
+    )
     # Always run ["oggm_shop", "custom_thkobs", "custom_smb_fdiv"]
     # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_smb.nc"
     # You must have oggm_save_in_ncdf=True
@@ -56,6 +62,10 @@ def initialize(params, state):
     fdiv = xr.open_dataarray(csmb_path_smbobs_dir+short_rgi_id+"_FDIV.tif") # flux div in m/yr
     smb = xr.open_dataarray(csmb_path_smbobs_dir+short_rgi_id+"_SMB.tif") # SMB in m w.e. /yr
 
+    if params.csmb_shift_coords:
+        fdiv = shift_coords(fdiv)
+        smb = shift_coords(smb)
+
     nc["divfluxobs"] = fdiv.interp(x=x,y=y,method='linear')
     nc["smb"] = smb.interp(x=x,y=y,method='linear')
 
@@ -66,3 +76,9 @@ def update(params, state):
 
 def finalize(params, state):
     pass
+
+def shift_coords(ds):
+    ds_new = ds.copy()
+    dx = ds_new.x[1] - ds_new.x[0]
+    ds_new = ds_new.assign_coords({"x":ds.x-dx,"y":ds.y+dx})
+    return ds_new

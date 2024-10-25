@@ -68,10 +68,10 @@ def _compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, slopto
     Exz = 0.5 * dUdz
     Eyz = 0.5 * dVdz
     
-    srx = 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 )
-    srz = 0.5 * ( Exz**2 + Eyz**2 + Exz**2 + Eyz**2 )
+    srx = 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 ) # FOA terms
+    srz = 0.5 * ( Exz**2 + Eyz**2 + Exz**2 + Eyz**2 ) # SIA terms
 
-    return srx, srz
+    return srx, srz # summing these gives D(u):D(u)/2 = |D(u)|^2
 
 
 def _stag2(B):
@@ -204,7 +204,8 @@ def _iceflow_energy(
         U, V, thk, C, dX, dz, sloptopgx, sloptopgy, thr=thr_ice_thk
     )
     
-    sr = srx + srz
+    sr = srx + srz # |D(u)|
+    # sr = srz for SIA only
 
     sr = tf.where(COND, sr, 0.0)
     

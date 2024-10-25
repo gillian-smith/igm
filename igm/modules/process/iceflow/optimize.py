@@ -686,8 +686,8 @@ def _compute_rms_std_optimization(state, i):
         state.stdvel.append(0)
 
     if hasattr(state, "divfluxobs"):
-        state.rmsdiv.append(np.mean(state.divfluxobs[I] - state.divflux[I]))
-        state.stddiv.append(np.std(state.divfluxobs[I] - state.divflux[I]))
+        state.rmsdiv.append(np.nanmean(state.divfluxobs[I] - state.divflux[I]))
+        state.stddiv.append(np.nanstd(state.divfluxobs[I] - state.divflux[I]))
     else:
         state.rmsdiv.append(0)
         state.stddiv.append(0)
