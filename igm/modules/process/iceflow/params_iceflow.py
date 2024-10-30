@@ -38,6 +38,13 @@ def params_iceflow(parser):
         help="Directory path of the deep-learning pretrained ice flow model, take from the library if empty string",
     )
 
+    parser.add_argument(
+        "--iflo_stokes_approx",
+        type=str,
+        default="FOA", # "FOA" for Blatter/1st order, "SIA" for shallow ice approximation
+        help="which approximation to the Stokes equations to use",
+    )
+
     # physical parameters
     parser.add_argument(
         "--iflo_init_slidingco",

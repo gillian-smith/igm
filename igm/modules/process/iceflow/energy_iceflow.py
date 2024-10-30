@@ -127,7 +127,8 @@ def iceflow_energy(params, U, V, fieldin):
         params.iflo_regu,
         params.iflo_min_sr,
         params.iflo_max_sr,
-        params.iflo_force_negative_gravitational_energy
+        params.iflo_force_negative_gravitational_energy,
+        params.iflo_stokes_approx
     )
 
 
@@ -155,7 +156,8 @@ def _iceflow_energy(
     iflo_regu,
     min_sr,
     max_sr,
-    iflo_force_negative_gravitational_energy
+    iflo_force_negative_gravitational_energy,
+    iflo_stokes_approx
 ):
     # warning, the energy is here normalized dividing by int_Omega
 
@@ -204,8 +206,10 @@ def _iceflow_energy(
         U, V, thk, C, dX, dz, sloptopgx, sloptopgy, thr=thr_ice_thk
     )
     
-    sr = srx + srz # |D(u)|
-    # sr = srz for SIA only
+    if iflo_stokes_approx=="FOA":
+        sr = srx + srz
+    elif iflo_stokes_approx=="SIA":
+        sr = srz
 
     sr = tf.where(COND, sr, 0.0)
     

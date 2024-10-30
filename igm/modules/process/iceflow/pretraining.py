@@ -39,6 +39,11 @@ def pretraining(params, state):
         str(params.iflo_dim_arrhenius) + "_" + str(int(params.iflo_new_friction_param))
     )
 
+    if params.iflo_stokes_approx=="SIA":
+        state.direct_name += (
+            "_" + str(params.iflo_stokes_approx)
+        )
+
     os.makedirs( state.direct_name, exist_ok=True)
 
     os.system(
@@ -568,7 +573,7 @@ def _plot_one_Glen(params, X, Y, path):
     )
     divider = make_axes_locatable(ax1)
     cax1 = divider.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(im1, format="%.0f", cax=cax1, orientation="vertical")
+    cbar1 = plt.colorbar(im1, format="%.1f", cax=cax1, orientation="vertical")
     ax1.axis("off")
 
     plt.tight_layout()
@@ -626,7 +631,7 @@ def _plot_iceflow_Glen(params, state, X, Y, YP, tit, path):
     )
     divider = make_axes_locatable(ax1)
     cax1 = divider.append_axes("right", size="5%", pad=0.05)
-    cbar1 = plt.colorbar(im1, format="%.0f", cax=cax1, orientation="vertical")
+    cbar1 = plt.colorbar(im1, format="%.1f", cax=cax1, orientation="vertical")
     ax1.axis("off")
 
     ax2.set_title("PINN ")
@@ -639,7 +644,7 @@ def _plot_iceflow_Glen(params, state, X, Y, YP, tit, path):
     )
     divider = make_axes_locatable(ax2)
     cax2 = divider.append_axes("right", size="5%", pad=0.05)
-    cbar2 = plt.colorbar(im2, format="%.0f", cax=cax2, orientation="vertical")
+    cbar2 = plt.colorbar(im2, format="%.1f", cax=cax2, orientation="vertical")
     ax2.axis("off")
 
     ax3.set_title("Misfit : " + str(int(100 * nbarl1)) + " %")
@@ -652,7 +657,7 @@ def _plot_iceflow_Glen(params, state, X, Y, YP, tit, path):
     )
     divider = make_axes_locatable(ax3)
     cax3 = divider.append_axes("right", size="5%", pad=0.05)
-    cbar3 = plt.colorbar(im3, format="%.0f", cax=cax3, orientation="vertical")
+    cbar3 = plt.colorbar(im3, format="%.1f", cax=cax3, orientation="vertical")
     ax3.axis("off")
 
     plt.tight_layout()
