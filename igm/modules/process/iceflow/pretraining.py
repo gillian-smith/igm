@@ -378,7 +378,7 @@ def train_iceflow_emulator(params, state, trainingset, augmentation=True):
                 
                 nl1, nl2, nbarl1, nbarl1a = _computemisfitall(params, state, X, Y, YP)
 
-                if epoch % (params.epochs // 20) == 0:
+                if epoch % (params.epochs // 20) == 0: # and if epoch % params.freq_test==0 (from outer if statement)
                     _plot_iceflow_Glen(
                         params, state, X, Y, YP, str(epoch).zfill(5), path
                     )
@@ -433,7 +433,7 @@ def train_iceflow_emulator(params, state, trainingset, augmentation=True):
             state.MISFIT[:, l],
             label="MISFIT " + code,
         )
-    plt.ylim(0, 1)
+    #plt.ylim(0, 1)
     plt.legend()
     plt.tight_layout()
     plt.savefig(
@@ -460,7 +460,7 @@ def train_iceflow_emulator(params, state, trainingset, augmentation=True):
             state.MISFIT_CO[:, l],
             label="MISFIT " + code,
         )
-    plt.ylim(0, 1)
+    #plt.ylim(0, 1)
     plt.legend()
     plt.tight_layout()
     plt.savefig(
