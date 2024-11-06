@@ -217,6 +217,9 @@ def optimize(params, state):
                     pass
 
             print_costs(params, state, cost, i)
+            if hasattr(state,"thkobs_test"):
+                mse = mse = np.nanmean((state.thk - state.thkobs_test)**2)
+                print_test_score(params,state,mse,i)
 
             #################
 
@@ -278,6 +281,9 @@ def optimize(params, state):
     i = params.opti_nbitmax
 
     print_costs(params, state, cost, i)
+    if hasattr(state,"thkobs_test"):
+        mse = mse = np.nanmean((state.thk - state.thkobs_test)**2)
+        print_test_score(params,state,mse,i)
 
     if i % params.opti_output_freq == 0:
         if params.opti_plot2d:
@@ -583,6 +589,10 @@ def print_costs(params, state, cost, i):
         print("   ".join(L))
 
     print("   ".join([f"{bound(cost[key].numpy()):>12.4f}" for key in keys]),file=f)
+
+def print_test_score(params,state,test_score,i):
+    if i % params.opti_output_freq == 0:
+        print(f"Score for test profiles = {test_score}")    
 
 def save_rms_std(params, state):
 

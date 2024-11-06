@@ -133,6 +133,12 @@ def initialize(params, state):
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
+    count_cells_constraining = np.count_nonzero(~np.isnan(nc["thkobs"].values))
+    count_cells_test = np.count_nonzero(~np.isnan(nc["thkobs_test"].values))
+
+    print(f"# Grid cells in constraining set = {count_cells_constraining}")
+    print(f"# Grid cells in test set = {count_cells_test}")
+
     nc.to_netcdf(params.cthk_path_ncfile[:-3]+"_thkobs.nc",mode="w",format="NETCDF4")
     os.system( "echo rm -r " + params.cthk_path_ncfile + " >> clean.sh" )
 
