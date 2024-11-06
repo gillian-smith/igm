@@ -9,6 +9,7 @@ import os, glob, shutil, scipy
 from netCDF4 import Dataset
 import tensorflow as tf
 import pandas as pd
+import xarray as xr
 
 from igm.modules.utils import *
 #from igm.modules.utils import str2bool
@@ -48,10 +49,16 @@ def params(parser):
         help="Method for finding thkobs for this glacier - RGI outline or RGI ID"
     )
     parser.add_argument(
-        "--cthk_profiles_to_use",
+        "--cthk_profiles_constrain",
         type=str,
         default=[], # empty list means use all profiles, otherwise we can pass a list e.g. ["A","B","C"] to only use those profiles 
-        help="Profiles to use as thkobs"
+        help="Profiles to use as thkobs cost constraint"
+    )
+    parser.add_argument(
+        "--cthk_profiles_test",
+        type=str,
+        default=[], 
+        help="Profiles to use as thkobs test"
     )
     # Always run ["oggm_shop", "custom_thkobs"]
     # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_thkobs.nc"
@@ -61,7 +68,6 @@ def params(parser):
 def initialize(params, state):
 
     import geopandas as gpd
-    import xarray as xr
     import shapely
     #from pyproj import Transformer
     from scipy.interpolate import RectBivariateSpline
@@ -117,16 +123,34 @@ def initialize(params, state):
         df = df[df["RGIId"]==params.oggm_RGI_ID]
 
     # Filter by profiles we are interested in
-    if params.cthk_profiles_to_use: # is not the empty list
-        df = df[df["profile_id"].str.endswith(tuple(params.cthk_profiles_to_use))]
+    if params.cthk_profiles_constrain: # is not the empty list
+        df_constrain = df[df["profile_id"].str.strip().str[-1].isin(params.cthk_profiles_constrain)]
+        if params.cthk_profiles_test: # is not the empty list
+            df_test = df[df["profile_id"].str.strip().str[-1].isin(params.cthk_profiles_test)]
+    
+    nc["thkobs"]     , nc["thkobs_std"], nc["thkobs_count"] = rasterize(df_constrain,x,y,params.cthk_thkobs_column)
+    nc["thkobs_test"], _               , _                  = rasterize(df_test,x,y,params.cthk_thkobs_column)
 
+    #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
+
+    nc.to_netcdf(params.cthk_path_ncfile[:-3]+"_thkobs.nc",mode="w",format="NETCDF4")
+    os.system( "echo rm -r " + params.cthk_path_ncfile + " >> clean.sh" )
+
+def update(params, state):
+    pass
+
+def finalize(params, state):
+    pass
+
+def rasterize(df,x,y,thkobs_column):
     xx = df.geometry.x
     yy = df.geometry.y
 
     #bedrock = df["surfaceDEM"] - df["thick_m"]
     #elevation_normalized = fsurf(xx, yy, grid=False)
     #thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)
-    thickness_normalized = df[params.cthk_thkobs_column].copy() 
+    thickness_normalized = df[thkobs_column].copy() 
+    #thickness_normalized = df["thick_m"].copy() 
     # TODO: look into whether thickness needs to be normalized or not - where do DEM values come from
 
     # Rasterize
@@ -146,7 +170,6 @@ def initialize(params, state):
     thickness_gridded[thickness_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
     thkobs_xr = xr.DataArray(thkobs,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness",'units':"m",'standard_name':"thkobs"})
-    nc["thkobs"] = thkobs_xr
 
     # Std dev of each grid cell
     thickness_stdev_gridded = gridded.std() # mean over each grid cell
@@ -154,7 +177,6 @@ def initialize(params, state):
     thickness_stdev_gridded[thickness_stdev_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs_stdev[tuple(zip(*thickness_stdev_gridded.index))] = thickness_stdev_gridded
     thkobs_stdev_xr = xr.DataArray(thkobs_stdev,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness standard deviation",'units':"m",'standard_name':"thkobs_std"})
-    nc["thkobs_std"] = thkobs_stdev_xr
 
     # Count of thkobs in each grid cell
     thickness_count_gridded = gridded.count() # mean over each grid cell
@@ -162,15 +184,5 @@ def initialize(params, state):
     thickness_count_gridded[thickness_count_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs_count[tuple(zip(*thickness_count_gridded.index))] = thickness_count_gridded
     thkobs_count_xr = xr.DataArray(thkobs_count,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness count",'units':"none",'standard_name':"thkobs_count"})
-    nc["thkobs_count"] = thkobs_count_xr
 
-    #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
-
-    nc.to_netcdf(params.cthk_path_ncfile[:-3]+"_thkobs.nc",mode="w",format="NETCDF4")
-    os.system( "echo rm -r " + params.cthk_path_ncfile + " >> clean.sh" )
-
-def update(params, state):
-    pass
-
-def finalize(params, state):
-    pass
+    return thkobs_xr, thkobs_stdev_xr, thkobs_count_xr
