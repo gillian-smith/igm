@@ -248,7 +248,7 @@ def params_optimize(parser):
     parser.add_argument(
         "--opti_retrain_stop_iter",
         type=int,
-        default=1000,
+        default=100000, # more iterations than we ever run in practice
         help="Iteration at which to stop retraining the iceflow model"
     )
     parser.add_argument(
