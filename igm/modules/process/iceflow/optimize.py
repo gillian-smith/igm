@@ -591,8 +591,10 @@ def print_costs(params, state, cost, i):
     print("   ".join([f"{bound(cost[key].numpy()):>12.4f}" for key in keys]),file=f)
 
 def print_test_score(params,state,test_score,i):
+    f = open('test_scores.dat','a')
     if i % params.opti_output_freq == 0:
-        print(f"Score for test profiles = {test_score}")    
+        #print(f"Score for test profiles = {test_score}")  # print to terminal
+        print(f"{i}     {test_score}",file=f)    
 
 def save_rms_std(params, state):
 
