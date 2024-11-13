@@ -329,4 +329,10 @@ def params_iceflow(parser):
         type=str,
         default=""
     )
+    parser.add_argument(
+        "--iflo_recompute_grad",
+        type=str2bool,
+        default=False,
+        help="Option in order to allow using tf.recompute_grad that saves memory",
+    )
 
