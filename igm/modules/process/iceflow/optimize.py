@@ -579,7 +579,6 @@ def print_costs(params, state, cost, i):
 
     vol = ( np.sum(state.thk) * (state.dx**2) / 10**9 ).numpy()
     # mean_slidingco = tf.math.reduce_mean(state.slidingco[state.icemaskobs > 0.5])
-    save_vol(params,state,vol,i)
 
     f = open('costs.dat','a')
 
@@ -605,11 +604,6 @@ def print_test_score(params,state,test_score,i):
     if i % params.opti_output_freq == 0:
         #print(f"Score for test profiles = {test_score}")  # print to terminal
         print(f"{i}     {test_score}",file=f)    
-
-def save_vol(params,state,vol,i):
-    f = open('volume.dat','a')
-    if i % params.opti_output_freq == 0:
-        print(f"{i}     {vol}",file=f)
 
 def save_rms_std(params, state):
 
