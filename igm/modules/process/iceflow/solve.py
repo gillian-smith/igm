@@ -26,22 +26,13 @@ def solve_iceflow(params, state, U, V):
             t.watch(U)
             t.watch(V)
 
-            def compute_energy():
+            fieldin = [
+                tf.expand_dims(vars(state)[f], axis=0) for f in params.iflo_fieldin
+            ]
 
-                fieldin = [
-                    tf.expand_dims(vars(state)[f], axis=0) for f in params.iflo_fieldin
-                ]
-
-                C_shear, C_slid, C_grav, C_float = iceflow_energy(
-                    params, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
-                )
-
-                return C_shear, C_slid, C_grav, C_float
-            
-            if params.iflo_recompute_grad:
-                C_shear, C_slid, C_grav, C_float = tf.recompute_grad(compute_energy)()
-            else:
-                C_shear, C_slid, C_grav, C_float = compute_energy()
+            C_shear, C_slid, C_grav, C_float = iceflow_energy(
+                params, tf.expand_dims(U, axis=0), tf.expand_dims(V, axis=0), fieldin
+            )
 
             COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
                  + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)

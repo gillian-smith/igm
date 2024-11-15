@@ -187,25 +187,19 @@ def update_iceflow_emulator(params, state):
             for i in range(X.shape[0]):
                 with tf.GradientTape() as t:
 
-                    def compute_energy():
-                            
-                        Y = state.iceflow_model(tf.pad(X[i:i+1, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
+                    Y = state.iceflow_model(tf.pad(X[i:i+1, :, :, :], PAD, "CONSTANT"))[:,:Ny,:Nx,:]
                     
-                        if iz>0:
-                            C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X[i : i + 1, iz:-iz, iz:-iz, :], Y[:, iz:-iz, iz:-iz, :])
-                        else:
-                            C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X[i : i + 1, :, :, :], Y[:, :, :, :])
- 
-                        return Y, C_shear, C_slid, C_grav, C_float
-                    
-                    if params.iflo_recompute_grad:
-                        Y, C_shear, C_slid, C_grav, C_float = tf.recompute_grad(compute_energy)()
+                    if iz>0:
+                        C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X[i : i + 1, iz:-iz, iz:-iz, :], Y[:, iz:-iz, iz:-iz, :])
                     else:
-                        Y, C_shear, C_slid, C_grav, C_float = compute_energy()
-
+                        C_shear, C_slid, C_grav, C_float = iceflow_energy_XY(params, X[i : i + 1, :, :, :], Y[:, :, :, :])
+ 
                     COST = tf.reduce_mean(C_shear) + tf.reduce_mean(C_slid) \
                          + tf.reduce_mean(C_grav)  + tf.reduce_mean(C_float)
                     
+                    if (epoch + 1) % 100 == 0:
+                        print("---------- > ", tf.reduce_mean(C_shear).numpy(), tf.reduce_mean(C_slid).numpy(), tf.reduce_mean(C_grav).numpy(), tf.reduce_mean(C_float).numpy())
+
 #                    state.C_shear = tf.pad(C_shear[0],[[0,1],[0,1]],"CONSTANT")
 #                    state.C_slid  = tf.pad(C_slid[0],[[0,1],[0,1]],"CONSTANT")
 #                    state.C_grav  = tf.pad(C_grav[0],[[0,1],[0,1]],"CONSTANT")
@@ -233,7 +227,8 @@ def update_iceflow_emulator(params, state):
                 )
 
             state.COST_EMULATOR.append(cost_emulator)
-
+            
+    
     if len(params.iflo_save_cost_emulator)>0:
         os.makedirs(params.iflo_output_directory, exist_ok=True)
         np.savetxt(params.iflo_output_directory+"/"+params.iflo_save_cost_emulator+'-'+str(state.it)+'.dat', np.array(state.COST_EMULATOR), fmt="%5.10f")
