@@ -175,8 +175,8 @@ def initialize(params, state):
                 np.squeeze(nc.variables["millan_vx"]).astype("float32")
             )
             uvelsurfobs = np.where(np.isnan(uvelsurfobs), 0, uvelsurfobs)
-
             uvelsurfobs = np.where(icemaskobs, uvelsurfobs, 0)
+            uvelsurfobs = np.where(uvelsurfobs==0,np.nan,uvelsurfobs) # replace zeros with nans for Millan
             vars_to_save += ["uvelsurfobs"]
         if "millan_vy" in nc.variables:
             vvelsurfobs = np.flipud(
@@ -184,6 +184,7 @@ def initialize(params, state):
             )
             vvelsurfobs = np.where(np.isnan(vvelsurfobs), 0, vvelsurfobs)
             vvelsurfobs = np.where(icemaskobs, vvelsurfobs, 0)
+            vvelsurfobs = np.where(vvelsurfobs==0,np.nan,vvelsurfobs) # replace zeros with nans for Millan
             vars_to_save += ["vvelsurfobs"]
         else:
             uvelsurfobs = np.where(icemaskobs, 0, 0)
