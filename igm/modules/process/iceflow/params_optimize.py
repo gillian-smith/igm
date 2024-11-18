@@ -264,6 +264,12 @@ def params_optimize(parser):
     #     help="Reset the learning rate when resetting the optimizer"
     # )
     parser.add_argument(
+        "--opti_switch_to_SGD_iter",
+        type=int,
+        default=100000, # more than we would run in practice
+        help="Iteration at which we stop optimizing with Adam and switch to SGD"
+    )
+    parser.add_argument(
        "--opti_to_regularize",
        type=str,
        default='topg',

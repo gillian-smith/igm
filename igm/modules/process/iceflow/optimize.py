@@ -106,6 +106,14 @@ def optimize(params, state):
             if params.opti_step_size_decay < 1:
                 optimizer.lr = params.opti_step_size * (params.opti_step_size_decay ** (i / 100))
 
+            if i == params.opti_switch_to_SGD_iter:
+                print("Switching to SGD optimizer...")
+                lr = optimizer.lr # keep current learning rate
+                if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
+                    optimizer = tf.keras.optimizers.SGD(learning_rate=lr)
+                else:
+                    optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=lr)
+
             # is necessary to remember all operation to derive the gradients w.r.t. control variables
             for f in params.opti_control:
                 t.watch(vars()[f])
