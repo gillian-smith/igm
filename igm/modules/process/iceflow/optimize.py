@@ -314,6 +314,13 @@ def optimize(params, state):
 
     save_rms_std(params, state)
 
+    os.system(
+        "echo rm " + "volume.dat" + " >> clean.sh"
+    )
+    os.system(
+        "echo rm " + "test_scores.dat" + " >> clean.sh"
+    )
+
     if params.opti_save_divflux_res: # TODO this should happen every opti_output_freq iterations
         save_divflux_res(params, state)
 
