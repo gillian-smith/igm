@@ -108,7 +108,7 @@ def optimize(params, state):
 
             if i == params.opti_switch_to_SGD_iter:
                 print("Switching to SGD optimizer...")
-                lr = optimizer.lr # keep current learning rate
+                lr = 0.01*optimizer.lr # SGD requires much smaller learning rate than Adam
                 if (int(tf.__version__.split(".")[1]) <= 10) | (int(tf.__version__.split(".")[1]) >= 16) :
                     optimizer = tf.keras.optimizers.SGD(learning_rate=lr)
                 else:
