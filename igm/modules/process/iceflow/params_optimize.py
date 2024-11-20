@@ -311,5 +311,11 @@ def params_optimize(parser):
         default=0.0,
         help="Threshold for the surface ice velocities as input data for the optimization, anything below this value will be ignored",
     )
+    parser.add_argument(
+        "--opti_use_thkobs_std",
+        type=str2bool,
+        default=False,
+        help="Use thkobs_std as multiplier in thk cost",
+    )
 
     

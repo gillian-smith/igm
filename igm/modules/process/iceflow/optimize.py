@@ -40,7 +40,7 @@ def optimize(params, state):
         if not hasattr(state, "divfluxobs"):
             state.divfluxobs = state.smb - state.dhdt
 
-    if hasattr(state, "thkinit"):
+    elif hasattr(state, "thkinit"):
         state.thk = state.thkinit
     else:
         state.thk = tf.zeros_like(state.thk)
@@ -57,7 +57,7 @@ def optimize(params, state):
     else:
         state.dens_thkobs = tf.ones_like(state.thkobs)
 
-    if hasattr(state,"thkobs_std"):
+    if hasattr(state,"thkobs_std") and params.opti_use_thkobs_std:
         state.thkobs_std_multiplier = tf.where(state.thkobs_std>0,1/state.thkobs_std**2,0)
         #state.thkobs_NsN2 = tf.where(state.thkobs_std>0,state.thkobs_count*state.thkobs_std**2,0)
     else:
