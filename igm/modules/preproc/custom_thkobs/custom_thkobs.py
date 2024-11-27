@@ -130,6 +130,10 @@ def initialize(params, state):
     
     nc["thkobs"]     , nc["thkobs_std"], nc["thkobs_count"] = rasterize(df_constrain,x,y,params.cthk_thkobs_column)
     nc["thkobs_test"], _               , _                  = rasterize(df_test,x,y,params.cthk_thkobs_column)
+    
+    # Exclude thkobs cells from thkobs_test
+    MASK = ~nc["thkobs_test"].isnull() & nc["thkobs"].isnull()
+    nc["thkobs_test"] = xr.where(MASK, nc["thkobs_test"], np.nan)
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
