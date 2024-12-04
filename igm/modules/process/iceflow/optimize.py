@@ -225,7 +225,7 @@ def optimize(params, state):
             print_costs(params, state, cost, i)
             if hasattr(state,"thkobs_test"):
                 mse = np.nanmean((state.thk - state.thkobs_test)**2)
-                print(params,state,mse,i)
+                print_test_score(params,state,mse,i)
 
             #################
 
