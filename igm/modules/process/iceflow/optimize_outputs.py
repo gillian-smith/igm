@@ -479,7 +479,7 @@ def update_plot_inversion(params, state, i):
     else:
         plt.savefig("resu-opti-" + str(i).zfill(4) + ".png", bbox_inches="tight", pad_inches=0.2)
 
-        os.system( "echo rm " + "*.png" + " >> clean.sh" )
+        os.system( "echo rm " + "resu-opti-" + str(i).zfill(4) + ".png" + " >> clean.sh" )
 
 
 def update_plot_inversion_simple(params, state, i):

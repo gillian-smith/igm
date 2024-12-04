@@ -224,8 +224,8 @@ def optimize(params, state):
 
             print_costs(params, state, cost, i)
             if hasattr(state,"thkobs_test"):
-                mse = mse = np.nanmean((state.thk - state.thkobs_test)**2)
-                print_test_score(params,state,mse,i)
+                mse = np.nanmean((state.thk - state.thkobs_test)**2)
+                print(params,state,mse,i)
 
             #################
 
@@ -288,7 +288,7 @@ def optimize(params, state):
 
     print_costs(params, state, cost, i)
     if hasattr(state,"thkobs_test"):
-        mse = mse = np.nanmean((state.thk - state.thkobs_test)**2)
+        mse = np.nanmean((state.thk - state.thkobs_test)**2)
         print_test_score(params,state,mse,i)
 
     if i % params.opti_output_freq == 0:
@@ -336,7 +336,7 @@ def misfit_velsurf(params,state):
 
     REL = tf.expand_dims( (tf.norm(velsurfobs,axis=-1) >= params.opti_velsurfobs_thr ) , axis=-1)
 
-    ACT = ~tf.math.is_nan(velsurfobs) 
+    ACT = ~tf.math.is_nan(velsurfobs) # is this enough or do we need to use the icemask as well
 
     cost = 0.5 * tf.reduce_mean(
            ( (velsurfobs[ACT & REL] - velsurf[ACT & REL]) / params.opti_velsurfobs_std  )** 2
@@ -355,12 +355,13 @@ def misfit_velsurf(params,state):
 
 def misfit_thk(params,state):
 
-    ACT = ~tf.math.is_nan(state.thkobs)
+    ACT = ~tf.math.is_nan(state.thkobs) # use icemask as well to exclude thkobs outside the mask?
 
     return 0.5 * tf.reduce_mean( state.thkobs_std_multiplier[ACT] * state.dens_thkobs[ACT] * 
         ((state.thkobs[ACT] - state.thk[ACT]) / params.opti_thkobs_std) ** 2
     )
-
+    # with thkobs_std_multiplier = dens_thkobs = 1 this is just nanmean(thkobs-thk)*0.5/opti_thkobs_std**2
+    # so it's just MSE*0.5/opti_thkobs_std**2
 
 
 def cost_divfluxfcz(params,state,i):

@@ -159,6 +159,7 @@ def update(params, state):
 
 def finalize(params, state):
     pass
+    #TODO remove input_saved.nc
 
 def rasterize(df,x,y,thkobs_column):
 
