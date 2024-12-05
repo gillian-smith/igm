@@ -306,6 +306,10 @@ def save_iceflow_model(params, state):
 
     state.iceflow_model.save(os.path.join(directory, "model.h5"))
 
+    os.system(
+        "echo rm -r " + directory + " >> clean.sh"
+    )
+
     #    fieldin_dim=[0,0,1*(params.iflo_dim_arrhenius==3),0,0]
 
     fid = open(os.path.join(directory, "fieldin.dat"), "w")
