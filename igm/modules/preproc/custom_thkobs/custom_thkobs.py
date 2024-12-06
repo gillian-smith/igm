@@ -46,7 +46,7 @@ def params(parser):
         "--cthk_thkobs_find_method",
         type=str,
         default="outline", # 'outline' or 'RGIId'
-        help="Method for finding thkobs for this glacier - RGI outline or RGI ID"
+        help="Method for finding thkobs for this glacier - RGI 6/7 outline or RGI 6 ID"
     )
     parser.add_argument(
         "--cthk_profiles_constrain",

@@ -463,7 +463,7 @@ def regu_thk(params,state):
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
 
-        if params.sole_mask: # default False
+        if params.sole_mask: # default False - sets gradients to zero if they are outside the icemask
             dbdx = tf.where( (state.icemaskobs[:, 1:] > 0.5) & (state.icemaskobs[:, :-1] > 0.5) , dbdx, 0.0)
             dbdy = tf.where( (state.icemaskobs[1:, :] > 0.5) & (state.icemaskobs[:-1, :] > 0.5) , dbdy, 0.0)
 
