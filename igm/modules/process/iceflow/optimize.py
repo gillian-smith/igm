@@ -40,7 +40,7 @@ def optimize(params, state):
         if not hasattr(state, "divfluxobs"):
             state.divfluxobs = state.smb - state.dhdt
 
-    elif hasattr(state, "thkinit"):
+    if hasattr(state, "thkinit"):
         state.thk = state.thkinit
     else:
         state.thk = tf.zeros_like(state.thk)
