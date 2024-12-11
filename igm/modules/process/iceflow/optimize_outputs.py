@@ -202,6 +202,8 @@ def plot_cost_functions_log(params):
             "icemask": "gray",
             "thk_positive": "yellow",
             "thk_regu": "magenta",
+            "thk_regu_along": "magenta",
+            "thk_regu_across": "magenta",
             "slid_regu":"darkorange"
             }
   

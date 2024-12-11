@@ -184,7 +184,10 @@ def optimize(params, state):
     
             # Here one adds a regularization terms for the bed toporgraphy to the cost function
             if "thk" in params.opti_control:
-                cost["thk_regu"] = regu_thk(params, state)
+                if params.opti_regu_thk_split:
+                    cost["thk_regu_along"], cost["thk_regu_across"] = regu_thk_split(params, state)
+                else:  
+                    cost["thk_regu"] = regu_thk(params, state)
 
             # Here one adds a regularization terms for slidingco to the cost function
             if "slidingco" in params.opti_control:
@@ -510,6 +513,43 @@ def regu_thk(params,state):
             )
 
     return REGU_H
+
+def regu_thk_split(params,state):
+
+    if params.opti_to_regularize == 'topg': # smooth basal topography
+        field = state.usurf - state.thk
+    elif params.opti_to_regularize == 'thk': # smooth thickness
+        field = state.thk
+
+    dbdx = (field[:, 1:] - field[:, :-1])/state.dx
+    dbdx = (dbdx[1:, :] + dbdx[:-1, :]) / 2.0
+    dbdy = (field[1:, :] - field[:-1, :])/state.dx
+    dbdy = (dbdy[:, 1:] + dbdy[:, :-1]) / 2.0
+
+    if params.sole_mask: # default False
+        MASK = (state.icemaskobs[1:, 1:] > 0.5) & (state.icemaskobs[1:, :-1] > 0.5) & (state.icemaskobs[:-1, 1:] > 0.5) & (state.icemaskobs[:-1, :-1] > 0.5)
+        dbdx = tf.where( MASK, dbdx, 0.0)
+        dbdy = tf.where( MASK, dbdy, 0.0)
+
+    if params.fix_opti_normalization_issue:
+        REGU_H_ALONG = (params.opti_regu_param_thk) * 0.5 * (
+            (1.0/np.sqrt(params.opti_smooth_anisotropy_factor))
+            * tf.math.reduce_mean((dbdx * state.flowdirx + dbdy * state.flowdiry)**2)
+            )
+        REGU_H_ACROSS = (params.opti_regu_param_thk) * 0.5 * (
+            np.sqrt(params.opti_smooth_anisotropy_factor)
+            * tf.math.reduce_mean((dbdx * state.flowdiry - dbdy * state.flowdirx)**2)
+            )
+    else:
+        REGU_H_ALONG = (params.opti_regu_param_thk) * (
+            (1.0/np.sqrt(params.opti_smooth_anisotropy_factor))
+            * tf.nn.l2_loss((dbdx * state.flowdirx + dbdy * state.flowdiry))
+            )
+        REGU_H_ACROSS = (params.opti_regu_param_thk) * (
+            np.sqrt(params.opti_smooth_anisotropy_factor)
+            * tf.nn.l2_loss((dbdx * state.flowdiry - dbdy * state.flowdirx))
+        )
+    return REGU_H_ALONG, REGU_H_ACROSS
 
 def regu_slidingco(params,state):
 

@@ -317,5 +317,11 @@ def params_optimize(parser):
         default=False,
         help="Use thkobs_std as multiplier in thk cost",
     )
+    parser.add_argument(
+        "--opti_regu_thk_split",
+        type=str2bool,
+        default=False,
+        help="Split thk_regu cost into along-flow and across flow; ignoring convexity term",
+    )
 
     
