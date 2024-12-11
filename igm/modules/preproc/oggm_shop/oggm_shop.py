@@ -480,7 +480,8 @@ def _oggm_util(RGIs, params):
 
         from oggm.shop import bedtopo
 
-        workflow.execute_entity_task(bedtopo.add_consensus_thickness, gdirs)
+        if params.oggm_RGI_version==6: # consensus thk does not exist for RGI 7
+            workflow.execute_entity_task(bedtopo.add_consensus_thickness, gdirs)
 
         from oggm.shop import glathida
 
@@ -492,8 +493,8 @@ def _oggm_util(RGIs, params):
 
         workflow.execute_entity_task(tasks.elevation_band_flowline, gdirs)
         workflow.execute_entity_task(tasks.fixed_dx_elevation_band_flowline, gdirs)
-        workflow.execute_entity_task(tasks.mb_calibration_from_geodetic_mb,
-                                                gdirs, informed_threestep=True)
+        #workflow.execute_entity_task(tasks.mb_calibration_from_geodetic_mb,
+        #                                        gdirs, informed_threestep=True)
 
     source_folder = gdirs[0].get_filepath("gridded_data").split("gridded_data.nc")[0]
     destination_folder = params.oggm_RGI_ID
