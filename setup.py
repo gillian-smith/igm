@@ -41,7 +41,7 @@ setup(
         "rioxarray", # for importing .tif files to xarray
         "pyproj",
         "geopandas",
-        "oggm", # comment out if we will install oggm directly from source
+#        "oggm", # comment out if we will install oggm directly from source
         "salem",
         "pyyaml",
         "importlib_resources",

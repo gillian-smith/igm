@@ -206,6 +206,7 @@ def _iceflow_energy(
         U, V, thk, C, dX, dz, sloptopgx, sloptopgy, thr=thr_ice_thk
     )
     
+    # the following applies at pretraining only
     if iflo_stokes_approx=="FOA":
         sr = srx + srz
     elif iflo_stokes_approx=="SIA":

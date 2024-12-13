@@ -137,8 +137,9 @@ def optimize(params, state):
             V = V[0]
 
             # do we need the below?
-            #U = tf.where(state.thk > 0, U, 0)
-            #V = tf.where(state.thk > 0, V, 0)
+            if params.opti_mask_velocities:
+                U = tf.where(state.thk > 0, U, 0)
+                V = tf.where(state.thk > 0, V, 0)
            
             # this is strange, but it having state.U instead of U, slidingco is not more optimized ....
             state.uvelbase = U[0, :, :]

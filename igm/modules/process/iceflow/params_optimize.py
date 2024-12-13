@@ -323,5 +323,11 @@ def params_optimize(parser):
         default=False,
         help="Split thk_regu cost into along-flow and across flow; ignoring convexity term",
     )
+    parser.add_argument(
+        "--opti_mask_velocities",
+        type=str2bool,
+        default=False,
+        help="Set velocity to zero in ice-free region",
+    )
 
     
