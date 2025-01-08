@@ -127,15 +127,17 @@ def initialize(params, state):
     profiles_test = params.cthk_profiles_test
 
     if not profiles_test: # profiles_test == []
+        # no test set specified, use all profiles for constraint
         profiles_constrain = profiles
     elif not profiles_constrain: # profiles_constrain == []
+        # no constraining set specified, use all profiles not already in test set
         # think this would even work if profiles_test == []?
         profiles_constrain = [profile for profile in profiles if profile not in profiles_test]
 
     df_constrain = df[df["profile_id"].str.strip().str[-1].isin(profiles_constrain)]
     df_test = df[df["profile_id"].str.strip().str[-1].isin(profiles_test)]
     
-    # TODO case where df empty
+    # TODO case where either df empty
     nc["thkobs"]     , nc["thkobs_std"], nc["thkobs_count"] = rasterize(df_constrain,x,y,params.cthk_thkobs_column)
     nc["thkobs_test"], _               , _                  = rasterize(df_test,x,y,params.cthk_thkobs_column)
     
