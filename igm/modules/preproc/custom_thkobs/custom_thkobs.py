@@ -51,14 +51,20 @@ def params(parser):
     parser.add_argument(
         "--cthk_profiles_constrain",
         type=str,
-        default=[], # empty list means use all profiles not in test set, otherwise we can pass a list e.g. ["A","B","C"] to only use those profiles 
+        default=[], # a list e.g. ["A","B","C"]
         help="Profiles to use as thkobs cost constraint"
     )
     parser.add_argument(
         "--cthk_profiles_test",
         type=str,
-        default=[], # empty list means don't put anything in the test set - all profiles are used for constraint
+        default=[], # a list e.g. ["D","E","F"]
         help="Profiles to use as thkobs test"
+    )
+    parser.add_argument(
+        "--cthk_exclude_test_cells_from_constraint",
+        type=str2bool,
+        default=True,
+        help="Exclude cells in thkobs_test from thkobs to ensure no intersection"
     )
     # Always run ["oggm_shop", "custom_thkobs"]
     # Then ["load_ncdf"] with "lncd_input_file" : "input_saved_with_thkobs.nc"
@@ -122,28 +128,40 @@ def initialize(params, state):
         # find points with same RGI ID as this glacier (even if they are outside the outline)
         df = df[df["RGIId"]==params.oggm_RGI_ID]
 
-    profiles = list(map(lambda x: x[-1], df["profile_id"].unique().tolist()))
+    #profiles = list(map(lambda x: x[-1], df["profile_id"].unique().tolist()))
     profiles_constrain = params.cthk_profiles_constrain
     profiles_test = params.cthk_profiles_test
 
-    if not profiles_test: # profiles_test == []
-        # no test set specified, use all profiles for constraint
-        profiles_constrain = profiles
-    elif not profiles_constrain: # profiles_constrain == []
-        # no constraining set specified, use all profiles not already in test set
-        # think this would even work if profiles_test == []?
-        profiles_constrain = [profile for profile in profiles if profile not in profiles_test]
+    # if not profiles_test: # profiles_test == []
+    #     # no test set specified, use all profiles for constraint
+    #     profiles_constrain = profiles
+    # elif not profiles_constrain: # profiles_constrain == []
+    #     # no constraining set specified, use all profiles not already in test set
+    #     # think this would even work if profiles_test == []?
+    #     profiles_constrain = [profile for profile in profiles if profile not in profiles_test]
 
     df_constrain = df[df["profile_id"].str.strip().str[-1].isin(profiles_constrain)]
     df_test = df[df["profile_id"].str.strip().str[-1].isin(profiles_test)]
     
-    # TODO case where either df empty
-    nc["thkobs"]     , nc["thkobs_std"], nc["thkobs_count"] = rasterize(df_constrain,x,y,params.cthk_thkobs_column)
-    nc["thkobs_test"], _               , _                  = rasterize(df_test,x,y,params.cthk_thkobs_column)
+    # TODO test case where either df empty
+    if df_constrain.empty:
+        print("No profiles for constraint")
+        nc["thkobs"] = xr.full_like(nc["thkinit"],np.nan)
+        nc["thkobs_std"] = xr.full_like(nc["thkinit"],np.nan)
+        nc["thkobs_count"] = xr.full_like(nc["thkinit"],np.nan)
+    else:
+        nc["thkobs"]     , nc["thkobs_std"], nc["thkobs_count"] = rasterize(df_constrain,x,y,params.cthk_thkobs_column)
     
-    # Exclude thkobs_test cells from thkobs
-    MASK = nc["thkobs_test"].isnull() & ~nc["thkobs"].isnull()
-    nc["thkobs"] = xr.where(MASK, nc["thkobs"], np.nan)
+    if df_test.empty:
+        print("No profiles for test")
+        nc["thkobs_test"] = xr.full_like(nc["thkinit"],np.nan)
+    else:
+        nc["thkobs_test"], _               , _                  = rasterize(df_test,x,y,params.cthk_thkobs_column)
+    
+    if params.cthk_exclude_test_cells_from_constraint:
+        # Exclude thkobs_test cells from thkobs
+        MASK = nc["thkobs_test"].isnull() & ~nc["thkobs"].isnull()
+        nc["thkobs"] = xr.where(MASK, nc["thkobs"], np.nan)
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
