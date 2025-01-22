@@ -292,6 +292,18 @@ def optimize(params, state):
     # for final iteration
     i = params.opti_nbitmax
 
+    # output velocity
+    np.save('U.npy',U.numpy())
+    np.save('V.npy',V.numpy())
+    os.system("echo rm " + "U.npy" + " >> clean.sh")
+    os.system("echo rm " + "V.npy" + " >> clean.sh")
+    # output SIA/FOA stresses
+    srx, srz = iceflow_stresses_XY(params, X, Y)
+    np.save('srx.npy',srx.numpy())
+    np.save('srz.npy',srz.numpy())
+    os.system("echo rm " + "srx.npy" + " >> clean.sh")
+    os.system("echo rm " + "srz.npy" + " >> clean.sh")
+
     print_costs(params, state, cost, i)
     if hasattr(state,"thkobs_test"):
         mse = np.nanmean((state.thk - state.thkobs_test)**2)

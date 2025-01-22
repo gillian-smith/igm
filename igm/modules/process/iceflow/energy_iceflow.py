@@ -17,9 +17,9 @@ def _compute_gradient_stag(s, dX, dY):
 
     return diffx, diffy
 
-
 @tf.function(experimental_relax_shapes=True)
 def _compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, sloptopgy, thr):
+
     # Compute horinzontal derivatives
     dUdx = (U[:, :, :, 1:] - U[:, :, :, :-1]) / dX[0, 0, 0]
     dVdx = (V[:, :, :, 1:] - V[:, :, :, :-1]) / dX[0, 0, 0]
@@ -70,8 +70,9 @@ def _compute_strainrate_Glen_tf(U, V, thk, slidingco, dX, ddz, sloptopgx, slopto
     
     srx = 0.5 * ( Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2 ) # FOA terms
     srz = 0.5 * ( Exz**2 + Eyz**2 + Exz**2 + Eyz**2 ) # SIA terms
+    # summing these gives D(u):D(u)/2 = |D(u)|^2
 
-    return srx, srz # summing these gives D(u):D(u)/2 = |D(u)|^2
+    return srx, srz
 
 
 def _stag2(B):
@@ -361,6 +362,48 @@ def iceflow_energy_XY(params, X, Y):
     fieldin = X_to_fieldin(params, X)
 
     return iceflow_energy(params, U, V, fieldin)
+
+# @tf.function(experimental_relax_shapes=True)
+def iceflow_stresses_XY(params, X, Y):
+    U, V = Y_to_UV(params, Y)
+
+    thk, usurf, _, slidingco, dX = X_to_fieldin(params, X)
+
+    Nz = params.iflo_Nz
+    vert_spacing = params.iflo_vert_spacing
+    exp_weertman = params.iflo_exp_weertman
+
+    # Vertical discretization
+    if Nz > 1:
+        zeta = np.arange(Nz) / (Nz - 1)  # formerly ...
+        #zeta = tf.range(Nz, dtype=tf.float32) / (Nz - 1)
+        temp = (zeta / vert_spacing) * (1.0 + (vert_spacing - 1.0) * zeta)
+        temd = temp[1:] - temp[:-1]
+        dz = tf.stack([_stag4(thk) * z for z in temd], axis=1)  # formerly ..
+        #dz = (tf.expand_dims(tf.expand_dims(temd,axis=-1),axis=-1)*tf.expand_dims(_stag4(thk),axis=0))
+    else:
+        dz = tf.expand_dims(_stag4(thk), axis=0)
+
+    if params.iflo_new_friction_param:
+        C = 1.0 * slidingco  # C has unit Mpa y^m m^(-m)
+    else:
+        if exp_weertman == 1:
+            # C has unit Mpa y^m m^(-m)
+            C = 1.0 * slidingco
+        else:
+            C = (slidingco + 10 ** (-12)) ** -(1.0 / exp_weertman)
+
+    sloptopgx, sloptopgy = _compute_gradient_stag(usurf - thk, dX, dX)
+    sloptopgx = tf.expand_dims(sloptopgx, axis=1)
+    sloptopgy = tf.expand_dims(sloptopgy, axis=1)
+
+    srx, srz = _compute_strainrate_Glen_tf(
+        U, V, thk, C, dX, dz, sloptopgx, sloptopgy, thr=params.iflo_thr_ice_thk
+    )
+
+    return srx, srz
+
+
 
 
 def Y_to_UV(params, Y):
