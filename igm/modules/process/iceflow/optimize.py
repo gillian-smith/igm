@@ -148,7 +148,7 @@ def optimize(params, state):
             state.vvelsurf = V[-1, :, :]
  
             if not params.opti_smooth_anisotropy_factor == 1:
-                _compute_flow_direction_for_anisotropic_smoothing(state)
+                _compute_flow_direction_for_anisotropic_smoothing(state,params)
 
             cost = {} 
                  
@@ -789,9 +789,15 @@ def _compute_rms_std_optimization(state, i):
         state.stdusurf.append(0)
 
 
-def _compute_flow_direction_for_anisotropic_smoothing(state):
-    uvelsurf = tf.where(tf.math.is_nan(state.uvelsurf), 0.0, state.uvelsurf)
-    vvelsurf = tf.where(tf.math.is_nan(state.vvelsurf), 0.0, state.vvelsurf)
+def _compute_flow_direction_for_anisotropic_smoothing(state,params):
+    
+    if "velsurf" in params.opti_cost:
+        uvelsurf = tf.where(tf.math.is_nan(state.uvelsurf), 0.0, state.uvelsurf)
+        vvelsurf = tf.where(tf.math.is_nan(state.vvelsurf), 0.0, state.vvelsurf)
+    else: 
+        # this uses state.uvelsurfobs and state.vvelsurfobs when "velsurf" not in params.opti_cost
+        uvelsurf = tf.where(tf.math.is_nan(state.uvelsurfobs), 0.0, state.uvelsurfobs)
+        vvelsurf = tf.where(tf.math.is_nan(state.vvelsurfobs), 0.0, state.vvelsurfobs)
 
     state.flowdirx = (
         uvelsurf[1:, 1:] + uvelsurf[:-1, 1:] + uvelsurf[1:, :-1] + uvelsurf[:-1, :-1]
