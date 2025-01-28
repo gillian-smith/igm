@@ -237,7 +237,7 @@ def optimize(params, state):
 
             var_to_opti = [ ]
             for f in params.opti_control:
-                var_to_opti.append(vars()[f])
+                var_to_opti.append(vars()[f]) # can I add constant A here?
 
             # Compute gradient of COST w.r.t. X
             grads = tf.Variable(t.gradient(cost_total, var_to_opti))
@@ -660,7 +660,7 @@ def print_costs(params, state, cost, i):
           + [f"{bound(cost[key].numpy()):>12.4f}" for key in keys]
         print("   ".join(L))
 
-    print("   ".join([f"{bound(cost[key].numpy()):>12.4f}" for key in keys]),file=f)
+    print("   ".join([f"{bound(cost[key].numpy()):>12.8f}" for key in keys]),file=f)
 
 def print_test_score(params,state,test_score,i):
     f = open('test_scores.dat','a')
