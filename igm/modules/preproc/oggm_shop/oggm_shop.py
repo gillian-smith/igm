@@ -109,6 +109,18 @@ def params(parser):
         default=True,
         help="Smooth the observed velocities",
     )
+    parser.add_argument(
+        "--oggm_shift_thkobs",
+        type=str2bool,
+        default=False,
+        help="Shift thkobs cells up and to the right",
+    )
+    parser.add_argument(
+        "--oggm_mask_thkobs",
+        type=str2bool,
+        default=True,
+        help="Exclude thkobs cells outside icemask",
+    )
 
 def initialize(params, state):
 
@@ -246,7 +258,8 @@ def initialize(params, state):
                 thkobs = _read_glathida(
                     x, y, usurfobs, proj, params.oggm_path_glathida, state
                 )
-                thkobs = np.where(icemaskobs, thkobs, np.nan)
+                if params.oggm_mask_thkobs:
+                    thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
 
@@ -257,7 +270,8 @@ def initialize(params, state):
                 thkobs = _read_glathida_v7(
                     x, y, path_glathida
                 )
-                thkobs = np.where(icemaskobs, thkobs, np.nan)
+                if params.oggm_mask_thkobs:
+                    thkobs = np.where(icemaskobs, thkobs, np.nan)
             except:
                 thkobs = np.zeros_like(thk) * np.nan
 
@@ -599,10 +613,12 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         thickness_gridded[thickness_gridded == 0] = np.nan
         thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
 
-        # # shift cells up and to the right
-        # thkobs = thkobs[:-1,:-1]
-        # thkobs = np.concatenate((np.full((1,thkobs.shape[1]),np.nan),thkobs),axis=0)
-        # thkobs = np.concatenate((np.full((thkobs.shape[0],1),np.nan),thkobs),axis=1)
+        # shift cells up and to the right
+        # TODO why does if statement result in empty thkobs field?
+        #if params.oggm_shift_thkobs:
+        thkobs = thkobs[:-1,:-1]
+        thkobs = np.concatenate((np.full((1,thkobs.shape[1]),np.nan),thkobs),axis=0)
+        thkobs = np.concatenate((np.full((thkobs.shape[0],1),np.nan),thkobs),axis=1)
 
     return thkobs
 
