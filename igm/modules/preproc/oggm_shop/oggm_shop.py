@@ -599,6 +599,11 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         thickness_gridded[thickness_gridded == 0] = np.nan
         thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
 
+        # # shift cells up and to the right
+        # thkobs = thkobs[:-1,:-1]
+        # thkobs = np.concatenate((np.full((1,thkobs.shape[1]),np.nan),thkobs),axis=0)
+        # thkobs = np.concatenate((np.full((thkobs.shape[0],1),np.nan),thkobs),axis=1)
+
     return thkobs
 
 def _read_glathida_v7(x, y, path_glathida):

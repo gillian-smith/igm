@@ -140,6 +140,7 @@ def initialize(params, state):
     #     # think this would even work if profiles_test == []?
     #     profiles_constrain = [profile for profile in profiles if profile not in profiles_test]
 
+    # TODO this assumes every profile is identified by one character - allow for multiple characters by splitting on "_"
     df_constrain = df[df["profile_id"].str.strip().str[-1].isin(profiles_constrain)]
     df_test = df[df["profile_id"].str.strip().str[-1].isin(profiles_test)]
     
@@ -162,6 +163,8 @@ def initialize(params, state):
         # Exclude thkobs_test cells from thkobs
         MASK = nc["thkobs_test"].isnull() & ~nc["thkobs"].isnull()
         nc["thkobs"] = xr.where(MASK, nc["thkobs"], np.nan)
+
+    # TODO exclude cells outside outline - otherwise thk cost cannot reach zero
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
@@ -193,12 +196,15 @@ def rasterize(df,x,y,thkobs_column):
     #thickness_normalized = df["thick_m"].copy() 
     # TODO: look into whether thickness needs to be normalized or not - where do DEM values come from
 
+    dx = x[1]-x[0]
+    dy = y[1]-y[0]
+
     # Rasterize
     gridded = (
     pd.DataFrame(
         {
-            "col": np.floor((xx - np.min(x)) / (x[1] - x[0])).astype(int),
-            "row": np.floor((yy - np.min(y)) / (y[1] - y[0])).astype(int),
+            "col": np.floor((xx - np.min(x)) / dx).astype(int),
+            "row": np.floor((yy - np.min(y)) / dy).astype(int),
             "thickness": thickness_normalized,
         }
     )
