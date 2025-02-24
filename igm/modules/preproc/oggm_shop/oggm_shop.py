@@ -599,7 +599,7 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
 
         dx = x[1]-x[0]
         dy = y[1]-y[0]
-
+        
         # Rasterize thickness
         thickness_gridded = (
             pd.DataFrame(
