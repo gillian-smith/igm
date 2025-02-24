@@ -38,7 +38,7 @@ jobs:
         python -m build
         twine check --strict dist/*
     - name: Create artifact for release job
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist_folder
         path: dist
