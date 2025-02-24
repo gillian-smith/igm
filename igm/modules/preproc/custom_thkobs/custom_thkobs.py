@@ -217,25 +217,20 @@ def rasterize(params,df,x,y,thkobs_column):
     gridded = (
     pd.DataFrame(
         {
-            "col": np.floor((xx - np.min(x)) / dx).astype(int),
-            "row": np.floor((yy - np.min(y)) / dy).astype(int),
+            "col": np.floor((xx - np.min(x) + dx/2) / dx).astype(int),
+            "row": np.floor((yy - np.min(y) + dy/2) / dy).astype(int),
             "thickness": thickness_normalized,
         }
     )
     .groupby(["row", "col"])["thickness"])
 
-    # TODO why does if statement result in empty thkobs field?
-    # TODO lots of repetition of code here - use function if possible
+    # TODO lots of repetition of code here - use function if possible?
 
     # Thickness - mean over each grid cell
     thickness_gridded = gridded.mean() # mean over each grid cell
     thkobs = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
     thickness_gridded[thickness_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
-    #if params.cthk_shift_thkobs:
-    thkobs = thkobs[:-1,:-1]
-    thkobs = np.concatenate((np.full((1,thkobs.shape[1]),np.nan),thkobs),axis=0)
-    thkobs = np.concatenate((np.full((thkobs.shape[0],1),np.nan),thkobs),axis=1)
     thkobs_xr = xr.DataArray(thkobs,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness",'units':"m",'standard_name':"thkobs"})
 
     # Std dev of each grid cell
@@ -243,9 +238,6 @@ def rasterize(params,df,x,y,thkobs_column):
     thkobs_stdev = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
     thickness_stdev_gridded[thickness_stdev_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs_stdev[tuple(zip(*thickness_stdev_gridded.index))] = thickness_stdev_gridded
-    thkobs_stdev = thkobs[:-1,:-1]
-    thkobs_stdev = np.concatenate((np.full((1,thkobs_stdev.shape[1]),np.nan),thkobs_stdev),axis=0)
-    thkobs_stdev = np.concatenate((np.full((thkobs_stdev.shape[0],1),np.nan),thkobs_stdev),axis=1)
     thkobs_stdev_xr = xr.DataArray(thkobs_stdev,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness standard deviation",'units':"m",'standard_name':"thkobs_std"})
 
     # Count of thkobs in each grid cell
@@ -253,9 +245,6 @@ def rasterize(params,df,x,y,thkobs_column):
     thkobs_count = np.full((y.shape[0], x.shape[0]), np.nan) # fill array with nans
     thickness_count_gridded[thickness_count_gridded == 0] = np.nan # put nans where we have zero thickness / no observations
     thkobs_count[tuple(zip(*thickness_count_gridded.index))] = thickness_count_gridded
-    thkobs_count = thkobs_count[:-1,:-1]
-    thkobs_count = np.concatenate((np.full((1,thkobs_count.shape[1]),np.nan),thkobs_count),axis=0)
-    thkobs_count = np.concatenate((np.full((thkobs_count.shape[0],1),np.nan),thkobs_count),axis=1)
     thkobs_count_xr = xr.DataArray(thkobs_count,coords={'y':y,'x':x},attrs={'long_name':"Ice Thickness count",'units':"none",'standard_name':"thkobs_count"})
 
     return thkobs_xr, thkobs_stdev_xr, thkobs_count_xr

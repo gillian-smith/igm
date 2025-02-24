@@ -597,12 +597,15 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         elevation_normalized = fsurf(xx, yy, grid=False)
         thickness_normalized = np.maximum(elevation_normalized - bedrock, 0)
 
+        dx = x[1]-x[0]
+        dy = y[1]-y[0]
+
         # Rasterize thickness
         thickness_gridded = (
             pd.DataFrame(
                 {
-                    "col": np.floor((xx - np.min(x)) / (x[1] - x[0])).astype(int),
-                    "row": np.floor((yy - np.min(y)) / (y[1] - y[0])).astype(int),
+                    "col": np.floor((xx - np.min(x) + dx/2) / dx).astype(int),
+                    "row": np.floor((yy - np.min(y) + dy/2) / dy).astype(int),
                     "thickness": thickness_normalized,
                 }
             )
@@ -612,13 +615,6 @@ def _read_glathida(x, y, usurf, proj, path_glathida, state):
         thkobs = np.full((y.shape[0], x.shape[0]), np.nan)
         thickness_gridded[thickness_gridded == 0] = np.nan
         thkobs[tuple(zip(*thickness_gridded.index))] = thickness_gridded
-
-        # shift cells up and to the right
-        # TODO why does if statement result in empty thkobs field?
-        #if params.oggm_shift_thkobs:
-        thkobs = thkobs[:-1,:-1]
-        thkobs = np.concatenate((np.full((1,thkobs.shape[1]),np.nan),thkobs),axis=0)
-        thkobs = np.concatenate((np.full((thkobs.shape[0],1),np.nan),thkobs),axis=1)
 
     return thkobs
 
