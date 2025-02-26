@@ -75,7 +75,7 @@ def params(parser):
     parser.add_argument(
         "--cthk_mask_thkobs",
         type=str2bool,
-        default=False,
+        default=True,
         help="Exclude thkobs cells outside icemask",
     )
     # Always run ["oggm_shop", "custom_thkobs"]
