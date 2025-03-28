@@ -147,7 +147,7 @@ def optimize(params, state):
             state.uvelsurf = U[-1, :, :]
             state.vvelsurf = V[-1, :, :]
  
-            if not params.opti_smooth_anisotropy_factor == 1:
+            if (not params.opti_smooth_anisotropy_factor == 1) or params.opti_regu_thk_split:
                 _compute_flow_direction_for_anisotropic_smoothing(state,params)
 
             cost = {} 
