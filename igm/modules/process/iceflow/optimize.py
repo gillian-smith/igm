@@ -231,7 +231,9 @@ def optimize(params, state):
             print_costs(params, state, cost, i)
             if hasattr(state,"thkobs_test"):
                 mse = np.nanmean((state.thk - state.thkobs_test)**2)
-                print_test_score(params,state,mse,i)
+                mae = np.nanmean(np.abs(state.thk - state.thkobs_test))
+                mbe = np.nanmean(state.thk - state.thkobs_test)
+                print_test_score(params,state,mse,mae,mbe,i)
 
             #################
 
@@ -663,11 +665,11 @@ def print_costs(params, state, cost, i):
 
     print("   ".join([f"{bound(cost[key].numpy()):>12.8f}" for key in keys]),file=f)
 
-def print_test_score(params,state,test_score,i):
+def print_test_score(params,state,mse,mae,mbe,i):
     f = open('test_scores.dat','a')
     if i % params.opti_output_freq == 0:
         #print(f"Score for test profiles = {test_score}")  # print to terminal
-        print(f"{i}     {test_score}",file=f)    
+        print(f"{i}     {mse}   {mae}   {mbe}",file=f)    
 
 def save_vol(params,state,vol,i):
     f = open('volume.dat','a')
