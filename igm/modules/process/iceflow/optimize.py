@@ -310,7 +310,9 @@ def optimize(params, state):
     print_costs(params, state, cost, i)
     if hasattr(state,"thkobs_test"):
         mse = np.nanmean((state.thk - state.thkobs_test)**2)
-        print_test_score(params,state,mse,i)
+        mae = np.nanmean(np.abs(state.thk - state.thkobs_test))
+        mbe = np.nanmean(state.thk - state.thkobs_test)
+        print_test_score(params,state,mse,mae,mbe,i)
 
     if i % params.opti_output_freq == 0:
         if params.opti_plot2d:
