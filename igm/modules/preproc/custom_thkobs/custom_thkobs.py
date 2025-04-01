@@ -179,6 +179,7 @@ def initialize(params, state):
     # Exclude cells outside outline
     if params.cthk_mask_thkobs:
         nc["thkobs"] = xr.where(nc["icemaskobs"], nc["thkobs"], np.nan)
+        nc["thkobs_test"] = xr.where(nc["icemaskobs"], nc["thkobs_test"], np.nan)
 
     #vars(state)["thkobs"] = tf.Variable(thkobs.astype("float32"))
 
