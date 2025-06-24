@@ -95,6 +95,9 @@ def optimize(params, state):
     
     Ny, Nx = state.thk.shape
 
+    state.coverage = float(tf.math.count_nonzero(state.icemaskobs)/(Ny*Nx))
+    print("Coverage: "+str(float(state.coverage)))
+
     for f in params.opti_control:
         vars()[f] = tf.Variable(vars(state)[f] / sc[f])
 
@@ -495,8 +498,8 @@ def regu_thk(params,state):
                 tf.math.reduce_mean(dbdx**2) + tf.math.reduce_mean(dbdy**2)
                 - gamma * tf.math.reduce_mean(state.thk)
             )
-            if params.sole_mask:
-                REGU_H *= tf.size(state.icemaskobs)/tf.math.count_nonzero(state.icemaskobs)
+            if params.sole_mask: # required so that REGU_H is truly the mean over the icemask
+                REGU_H *= 1/state.coverage
         else:
             REGU_H = (params.opti_regu_param_thk) * (
                 tf.nn.l2_loss(dbdx) + tf.nn.l2_loss(dbdy)
@@ -522,8 +525,8 @@ def regu_thk(params,state):
                 * tf.math.reduce_mean((dbdx * state.flowdiry - dbdy * state.flowdirx)**2)
                 - tf.math.reduce_mean(gamma*state.thk)
             )
-            if params.sole_mask:
-                REGU_H *= tf.size(state.icemaskobs)/tf.math.count_nonzero(state.icemaskobs)
+            if params.sole_mask: # required so that REGU_H is truly the mean over the icemask
+                REGU_H *= 1/state.coverage
         else:
             REGU_H = (params.opti_regu_param_thk) * (
                 (1.0/np.sqrt(params.opti_smooth_anisotropy_factor))
