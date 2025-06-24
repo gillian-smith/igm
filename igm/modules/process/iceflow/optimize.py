@@ -495,12 +495,15 @@ def regu_thk(params,state):
                 tf.math.reduce_mean(dbdx**2) + tf.math.reduce_mean(dbdy**2)
                 - gamma * tf.math.reduce_mean(state.thk)
             )
+            if params.sole_mask:
+                REGU_H *= tf.size(state.icemaskobs)/tf.math.count_nonzero(state.icemaskobs)
         else:
             REGU_H = (params.opti_regu_param_thk) * (
                 tf.nn.l2_loss(dbdx) + tf.nn.l2_loss(dbdy)
                 - gamma * tf.math.reduce_sum(state.thk)
             )
     else: # anisotropic smoothing
+
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdx = (dbdx[1:, :] + dbdx[:-1, :]) / 2.0
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
@@ -519,6 +522,8 @@ def regu_thk(params,state):
                 * tf.math.reduce_mean((dbdx * state.flowdiry - dbdy * state.flowdirx)**2)
                 - tf.math.reduce_mean(gamma*state.thk)
             )
+            if params.sole_mask:
+                REGU_H *= tf.size(state.icemaskobs)/tf.math.count_nonzero(state.icemaskobs)
         else:
             REGU_H = (params.opti_regu_param_thk) * (
                 (1.0/np.sqrt(params.opti_smooth_anisotropy_factor))
