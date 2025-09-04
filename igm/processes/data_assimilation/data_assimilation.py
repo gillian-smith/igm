@@ -57,8 +57,7 @@ def initialize(cfg, state):
             #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
             #         break;  
 
-    # now that the ice thickness is optimized, we can fix the bed once for all! (ONLY FOR GROUNDED ICE)
-    state.topg = state.usurf - state.thk
+        state.topg = state.usurf - state.thk
 
     if not cfg.processes.data_assimilation.output.save_result_in_ncdf=="":
         output_ncdf_optimize_final(cfg, state)
