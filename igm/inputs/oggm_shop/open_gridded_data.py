@@ -6,6 +6,7 @@
 import numpy as np
 import os
 import xarray as xr  
+import rasterio
 
 def open_gridded_data(cfg, path_RGI, state, flip_y=True):
 
@@ -28,6 +29,13 @@ def open_gridded_data(cfg, path_RGI, state, flip_y=True):
         "x": ds["x"].squeeze().astype("float32"),
         "y": ds["y"].squeeze().astype("float32")
     })
+
+    # Add EPSG number from reference DEM file
+    # (can optionally also be inferred from 'pyproj' but hemisphere is not always clear from UTM)
+    # (for some glaciers, there are some problems with the 'pyproj' attribute)
+    with rasterio.open(os.path.join(path_RGI,"dem.tif")) as dem_ds:
+        dst_crs = dem_ds.crs
+    ds.attrs["epsg"] = str(dst_crs)
 
     # Flip y-axis and all 2D variables
     if flip_y:
