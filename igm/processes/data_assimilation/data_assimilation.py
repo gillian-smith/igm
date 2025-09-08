@@ -3,13 +3,14 @@
 # Copyright (C) 2021-2025 IGM authors 
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from .utils import compute_rms_std_optimization
+from .utils import compute_rms_std_optimization, apply_relaxation
 from .optimize.initialize import optimize_initialize
 from .optimize.update import optimize_update
 from .optimize.update_lbfgs import optimize_update_lbfgs
 from .outputs.output_ncdf import update_ncdf_optimize, output_ncdf_optimize_final
 from .outputs.prints import print_costs, save_rms_std, print_info_data_assimilation
 from .outputs.plots import update_plot_inversion, plot_cost_functions
+from .outputs.write_vtp import update_vtp
 
 from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator
 from igm.processes.iceflow import initialize as iceflow_initialize
@@ -33,6 +34,10 @@ def initialize(cfg, state):
             optimize_update_lbfgs(cfg, state, cost, i)
         else:
             raise ValueError(f"Unknown optim. method: {cfg.processes.data_assimilation.optimization.method}")
+        
+        if i == cfg.processes.data_assimilation.optimization.nbitmax:
+            if cfg.processes.data_assimilation.optimization.nb_relaxation_steps > 0:
+                apply_relaxation(cfg, state)
 
         compute_rms_std_optimization(state, i)
             
@@ -50,6 +55,7 @@ def initialize(cfg, state):
                 update_plot_inversion(cfg, state, i)
             if cfg.processes.data_assimilation.output.save_iterat_in_ncdf:
                 update_ncdf_optimize(cfg, state, i)
+                update_vtp(cfg, state, i)
 
             # stopping criterion: stop if the cost no longer decrease
             # if i>cfg.processes.data_assimilation.optimization.nbitmin:
