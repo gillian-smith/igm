@@ -9,7 +9,7 @@ from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
 from igm.utils.gradient.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
 
-from ..utils import compute_flow_direction_for_anisotropic_smoothing
+from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 
 def optimize_update_lbfgs(cfg, state, cost, i):
 
@@ -46,7 +46,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
         update_iceflow_emulated(cfg, state)
 
         if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
-            compute_flow_direction_for_anisotropic_smoothing(state)
+            compute_flow_direction_for_anisotropic_smoothing_vel(state)
                 
         return total_cost(cfg, state, cost, i)
         

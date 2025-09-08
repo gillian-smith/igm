@@ -10,7 +10,8 @@ from igm.utils.gradient.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
-from ..utils import compute_flow_direction_for_anisotropic_smoothing
+from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
+from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
 
 def optimize_update(cfg, state, cost, i):
 
@@ -44,7 +45,17 @@ def optimize_update(cfg, state, cost, i):
         update_iceflow_emulated(cfg, state)
 
         if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
-            compute_flow_direction_for_anisotropic_smoothing(state)
+            if cfg.processes.data_assimilation.regularization.smooth_anisotropy_var == "vel":
+                compute_flow_direction_for_anisotropic_smoothing_vel(state)
+            elif cfg.processes.data_assimilation.regularization.smooth_anisotropy_var == "usurf":   
+                compute_flow_direction_for_anisotropic_smoothing_usurf(state)
+ 
+            # import matplotlib.pyplot as plt
+            # fig, axs = plt.subplots(1, 1, figsize=(16,32))
+            # plt.quiver(state.flowdirx[::2,::2], state.flowdiry[::2,::2])
+            # axs.axis("equal")
+            # plt.savefig("flow_directions.png", bbox_inches='tight', dpi=200)
+            # plt.close()
                 
         cost_total = total_cost(cfg, state, cost, i)
 
@@ -101,10 +112,3 @@ def optimize_update(cfg, state, cost, i):
             state.ubar, state.vbar, state.thk, state.dx, state.dx, 
             method=cfg.processes.data_assimilation.divflux.method
         )
-
-        # relaxation = 0.02
-        # if relaxation>0:
-        #     state.thk = tf.maximum(state.thk + relaxation * gaussian_filter_tf(state.divflux, sigma=2.0, kernel_size=13), 0)
-        #     state.usurf = state.topg + state.thk
-
-        #state.divflux = tf.where(ACT, state.divflux, 0.0)
