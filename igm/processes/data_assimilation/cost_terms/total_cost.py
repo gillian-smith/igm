@@ -3,6 +3,7 @@ import tensorflow as tf
 from .misfit_thk import misfit_thk
 from .misfit_usurf import misfit_usurf
 from .misfit_velsurf import misfit_velsurf
+from .misfit_vol import misfit_vol
 from .cost_divfluxfcz import cost_divfluxfcz
 from .cost_divfluxobs import cost_divfluxobs
 from .cost_vol import cost_vol
@@ -29,6 +30,9 @@ def total_cost(cfg, state, cost, i):
     # misfit between top ice surfaces
     if "usurf" in cfg.processes.data_assimilation.cost_list:
         cost["usurf"] = misfit_usurf(cfg, state) 
+ 
+    if "volume_init" in cfg.processes.data_assimilation.cost_list:
+        cost["volume"] = misfit_vol(cfg, state)
 
     # add penalty terms to force obstacle constraints
     if "penalty" in cfg.processes.data_assimilation.optimization.obstacle_constraint:
