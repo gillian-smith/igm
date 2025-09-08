@@ -13,12 +13,8 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     get_fieldin,
 )
 
-from igm.processes.iceflow.data_preparation.data_preprocessing import (
-    split_fieldin_to_patches,
-)
-
 from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
-    create_training_tensor_from_patches,
+    create_input_tensor_from_fieldin,
 )
 
 
@@ -43,9 +39,8 @@ def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     fieldin = get_fieldin(cfg, state)
-    patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
-    X, batch_size = create_training_tensor_from_patches(
-        patches, state.iceflow.preparation_params
+    X = create_input_tensor_from_fieldin(
+        fieldin, state.iceflow.patching, state.iceflow.preparation_params
     )
 
     return X

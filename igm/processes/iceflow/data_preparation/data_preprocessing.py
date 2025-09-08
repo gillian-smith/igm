@@ -21,6 +21,7 @@ class PreparationParams(tf.experimental.ExtensionType):
         str, ...
     ]  # names of input fields for selective noise application
     noise_channels: Tuple[str, ...]  # names of input fields to apply noise
+    skip_preparation: bool  # true if not training an emulator (identity mapping with unified method)
 
 
 def _determine_noise_channels(cfg) -> Tuple[str, ...]:
@@ -46,6 +47,25 @@ def _determine_noise_channels(cfg) -> Tuple[str, ...]:
         return ("thk", "usurf")
 
 
+def _should_skip_preparation(cfg) -> bool:
+    """
+    Determine if data preparation should be skipped.
+    
+    Skip preparation when using unified method with identity mapping 
+    (i.e., not training an emulator).
+    
+    Args:
+        cfg: Configuration object
+        
+    Returns:
+        bool: True if preparation should be skipped
+    """
+    return (
+        cfg.processes.iceflow.method == "unified" and 
+        cfg.processes.iceflow.unified.mapping == "identity"
+    )
+
+
 def get_input_params_args(cfg) -> Dict[str, Any]:
 
     cfg_data_preparation = cfg.processes.iceflow.unified.data_preparation
@@ -61,6 +81,7 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
         "target_samples": cfg_data_preparation.target_samples,
         "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
         "noise_channels": _determine_noise_channels(cfg),
+        "skip_preparation": _should_skip_preparation(cfg),
     }
 
 

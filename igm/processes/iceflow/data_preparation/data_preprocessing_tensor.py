@@ -18,11 +18,11 @@ from .data_preprocessing import (
 )
 
 
-def create_training_tensor_from_patches(
-    patches: tf.Tensor, preparation_params: PreparationParams
-) -> Tuple[tf.Tensor, int]:
+def create_input_tensor_from_fieldin(
+    fieldin: tf.Tensor, patching, preparation_params: PreparationParams
+) -> tf.Tensor:
     """
-    Create a training tensor from pre-computed patches with fresh augmentations.
+    Create a training tensor from field input by first splitting into patches, then applying augmentations.
     Returns a tensor instead of a tf.data.Dataset for consistent XLA compilation.
 
     IMPORTANT: Augmentations are applied at most once per sample.
@@ -30,17 +30,30 @@ def create_training_tensor_from_patches(
     then apply a single augmentation pass to the entire pool.
 
     Args:
-        patches: Pre-computed patches tensor of shape [num_patches, height, width, channels]
+        fieldin: Input field tensor of shape [height, width, channels]
+        patching: Patching object that implements patch_tensor method
         preparation_params: Parameters containing augmentation and batching settings
 
     Returns:
-        tuple: (training_tensor, effective_batch_size)
-            - training_tensor: Shape [num_batches, batch_size, height, width, channels]
-            - effective_batch_size: Actual batch size used (Python int)
+        training_tensor: Shape [num_batches, batch_size, height, width, channels]
     """
+    # If skip_preparation is true, return fieldin with correct dimensions
+    if preparation_params.skip_preparation:
+        # Reshape fieldin from [height, width, channels] to [1, 1, height, width, channels]
+        # This gives us 1 batch with 1 sample
+        training_tensor = tf.expand_dims(tf.expand_dims(fieldin, 0), 0)
+
+        _print_skip_message(training_tensor)
+        return training_tensor
+    
+    # Step 1: Split fieldin into patches using the provided patching object
+    patches = patching.patch_tensor(fieldin)
+    
+    # Step 2: Continue with the existing processing pipeline
     patch_shape = tf.shape(patches)
     dtype = patches.dtype
     num_patches_t = patch_shape[0]
+    actual_patch_count = _to_py_int(num_patches_t)  # Get actual patch count as Python int
 
     training_samples = patches
 
@@ -86,7 +99,10 @@ def create_training_tensor_from_patches(
     # Batch into [num_batches, batch_size, H, W, C]
     training_tensor = _split_tensor_into_batches(training_samples, effective_batch_size)
 
-    return training_tensor, effective_batch_size
+    _print_tensor_dimensions(fieldin, training_tensor, effective_batch_size, preparation_params, actual_patch_count)
+
+
+    return training_tensor
 
 
 def _should_apply_augmentations(preparation_params: PreparationParams) -> bool:
@@ -262,6 +278,105 @@ def ensure_fixed_tensor_shape(
         tensor, [None, expected_shape[0], expected_shape[1], expected_shape[2]]
     )
 
+def _print_skip_message(training_tensor: tf.Tensor):
+    """
+    Print a minimal message when data preparation is skipped for identity mapping.
+    """
+    shape = tf.shape(training_tensor)
+    num_batches = shape[0]
+    batch_size = shape[1] 
+    height = shape[2]
+    width = shape[3]
+    channels = shape[4]
+    
+    print("\n" + "="*50)
+    print("     DATA PREPARATION SKIPPED")
+    print("="*50)
+    print("│ Reason: Identity mapping (no emulator training)")
+    print("─" * 50)
+    print(f"│ Input Tensor Shape: [{num_batches}, {batch_size}, {height}, {width}, {channels}]")
+    print("="*50)
+
+def _print_tensor_dimensions(fieldin: tf.Tensor, training_tensor: tf.Tensor, effective_batch_size: int, preparation_params: PreparationParams, actual_patch_count: int):
+    """
+    Compare input fieldin dimensions with output training tensor dimensions and 
+    explain the transformation (patching vs augmentation).
+    """
+    # Input dimensions
+    input_shape = tf.shape(fieldin)
+    input_h, input_w, input_c = input_shape[0], input_shape[1], input_shape[2]
+    
+    # Output dimensions  
+    output_shape = tf.shape(training_tensor)
+    num_batches = output_shape[0]
+    batch_size = output_shape[1] 
+    output_h = output_shape[2]
+    output_w = output_shape[3]
+    output_c = output_shape[4]
+    
+    total_samples = num_batches * batch_size
+    
+    # Determine the source of dimensional changes
+    was_patched = not (input_h == output_h and input_w == output_w)
+    
+    # Calculate additional samples beyond the actual patch count
+    additional_samples = max(0, total_samples - actual_patch_count)
+    
+    # Check if augmentations were enabled
+    has_augmentations = _should_apply_augmentations(preparation_params)
+    
+    print("\n" + "="*70)
+    print("          DATA PREPARATION SUMMARY")
+    print("="*70)
+    print(f"│ Input Dimensions     : {input_h} × {input_w} × {input_c}")
+    print(f"│ Output Dimensions    : {num_batches} × {batch_size} × {output_h} × {output_w} × {output_c}")
+    print("─" * 70)
+    
+    if was_patched:
+        print(f"│ Dimensional Change   : Patching ({input_h}×{input_w} → {output_h}×{output_w})")
+        print(f"│ Samples from Patching: {actual_patch_count} patches")
+    else:
+        print(f"│ Dimensional Change   : No patching (dimensions preserved)")
+        print(f"│ Samples from Patching: {actual_patch_count} (full image)")
+    
+    if additional_samples > 0:
+        method = "Upsampling + Augmentation" if has_augmentations else "Upsampling only"
+        print(f"│ Additional Samples   : +{additional_samples} via {method}")
+        print(f"│ Total Samples        : {total_samples} (patching + upsampling)")
+        
+        if has_augmentations:
+            # Show which augmentations were used
+            aug_list = []
+            if preparation_params.rotation_probability > 0:
+                aug_list.append(f"Rotation({preparation_params.rotation_probability:.2f})")
+            if preparation_params.flip_probability > 0:
+                aug_list.append(f"Flip({preparation_params.flip_probability:.2f})")
+            if preparation_params.noise_type != "none" and preparation_params.noise_scale > 0:
+                aug_list.append(f"{preparation_params.noise_type.title()}({preparation_params.noise_scale:.3f})")
+            
+            aug_str = ", ".join(aug_list)
+            print(f"│ Applied Augmentations: {aug_str}")
+    else:
+        print(f"│ Additional Samples   : None (using patches only)")
+        print(f"│ Total Samples        : {total_samples}")
+    
+    print("─" * 70)
+    print(f"│ Target Samples       : {preparation_params.target_samples}")
+    print(f"│ Batch Size : {effective_batch_size}")
+    print(f"│ Memory Estimate      : {_estimate_memory_mb(training_tensor):>8.1f} MB")
+    print("="*70)
+
+def _estimate_memory_mb(tensor: tf.Tensor) -> float:
+    """Estimate memory usage of tensor in MB."""
+    shape = tf.shape(tensor)
+    total_elements = tf.reduce_prod(shape)
+    
+    # Assume float32 = 4 bytes per element
+    bytes_per_element = 4
+    total_bytes = total_elements * bytes_per_element
+    mb = tf.cast(total_bytes, tf.float32) / (1024.0 * 1024.0)
+    
+    return float(mb.numpy())
 
 # ----------------
 # Small utilities

@@ -28,7 +28,7 @@ from igm.processes.iceflow.data_preparation.data_preprocessing import (
 
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
-    create_training_tensor_from_patches,
+    create_input_tensor_from_fieldin,
 )
 
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
@@ -101,7 +101,7 @@ def update_iceflow_emulator(cfg, state, fieldin, initial, it):
         nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
         patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
-        X, batch_size = create_training_tensor_from_patches(
+        X, batch_size = create_input_tensor_from_fieldin(
             patches, state.iceflow.preparation_params
         )
 
