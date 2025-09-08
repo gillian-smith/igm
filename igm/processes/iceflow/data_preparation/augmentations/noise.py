@@ -149,9 +149,21 @@ def generate_perlin_noise(shape, dtype, base_resolution=4, octaves=3, persistenc
     Returns:
         Spatially coherent noise tensor with values in [-1, 1]
     """
-    height = shape[0]
-    width = shape[1]
+    target_height = shape[0]
+    target_width = shape[1]
     n_channels = shape[-1]
+    
+    # Generate noise on a power-of-2 grid larger than the target size
+    max_dim = tf.maximum(target_height, target_width)
+    # Find next power of 2 that's >= max_dim
+    power_of_2_size = tf.cast(
+        tf.pow(2.0, tf.math.ceil(tf.math.log(tf.cast(max_dim, dtype)) / tf.math.log(2.0))),
+        tf.int32
+    )
+    
+    # Generate noise on the square power-of-2 grid
+    height = power_of_2_size
+    width = power_of_2_size
 
     octaves = tf.convert_to_tensor(octaves, dtype=tf.int32)
     persistence = tf.cast(persistence, dtype)
@@ -215,7 +227,7 @@ def generate_perlin_noise(shape, dtype, base_resolution=4, octaves=3, persistenc
 
     i0 = tf.constant(0)
     amplitude0 = tf.cast(0.8, dtype=dtype)
-    total_noise0 = tf.zeros(shape, dtype=dtype)
+    total_noise0 = tf.zeros([height, width, n_channels], dtype=dtype)
 
     def cond(i, amplitude, total_noise):
         return i < octaves
@@ -227,12 +239,15 @@ def generate_perlin_noise(shape, dtype, base_resolution=4, octaves=3, persistenc
         shape_invariants=[
             tf.TensorShape([]),  # i
             tf.TensorShape([]),  # amplitude
-            tf.TensorShape([None, None, None]),  # total_noise
+            tf.TensorShape([None, None, None]),  # total_noise (square dimensions)
         ],
     )
 
     # Scale and bound output to maximize use of [-1, 1] range
     total_noise = tf.tanh(total_noise * 1.2)
+
+    # Crop to target dimensions
+    total_noise = total_noise[:target_height, :target_width, :]
 
     return total_noise
 

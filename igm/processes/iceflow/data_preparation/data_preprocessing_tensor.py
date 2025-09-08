@@ -133,31 +133,48 @@ def _apply_augmentations_to_tensor(
 ) -> tf.Tensor:
     """
     Apply augmentations to a tensor in a compiled graph.
-    Augmentation objects and masks are created once per call (per-tensor),
-    not per-sample.
-
+    Skip augmentation entirely if no augmentations are enabled.
     """
-    # Precompute channel mask and augmentation objects once
-    channel_mask = create_channel_mask(
-        preparation_params.fieldin_names, preparation_params.noise_channels
+    # Check if any augmentations are actually enabled
+    has_rotation = preparation_params.rotation_probability > 0
+    has_flip = preparation_params.flip_probability > 0
+    has_noise = (
+        preparation_params.noise_type != "none" and preparation_params.noise_scale > 0
     )
-
-    rotation = RotationAugmentation(
-        RotationParams(probability=preparation_params.rotation_probability)
-    )
-    flip = FlipAugmentation(FlipParams(probability=preparation_params.flip_probability))
-    noise = NoiseAugmentation(
-        NoiseParams(
-            noise_type=preparation_params.noise_type,
-            noise_scale=preparation_params.noise_scale,
-            channel_mask=channel_mask,
+    
+    # If no augmentations are enabled, return tensor as-is
+    if not (has_rotation or has_flip or has_noise):
+        return tf.cast(tensor, dtype)
+    
+    # Only create augmentation objects if they're needed
+    augmentations = []
+    
+    if has_rotation:
+        rotation = RotationAugmentation(
+            RotationParams(probability=preparation_params.rotation_probability)
         )
-    )
+        augmentations.append(rotation)
+    
+    if has_flip:
+        flip = FlipAugmentation(FlipParams(probability=preparation_params.flip_probability))
+        augmentations.append(flip)
+    
+    if has_noise:
+        channel_mask = create_channel_mask(
+            preparation_params.fieldin_names, preparation_params.noise_channels
+        )
+        noise = NoiseAugmentation(
+            NoiseParams(
+                noise_type=preparation_params.noise_type,
+                noise_scale=preparation_params.noise_scale,
+                channel_mask=channel_mask,
+            )
+        )
+        augmentations.append(noise)
 
     def apply_all(x):
-        x = rotation.apply(x)
-        x = flip.apply(x)
-        x = noise.apply(x)
+        for aug in augmentations:
+            x = aug.apply(x)
         return tf.cast(x, dtype)
 
     # Vectorize across the leading (sample) dimension
