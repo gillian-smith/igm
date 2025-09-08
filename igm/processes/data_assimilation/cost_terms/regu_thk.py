@@ -88,14 +88,15 @@ def regu_thk_v2(cfg,state):
         field = state.thk
 
     # Comupute a rectification factor based on topg to favor 
-    # deep ice in the ablation (against shallow in the accumulation)
-    bal = 1 # cfg.processes.data_assimilation.regularization.abl_acc_balance
-    if bal == 1:
+    # deep ice in the ablation (against shallow in the accumulation) 
+    if cfg.processes.data_assimilation.regularization.abl_acc_balance == 1:
         rect = 1
     else:
-        umin = tf.reduce_min(state.topg[state.thkinit>0])
-        umax = tf.reduce_max(state.topg[state.thkinit>0])
-        rect = map_range(state.topg, umin, umax, 1.0/bal, bal)
+        ELA = np.percentile(state.usurf[state.usurf > 0], 66.7, method="linear")       
+        r_acc = cfg.processes.data_assimilation.regularization.abl_acc_balance
+        r_abl = 1/cfg.processes.data_assimilation.regularization.abl_acc_balance
+        w_acc = 0.5 * (1.0 + tf.math.tanh((state.usurf - ELA) / 100.0)) 
+        rect = (r_acc * w_acc + r_abl * (1.0 - w_acc))
 
     # Compute derivatives directly on 2D tensors
     kx, ky, kxx, kyy, kxy = _kernels(state.dx)           # Derivative stencils

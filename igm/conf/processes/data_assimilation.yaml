@@ -25,6 +25,7 @@ data_assimilation:
     thk_version: 1
     thk_2nd_der: 1.0e+6
     thk_1st_der: 1.0e+2
+    abl_acc_balance: 1.0
     slidingco: 1.0
     arrhenius: 10.0
     divflux: 1.0
