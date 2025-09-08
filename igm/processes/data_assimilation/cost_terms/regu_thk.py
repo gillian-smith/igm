@@ -7,6 +7,14 @@ import numpy as np
 import tensorflow as tf
 
 def regu_thk(cfg,state):
+    if cfg.processes.data_assimilation.regularization.thk_version == 1:
+        return regu_thk_v1(cfg,state)
+    elif cfg.processes.data_assimilation.regularization.thk_version == 2:
+        return regu_thk_v2(cfg,state)
+
+#######################################
+
+def regu_thk_v1(cfg,state):
 
     areaicemask = tf.reduce_sum(tf.where(state.icemask>0.5,1.0,0.0))*state.dx**2
 
@@ -69,3 +77,86 @@ def regu_thk(cfg,state):
             )
 
     return REGU_H
+
+#######################################
+
+def regu_thk_v2(cfg,state):
+
+    if cfg.processes.data_assimilation.regularization.to_regularize == 'topg':
+        field = state.usurf - state.thk
+    elif cfg.processes.data_assimilation.regularization.to_regularize == 'thk':
+        field = state.thk
+
+    # Comupute a rectification factor based on topg to favor 
+    # deep ice in the ablation (against shallow in the accumulation)
+    bal = 1 # cfg.processes.data_assimilation.regularization.abl_acc_balance
+    if bal == 1:
+        rect = 1
+    else:
+        umin = tf.reduce_min(state.topg[state.thkinit>0])
+        umax = tf.reduce_max(state.topg[state.thkinit>0])
+        rect = map_range(state.topg, umin, umax, 1.0/bal, bal)
+
+    # Compute derivatives directly on 2D tensors
+    kx, ky, kxx, kyy, kxy = _kernels(state.dx)           # Derivative stencils
+    bx  = _conv2(field, kx);  by  = _conv2(field, ky)    # Derivatives of field
+    bxx = _conv2(field, kxx); byy = _conv2(field, kyy); bxy = _conv2(field, kxy) 
+
+    if cfg.processes.data_assimilation.optimization.sole_mask:
+        bx  = tf.where( state.icemaskobs > 0.0, bx, 0.0)
+        by  = tf.where( state.icemaskobs > 0.0, by, 0.0)
+        bxx = tf.where( state.icemaskobs > 0.0, bxx, 0.0)
+        byy = tf.where( state.icemaskobs > 0.0, byy, 0.0)
+        bxy = tf.where( state.icemaskobs > 0.0, bxy, 0.0)
+
+    if cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
+        Dnn     = byy 
+        Dtautau = bxx 
+    else:
+        tx, ty = state.flowdirx, state.flowdiry   # along-flow
+        nx, ny = -ty, tx      
+        Dtautau = (tx*tx)*bxx + 2.0*(tx*ty)*bxy + (ty*ty)*byy   # along-flow curvature
+        Dnn     = (nx*nx)*bxx + 2.0*(nx*ny)*bxy + (ny*ny)*byy   # cross-flow curvature
+
+    alpha = cfg.processes.data_assimilation.regularization.thk_2nd_der
+    beta  = cfg.processes.data_assimilation.regularization.thk_1st_der
+    anis_factor = cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
+    gamma = cfg.processes.data_assimilation.regularization.convexity_weight
+ 
+    if cfg.processes.data_assimilation.optimization.fix_opti_normalization_issue:
+        J = alpha * rect * (tf.square(Dtautau) + anis_factor * tf.square(Dnn) ) \
+          + beta * (tf.square(bx) + tf.square(by))  \
+          - gamma * state.thk
+        return tf.reduce_mean( J) 
+
+    else:
+        return alpha * (tf.nn.l2_loss( tf.square(Dtautau) + anis_factor * tf.square(Dnn) )) \
+             + beta  * tf.nn.l2_loss( tf.square(bx) + tf.square(by) ) \
+             - gamma * tf.reduce_sum(state.thk) 
+    
+def map_range(x,source_min, source_max, target_min, target_max): 
+        return target_min + (x - source_min) / (source_max - source_min) * (target_max - target_min)
+ 
+def _conv2(x, k):
+    """Apply 2D convolution to a 2D tensor."""
+    # Convert 2D tensor to 4D for conv2d: [batch, height, width, channels]
+    x_4d = tf.expand_dims(tf.expand_dims(x, 0), -1)
+    
+    # Apply padding and convolution
+    pad = [[0,0], [1,1], [1,1], [0,0]]  # 1 pixel on H and W
+    x_pad = tf.pad(x_4d, pad, mode="SYMMETRIC")
+    result = tf.nn.conv2d(x_pad, k, strides=1, padding='VALID')
+    
+    # Convert back to 2D
+    return tf.squeeze(result, [0, 3])
+
+def _kernels(dx: float):
+    """3×3 central-difference stencils."""
+    kx  = tf.constant([[0.,0.,0.],[-1.,0.,1.],[0.,0.,0.]], tf.float32) / (2.0*dx)
+    ky  = tf.constant([[0.,-1.,0.],[0., 0.,0.],[0., 1.,0.]], tf.float32) / (2.0*dx)
+    kxx = tf.constant([[0.,0.,0.],[1.,-2.,1.],[0.,0.,0.]], tf.float32) / (dx*dx)
+    kyy = tf.constant([[0.,1.,0.],[0.,-2.,0.],[0.,1.,0.]], tf.float32) / (dx*dx)
+    kxy = tf.constant([[ 1., 0.,-1.],[ 0., 0., 0.],[-1., 0., 1.]], tf.float32) / (4.0*dx*dx)
+    expand = lambda K: tf.reshape(K, [3,3,1,1])
+    return expand(kx), expand(ky), expand(kxx), expand(kyy), expand(kxy)
+ 
