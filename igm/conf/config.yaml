@@ -18,9 +18,6 @@ hydra:
     - file:///${cwd} # adds cwd to the search path
   job:
     chdir: True
-#  callbacks:
-#    optuna_path:
-#      _target_: igm.utils.hydra_optuna_path_callback.OptunaPathCallback
 
 # modules:
   # order: null # this is a list of modules that will be executed in order
