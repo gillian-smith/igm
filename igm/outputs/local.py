@@ -144,8 +144,10 @@ def update_netcdf_ex(cfg,state):
 
         # concat and write again
         ds_concat = xr.concat([ds_existing, new_data], dim="time")
+        ds_existing.close()         # <-- close before deleting
         os.remove(file_path)
         ds_concat.to_netcdf(file_path, mode="w")  # overwrite safely
+        ds_concat.close()           # <-- good practice to close the new dataset too
 
 #########################################################
 
