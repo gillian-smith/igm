@@ -23,7 +23,10 @@ class InterfaceIdentity(InterfaceMapping):
         U_guess = tf.zeros((1, Nz, Ny, Nx))
         V_guess = tf.zeros((1, Nz, Ny, Nx))
 
+        bcs = cfg.processes.iceflow.unified.bcs
+
         return {
+            "bcs": bcs,
             "U_guess": U_guess,
             "V_guess": V_guess,
         }
