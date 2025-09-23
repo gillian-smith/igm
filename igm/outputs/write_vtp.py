@@ -94,7 +94,7 @@ def run(cfg, state):
 
             filename = os.path.join(
                 "trajectories",
-                "traj-" + "{:08.2f}".format(state.t.numpy()).replace('.', '-') + ".vtp",
+                "traj-" + "{:06d}".format(int(state.t.numpy())) + ".vtp",
             )
 
             # Compute positions
