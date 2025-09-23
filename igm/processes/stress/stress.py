@@ -36,7 +36,8 @@ def update(cfg, state):
 
     Exx, Eyy, Ezz, Exy, Exz, Eyz = compute_strainratetensor_tf(state.U, state.V, state.dx, dz, thr=1.0)
 
-    strainrate = 0.5 * ( Exx**2 + Exy**2 + Exz**2 + Exy**2 + Eyy**2 + Eyz**2 + Exz**2 + Eyz**2 + Ezz**2 ) ** 0.5
+    strainrate = 0.5 * ( Exx**2 + Exy**2 + Exz**2 + Exy**2 + Eyy**2 + Eyz**2 + Exz**2 + Eyz**2 + Ezz**2
+                      + cfg.processes.iceflow.physics.regu_glen**2 ) ** 0.5
 
     mu = 0.5 * B * strainrate ** (1.0 /  cfg.processes.iceflow.physics.exp_glen - 1)
 
@@ -98,28 +99,107 @@ def compute_largest_eigenvalue_trace0_sym3x3(tau_xx, tau_yy, tau_zz,
 
     return lambda_max
 
+# @tf.function()
+# def compute_strainratetensor_tf(U, V, dx, dz, thr):
+ 
+#     Ui = tf.pad(U[:, :, :], [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
+#     Uj = tf.pad(U[:, :, :], [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
+#     Uk = tf.pad(U[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+
+#     Vi = tf.pad(V[:, :, :], [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
+#     Vj = tf.pad(V[:, :, :], [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
+#     Vk = tf.pad(V[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+
+#     DZ2 = tf.concat([dz[0:1], dz[:-1] + dz[1:], dz[-1:]], axis=0)
+
+#     Exx = (Ui[:, :, 2:] - Ui[:, :, :-2]) / (2 * dx)
+#     Eyy = (Vj[:, 2:, :] - Vj[:, :-2, :]) / (2 * dx)
+#     Ezz = -Exx - Eyy
+
+#     Exy = 0.5 * (Vi[:, :, 2:] - Vi[:, :, :-2]) / (2 * dx) + 0.5 * (
+#         Uj[:, 2:, :] - Uj[:, :-2, :]
+#     ) / (2 * dx)
+#     Exz = 0.5 * (Uk[2:, :, :] - Uk[:-2, :, :]) / tf.maximum(DZ2, thr)
+#     Eyz = 0.5 * (Vk[2:, :, :] - Vk[:-2, :, :]) / tf.maximum(DZ2, thr)
+
+#     Exx = tf.where(DZ2 > 1, Exx, 0.0)
+#     Eyy = tf.where(DZ2 > 1, Eyy, 0.0)
+#     Ezz = tf.where(DZ2 > 1, Ezz, 0.0)
+#     Exy = tf.where(DZ2 > 1, Exy, 0.0)
+#     Exz = tf.where(DZ2 > 1, Exz, 0.0)
+#     Eyz = tf.where(DZ2 > 1, Eyz, 0.0)
+
+#     return Exx, Eyy, Ezz, Exy, Exz, Eyz
+
+
 @tf.function()
 def compute_strainratetensor_tf(U, V, dx, dz, thr):
- 
-    Ui = tf.pad(U[:, :, :], [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
-    Uj = tf.pad(U[:, :, :], [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
-    Uk = tf.pad(U[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+    """
+    Compute strain-rate tensor components using 4th-order central differences.
+    U: velocity in x-direction (tensor [nz, ny, nx] or [batch,...])
+    V: velocity in y-direction
+    dx: grid spacing (assumed isotropic in x,y)
+    dz: vertical grid spacing (1D tensor along z)
+    thr: threshold to avoid division by very small dz
+    """
 
-    Vi = tf.pad(V[:, :, :], [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
-    Vj = tf.pad(V[:, :, :], [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
-    Vk = tf.pad(V[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+    def deriv4(f, axis, d):
+        """
+        4th-order central difference along given axis
+        f: tensor [nz, ny, nx]
+        axis: 0 (z), 1 (y), 2 (x)
+        d: spacing (scalar or tensor)
+        """
+
+        # Pad with 2 points on each side
+        paddings = [[0,0]] * len(f.shape)
+        paddings[axis] = [2,2]
+        fpad = tf.pad(f, paddings, mode="SYMMETRIC")
+
+        # Promote to [batch, depth, height, width, channels]
+        fpad5 = fpad[None, ..., None]   # shape [1, nz+4, ny+4, nx+4, 1]
+
+        # Stencil coefficients
+        coeffs = tf.constant([-1, 8, 0, -8, 1], dtype=f.dtype) / (12.0*d)
+
+        # Build kernel for 3D conv
+        kernel_shape = [1,1,1]
+        kernel_shape[axis] = 5
+        kernel = tf.reshape(coeffs, kernel_shape + [1,1])  # [kz, ky, kx, inC, outC]
+
+        # Convolution
+        deriv5 = tf.nn.conv3d(fpad5, kernel, strides=[1,1,1,1,1], padding="VALID")
+
+        # Back to [nz, ny, nx]
+        return deriv5[0, ..., 0]
+    
 
     DZ2 = tf.concat([dz[0:1], dz[:-1] + dz[1:], dz[-1:]], axis=0)
 
-    Exx = (Ui[:, :, 2:] - Ui[:, :, :-2]) / (2 * dx)
-    Eyy = (Vj[:, 2:, :] - Vj[:, :-2, :]) / (2 * dx)
+    Uk = tf.pad(U[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+    Vk = tf.pad(V[:, :, :], [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+
+    # Derivatives
+    Exx = deriv4(U, axis=2, d=dx)   # du/dx
+    Eyy = deriv4(V, axis=1, d=dx)   # dv/dy
+
+    # Incompressibility assumption for vertical strain rate
     Ezz = -Exx - Eyy
 
-    Exy = 0.5 * (Vi[:, :, 2:] - Vi[:, :, :-2]) / (2 * dx) + 0.5 * (
-        Uj[:, 2:, :] - Uj[:, :-2, :]
-    ) / (2 * dx)
+    # Shear components
+    Exy = 0.5*(deriv4(U, axis=1, d=dx) + deriv4(V, axis=2, d=dx))
     Exz = 0.5 * (Uk[2:, :, :] - Uk[:-2, :, :]) / tf.maximum(DZ2, thr)
     Eyz = 0.5 * (Vk[2:, :, :] - Vk[:-2, :, :]) / tf.maximum(DZ2, thr)
+
+    # # Mask out layers with invalid dz
+    # mask = tf.cast(tf.greater(dz, 1.0), tf.dtype)  # shape [nz]
+    # mask = tf.reshape(mask, [-1,1,1])             # broadcast to 3D
+    # Exx *= mask
+    # Eyy *= mask
+    # Ezz *= mask
+    # Exy *= mask
+    # Exz *= mask
+    # Eyz *= mask
 
     Exx = tf.where(DZ2 > 1, Exx, 0.0)
     Eyy = tf.where(DZ2 > 1, Eyy, 0.0)
@@ -127,8 +207,5 @@ def compute_strainratetensor_tf(U, V, dx, dz, thr):
     Exy = tf.where(DZ2 > 1, Exy, 0.0)
     Exz = tf.where(DZ2 > 1, Exz, 0.0)
     Eyz = tf.where(DZ2 > 1, Eyz, 0.0)
-
-    return Exx, Eyy, Ezz, Exy, Exz, Eyz
-
-
  
+    return Exx, Eyy, Ezz, Exy, Exz, Eyz

@@ -22,6 +22,34 @@ def cost_shear(cfg, U, V, fieldin, vert_disc, staggered_grid):
     return _cost_shear(U, V, thk, usurf, arrhenius, slidingco, dX, zeta, dzeta, Leg_P, Leg_dPdz,
                        exp_glen, regu_glen, thr_ice_thk, min_sr, max_sr,  staggered_grid, vert_basis)
 
+def deriv4_axis(f, axis, dx):
+    """
+    4th-order central finite difference along one spatial axis.
+    Preserves shape [batch, nz, ny, nx].
+    axis = 2 (y) or 3 (x).
+    """
+    paddings = [[0,0]] * len(f.shape)
+    paddings[axis] = [2,2]   # pad 2 cells on this axis
+    fpad = tf.pad(f, paddings, mode="SYMMETRIC")
+
+    # reshape to 4D image: merge (batch,nz) into batch
+    b, nz, ny, nx = f.shape
+    f2d = tf.reshape(fpad, [b*nz, ny+(4 if axis==2 else 0), nx+(4 if axis==3 else 0), 1])
+
+    if axis == 3:   # derivative wrt x
+        coeffs = tf.constant([-1, 8, 0, -8, 1], dtype=f.dtype) / (12.0*dx)
+        kernel = tf.reshape(coeffs, [1, 5, 1, 1])  # [kh, kw, inC, outC]
+        deriv = tf.nn.conv2d(f2d, kernel, strides=[1,1,1,1], padding="VALID")
+
+    elif axis == 2: # derivative wrt y
+        coeffs = tf.constant([-1, 8, 0, -8, 1], dtype=f.dtype) / (12.0*dx)
+        kernel = tf.reshape(coeffs, [5, 1, 1, 1])  # [kh, kw, inC, outC]
+        deriv = tf.nn.conv2d(f2d, kernel, strides=[1,1,1,1], padding="VALID")
+
+    # back to [batch, nz, ny, nx]
+    deriv = tf.reshape(deriv, [b, nz, ny, nx])
+    return deriv
+
 @tf.function()
 def compute_horizontal_derivatives(U, V, dx, staggered_grid):
 
@@ -47,6 +75,11 @@ def compute_horizontal_derivatives(U, V, dx, staggered_grid):
         dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dx)
         dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dx)
         dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dx)
+
+        # dUdx = deriv4_axis(U, axis=3, dx=dx)  # du/dx
+        # dVdx = deriv4_axis(V, axis=3, dx=dx)  # dv/dx
+        # dUdy = deriv4_axis(U, axis=2, dx=dx)  # du/dy
+        # dVdy = deriv4_axis(V, axis=2, dx=dx)  # dv/dy
 
     return dUdx, dVdx, dUdy, dVdy
 
