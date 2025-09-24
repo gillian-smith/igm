@@ -4,9 +4,6 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-import itertools
-import time
-from collections import deque
 from typing import Callable
 
 from ..mappings import Mapping
@@ -112,21 +109,30 @@ class OptimizerLBFGS(Optimizer):
         n_batches = inputs.shape[0]
         if n_batches > 1:
             raise NotImplementedError(
-                "❌ Multiple batches is not compatible with the LBFGS optimizer, check data preparation settings and ensure everything fits into one batch."
-                + f"n_batches = {n_batches}."
+                "❌ Multiple batches is not compatible with the LBFGS optimizer, "
+                + "check data preparation settings and ensure everything fits into one batch "
+                + f"(n_batches = {n_batches})."
             )
         input = inputs[0, :, :, :, :]
 
         # Initial state
         w_flat = self.map.flatten_w(self.map.get_w())
         U, V = self.map.get_UV(inputs[0, :, :, :])
-        history = deque(maxlen=self.memory)
 
-        # Evaluate at intial point
+        # Evaluate at initial point
         cost, grad_u, grad_w = self._get_grad(input)
         grad_w_flat = self.map.flatten_w(grad_w)
 
-        costs = tf.TensorArray(dtype=tf.float32, size=int(self.iter_max))
+        # Pre-allocate structures related to memory handling
+        w_dim = tf.shape(w_flat)[0]
+        idx_memory = tf.constant(0, dtype=w_dim.dtype)
+        s = tf.zeros([w_dim], dtype=w_flat.dtype)
+        y = tf.zeros([w_dim], dtype=w_flat.dtype)
+        s_flat = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
+        y_flat = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
+
+        # Pre-allocate costs
+        costs = tf.TensorArray(dtype=w_flat.dtype, size=self.iter_max)
 
         for iter in tf.range(self.iter_max):
             # Save previous solution
@@ -136,12 +142,13 @@ class OptimizerLBFGS(Optimizer):
             grad_w_flat_prev = grad_w_flat
 
             # Compute direction
-            if history:
-                s_tensor = tf.stack([s for s, _ in history])
-                y_tensor = tf.stack([y for _, y in history])
-                p_flat = self._two_loop_recursion(grad_w_flat, s_tensor, y_tensor)
-            else:
-                p_flat = -grad_w_flat
+            p_flat = tf.cond(
+                idx_memory > 0,
+                lambda: self._two_loop_recursion(
+                    grad_w_flat, s_flat[:idx_memory], y_flat[:idx_memory]
+                ),
+                lambda: -grad_w_flat,
+            )
 
             # Line search
             alpha = self._line_search(w_flat, p_flat, input)
@@ -158,8 +165,32 @@ class OptimizerLBFGS(Optimizer):
             # Update history
             s = w_flat - w_flat_prev
             y = grad_w_flat - grad_w_flat_prev
-            if tf.tensordot(y, s, axes=1) > 1e-10:
-                history.append((s, y))
+
+            cond_update = tf.tensordot(y, s, 1) > 1e-10
+
+            def memory_append():
+                return (
+                    tf.tensor_scatter_nd_update(s_flat, [[idx_memory]], [s]),
+                    tf.tensor_scatter_nd_update(y_flat, [[idx_memory]], [y]),
+                    idx_memory + 1,
+                )
+
+            def memory_circ_add():
+                return (
+                    tf.concat([s_flat[1:], tf.expand_dims(s, 0)], axis=0),
+                    tf.concat([y_flat[1:], tf.expand_dims(y, 0)], axis=0),
+                    idx_memory,
+                )
+
+            s_flat, y_flat, idx_memory = tf.cond(
+                cond_update,
+                lambda: tf.cond(
+                    idx_memory < self.memory,
+                    memory_append,
+                    memory_circ_add,
+                ),
+                lambda: (s_flat, y_flat, idx_memory),
+            )
 
             # Post-process
             U, V = self.map.get_UV(input)
