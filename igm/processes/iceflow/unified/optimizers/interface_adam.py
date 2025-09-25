@@ -29,6 +29,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "lr": cfg_unified.lr,
             "iter_max": cfg_unified.nbit,
             "print_cost": cfg_unified.print_cost,
+            "print_cost_freq": cfg_unified.print_cost_freq,
         }
 
     @staticmethod

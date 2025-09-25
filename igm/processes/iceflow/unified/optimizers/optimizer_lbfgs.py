@@ -18,15 +18,15 @@ class OptimizerLBFGS(Optimizer):
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        print_cost: bool,
+        print_cost_freq: int,
         line_search_method: str,
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
-        print_cost: bool = False,
     ):
-        super().__init__(cost_fn, map)
+        super().__init__(cost_fn, map, print_cost, print_cost_freq)
         self.name = "lbfgs"
-        self.print_cost = print_cost
 
         self.line_search = LineSearches[line_search_method]()
         self.iter_max = tf.Variable(iter_max)
@@ -104,7 +104,7 @@ class OptimizerLBFGS(Optimizer):
         return self.line_search.search(w_flat, p_flat, value_and_gradients_function)
 
     @tf.function(jit_compile=False)
-    def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+    def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
 
         n_batches = inputs.shape[0]
         if n_batches > 1:
@@ -195,9 +195,7 @@ class OptimizerLBFGS(Optimizer):
             # Post-process
             U, V = self.map.get_UV(input)
 
-            if self.print_cost:
-                tf.print("Iteration", iter + 1, "/", self.iter_max, end=" ")
-                tf.print(": Cost =", cost)
+            self._progress_update(iter, cost)
 
             costs = costs.write(iter, cost)
 

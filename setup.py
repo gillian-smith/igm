@@ -49,5 +49,6 @@ setup(
         "omegaconf",
         "nvtx",
         "typeguard",
+        "rich",
     ],
 )

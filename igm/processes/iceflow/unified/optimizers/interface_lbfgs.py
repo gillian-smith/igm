@@ -31,6 +31,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
             "alpha_min": cfg_unified.lbfgs.alpha_min,
             "memory": cfg_unified.lbfgs.memory,
             "print_cost": cfg_unified.print_cost,
+            "print_cost_freq": cfg_unified.print_cost_freq,
         }
 
     @staticmethod

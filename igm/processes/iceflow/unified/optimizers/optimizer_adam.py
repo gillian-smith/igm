@@ -4,8 +4,6 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-import itertools
-import time
 from typing import Callable
 
 from ..mappings import Mapping
@@ -19,13 +17,14 @@ class OptimizerAdam(Optimizer):
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        print_cost: bool,
+        print_cost_freq: int,
         lr: float = 1e-3,
         iter_max: int = int(1e5),
-        print_cost: bool = False,
         lr_decay: float = 0.0,
         lr_decay_steps: int = 1000,
     ):
-        super().__init__(cost_fn, map)
+        super().__init__(cost_fn, map, print_cost, print_cost_freq)
         self.name = "adam"
         self.print_cost = print_cost
 
@@ -55,7 +54,7 @@ class OptimizerAdam(Optimizer):
         self.lr_decay_steps = lr_decay_steps
 
     @tf.function(jit_compile=False)
-    def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+    def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
 
         # Initial state
         w = self.map.get_w()
@@ -89,9 +88,7 @@ class OptimizerAdam(Optimizer):
 
             iter_cost = tf.reduce_mean(batch_costs.stack())
 
-            if self.print_cost:
-                tf.print("Iteration", iter + 1, "/", self.iter_max, end=" ")
-                tf.print(": Cost =", iter_cost)
+            self._progress_update(iter, iter_cost)
 
             costs = costs.write(iter, iter_cost)
 

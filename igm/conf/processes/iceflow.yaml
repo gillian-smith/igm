@@ -81,6 +81,7 @@ iceflow:
     optimizer_epsilon: 1.0e-07
     perturbate: false
     print_cost: false
+    print_cost_freq: 1
     split_patch_method: sequential
     framesizemax: 750
     exclude_borders: 0
