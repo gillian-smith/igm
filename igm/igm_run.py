@@ -46,23 +46,6 @@ from hydra.core.hydra_config import HydraConfig
 import numpy as np
 from datetime import datetime
 
-
-def calculate_objective_score(state, cfg):
-    """
-    Calculate the objective score to minimize.
-    Combines cost and runtime into a single metric.
-    """
-    if not hasattr(state, "cost") or len(state.cost) == 0:
-        return float("inf")  # Return worst possible score if no cost data
-
-    # Get final cost (average of last 50 iterations or all if less than 50)
-    cost_array = np.array(state.cost)
-    n_avg = min(50, len(cost_array))
-    final_cost = np.mean(cost_array[-n_avg:])
-
-    return float(final_cost)
-
-
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     # os.environ['XLA_FLAGS'] = '--xla_gpu_cudnn_gemm_fusion=1'
@@ -163,10 +146,10 @@ def main(cfg: DictConfig) -> None:
         state.end_time = datetime.now()
         state.runtime = (state.end_time - state.start_time).total_seconds()
 
-        # Calculate objective score
-        objective_score = calculate_objective_score(state, cfg)
-
-        return objective_score
+        if hasattr(state, "score"):
+            return state.score
+        else:
+            return float("inf")
 
     except Exception as e:
         print(f"Trial failed with error: {e}")
