@@ -14,7 +14,6 @@ from .utils import get_cost_fn
 
 from igm.processes.iceflow.data_preparation.data_preprocessing import (
     PreparationParams,
-    calculate_expected_dimensions,
     get_input_params_args,
 )
 

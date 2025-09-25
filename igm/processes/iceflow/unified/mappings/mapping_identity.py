@@ -4,17 +4,18 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Tuple
+from typing import List, Tuple
 
 from .mapping import Mapping
 
 
 class MappingIdentity(Mapping):
-    def __init__(self, U_guess: tf.Tensor, V_guess: tf.Tensor):
+    def __init__(self, bcs: List[str], U_guess: tf.Tensor, V_guess: tf.Tensor):
 
         if U_guess.shape != V_guess.shape:
             raise ValueError("❌ U_guess and V_guess must have the same shape.")
 
+        super().__init__(bcs)
         self.shape = U_guess.shape
         self.type = U_guess.dtype
         self.U = tf.Variable(U_guess, trainable=True)

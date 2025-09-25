@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Tuple
+from typing import List, Tuple
 
 from .mapping import Mapping
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
@@ -13,10 +13,12 @@ from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 class MappingNetwork(Mapping):
     def __init__(
         self,
+        bcs: List[str],
         network: tf.keras.Model,
         Nz: tf.Tensor,
         output_scale: tf.Tensor = 1.0,
     ):
+        super().__init__(bcs)
         self.network = network
         self.Nz = Nz
         self.output_scale = output_scale

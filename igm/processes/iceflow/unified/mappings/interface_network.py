@@ -87,6 +87,7 @@ class InterfaceNetwork(InterfaceMapping):
         state.iceflow_model.compile(jit_compile=True)
 
         return {
+            "bcs": cfg_unified.bcs,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,

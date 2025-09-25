@@ -48,6 +48,7 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
+    bcs: []
     inputs: [thk, usurf, arrhenius, slidingco, dX]
     inputs_scales: 
       thk: 1.0
