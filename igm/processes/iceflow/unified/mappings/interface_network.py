@@ -17,6 +17,26 @@ from igm.processes.iceflow.emulate.utils.misc import (
 from .interface import InterfaceMapping
 from igm.processes.iceflow.emulate.utils.networks import cnn, unet, build_norm_layer
 
+def _process_inputs_scales(inputs_scales, inputs_list):
+    """
+    Convert inputs_scales dictionary to a numpy array in the order of inputs_list.
+    
+    Args:
+        inputs_scales: Dict mapping field names to scales
+        inputs_list: List of input field names in order
+        
+    Returns:
+        numpy array of scales in the same order as inputs_list
+    """
+    scales_array = []
+    for field_name in inputs_list:
+        if field_name in inputs_scales:
+            scales_array.append(inputs_scales[field_name])
+        else:
+            # Default to 1.0 if not specified
+            scales_array.append(1.0)
+            warnings.warn(f"Scale not specified for field '{field_name}', using default value 1.0")
+    return np.array(scales_array)
 
 class InterfaceNetwork(InterfaceMapping):
 
@@ -38,10 +58,13 @@ class InterfaceNetwork(InterfaceMapping):
             )
             nb_outputs = 2 * cfg_numerics.Nz
 
-            if np.all(cfg_unified.inputs_scales == 1):
+            # Convert inputs_scales to proper format
+            scales_array = _process_inputs_scales(cfg_unified.inputs_scales, cfg_unified.inputs)
+
+            if np.all(scales_array == 1):
                 norm = None
             else:
-                norm = build_norm_layer(cfg, nb_inputs, cfg_unified.inputs_scales)
+                norm = build_norm_layer(cfg, nb_inputs, scales_array)
 
             # Get the architecture function dynamically
             architecture_name = cfg_unified.network.architecture
@@ -68,3 +91,5 @@ class InterfaceNetwork(InterfaceMapping):
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,
         }
+
+    
