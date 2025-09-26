@@ -16,6 +16,19 @@ from .data_preprocessing import (
     create_channel_mask,
     _calculate_memory_constraints,
 )
+from rich.theme import Theme
+from rich.console import Console
+
+data_prep_theme = Theme(
+    {
+        "label": "bold #e5e7eb",
+        "value.samples": "#f59e0b",
+        "value.dimensions": "#06b6d4", 
+        "value.augmentation": "#a78bfa",
+        "value.memory": "#22c55e",
+        "bar.complete": "#22c55e",
+    }
+)
 
 
 def create_input_tensor_from_fieldin(
@@ -282,6 +295,8 @@ def _print_skip_message(training_tensor: tf.Tensor):
     """
     Print a minimal message when data preparation is skipped for identity mapping.
     """
+    console = Console(theme=data_prep_theme)
+    
     shape = tf.shape(training_tensor)
     num_batches = shape[0]
     batch_size = shape[1] 
@@ -289,19 +304,19 @@ def _print_skip_message(training_tensor: tf.Tensor):
     width = shape[3]
     channels = shape[4]
     
-    print("\n" + "="*50)
-    print("     DATA PREPARATION SKIPPED")
-    print("="*50)
-    print("│ Reason: Identity mapping (no emulator training)")
-    print("─" * 50)
-    print(f"│ Input Tensor Shape: [{num_batches}, {batch_size}, {height}, {width}, {channels}]")
-    print("="*50)
+    console.print()
+    console.print("🚫 [label]DATA PREPARATION SKIPPED[/]", justify="center")
+    console.print("[label]Reason:[/] Identity mapping (no emulator training)")
+    console.print(f"[label]Output Shape:[/] [value.dimensions][{num_batches}, {batch_size}, {height}, {width}, {channels}][/]")
+    console.print()
 
 def _print_tensor_dimensions(fieldin: tf.Tensor, training_tensor: tf.Tensor, effective_batch_size: int, preparation_params: PreparationParams, actual_patch_count: int):
     """
     Compare input fieldin dimensions with output training tensor dimensions and 
     explain the transformation (patching vs augmentation).
     """
+    console = Console(theme=data_prep_theme)
+    
     # Input dimensions
     input_shape = tf.shape(fieldin)
     input_h, input_w, input_c = input_shape[0], input_shape[1], input_shape[2]
@@ -325,47 +340,45 @@ def _print_tensor_dimensions(fieldin: tf.Tensor, training_tensor: tf.Tensor, eff
     # Check if augmentations were enabled
     has_augmentations = _should_apply_augmentations(preparation_params)
     
-    print("\n" + "="*70)
-    print("          DATA PREPARATION SUMMARY")
-    print("="*70)
-    print(f"│ Input Dimensions     : {input_h} × {input_w} × {input_c}")
-    print(f"│ Output Dimensions    : {num_batches} × {batch_size} × {output_h} × {output_w} × {output_c}")
-    print("─" * 70)
+    console.print()
+    console.print("📊 [label]DATA PREPARATION SUMMARY[/]", justify="center")
     
+    # Input/Output comparison
+    console.print(f"[label]Input:[/] [value.dimensions]{input_h} × {input_w} × {input_c}[/] [label]→[/] [value.dimensions]{num_batches} × {batch_size} × {output_h} × {output_w} × {output_c}[/]")
+    
+    # Patching information
     if was_patched:
-        print(f"│ Dimensional Change   : Patching ({input_h}×{input_w} → {output_h}×{output_w})")
-        print(f"│ Samples from Patching: {actual_patch_count} patches")
+        console.print(f"[label]Patching:[/] [value.dimensions]{input_h}×{input_w} → {output_h}×{output_w}[/] [label]•[/] [value.samples]{actual_patch_count} patches[/]")
     else:
-        print(f"│ Dimensional Change   : No patching (dimensions preserved)")
-        print(f"│ Samples from Patching: {actual_patch_count} (full image)")
+        console.print(f"[label]Patching:[/] None (dimensions preserved) [label]•[/] [value.samples]{actual_patch_count} samples[/]")
     
+    # Sample generation
     if additional_samples > 0:
-        method = "Upsampling + Augmentation" if has_augmentations else "Upsampling only"
-        print(f"│ Additional Samples   : +{additional_samples} via {method}")
-        print(f"│ Total Samples        : {total_samples} (patching + upsampling)")
+        method_icon = "🔄" if has_augmentations else "📋"
+        method_text = "Upsampling + Augmentation" if has_augmentations else "Upsampling only"
+        console.print(f"[label]Generation:[/] {method_icon} [value.samples]+{additional_samples}[/] via {method_text}")
         
         if has_augmentations:
             # Show which augmentations were used
-            aug_list = []
+            aug_parts = []
             if preparation_params.rotation_probability > 0:
-                aug_list.append(f"Rotation({preparation_params.rotation_probability:.2f})")
+                aug_parts.append(f"🔄Rotation({preparation_params.rotation_probability:.2f})")
             if preparation_params.flip_probability > 0:
-                aug_list.append(f"Flip({preparation_params.flip_probability:.2f})")
+                aug_parts.append(f"🔀Flip({preparation_params.flip_probability:.2f})")
             if preparation_params.noise_type != "none" and preparation_params.noise_scale > 0:
-                aug_list.append(f"{preparation_params.noise_type.title()}({preparation_params.noise_scale:.3f})")
+                aug_parts.append(f"🎲{preparation_params.noise_type.title()}({preparation_params.noise_scale:.3f})")
             
-            aug_str = ", ".join(aug_list)
-            print(f"│ Applied Augmentations: {aug_str}")
+            aug_str = " [label]•[/] ".join(aug_parts)
+            console.print(f"[label]Augmentations:[/] [value.augmentation]{aug_str}[/]")
     else:
-        print(f"│ Additional Samples   : None (using patches only)")
-        print(f"│ Total Samples        : {total_samples}")
+        console.print(f"[label]Generation:[/] None (using patches only)")
     
-    print("─" * 70)
-    print(f"│ Target Samples       : {preparation_params.target_samples}")
-    print(f"│ Batch Size : {effective_batch_size}")
-    print(f"│ Memory Estimate      : {_estimate_memory_mb(training_tensor):>8.1f} MB")
-    print("="*70)
-
+    # Summary stats
+    memory_mb = _estimate_memory_mb(training_tensor)
+    console.print(f"[label]Total Samples:[/] [value.samples]{total_samples}[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/] [label]•[/] [label]Memory:[/] [value.memory]{memory_mb:.1f} MB[/]")
+    console.print(f"[label]Target:[/] [value.samples]{preparation_params.target_samples}[/]")
+    console.print()
+    
 def _estimate_memory_mb(tensor: tf.Tensor) -> float:
     """Estimate memory usage of tensor in MB."""
     shape = tf.shape(tensor)
