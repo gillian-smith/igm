@@ -27,6 +27,7 @@ data_prep_theme = Theme(
         "value.augmentation": "#a78bfa",
         "value.memory": "#22c55e",
         "bar.complete": "#22c55e",
+        "value.brackets": "italic #64748b", 
     }
 )
 
@@ -344,9 +345,8 @@ def _print_tensor_dimensions(fieldin: tf.Tensor, training_tensor: tf.Tensor, eff
     console.print("📊 [label]DATA PREPARATION SUMMARY[/]", justify="center")
     
     # Input/Output comparison
-    console.print(f"[label]Input:[/] [value.dimensions]{input_h} × {input_w} × {input_c}[/] [label]→[/] [value.dimensions]{num_batches} × {batch_size} × {output_h} × {output_w} × {output_c}[/]")
+    console.print(f"[label]Input:[/] [value.dimensions]{input_h} × {input_w} × {input_c}[/] [label]→[/] [value.dimensions]{num_batches}[/] [value.brackets](batches)[/] [value.dimensions]× {batch_size}[/] [value.brackets](samples)[/] [value.dimensions]× {output_h}[/] [value.brackets](height)[/] [value.dimensions]× {output_w}[/] [value.brackets](width)[/] [value.dimensions]× {output_c}[/] [value.brackets](inputs)[/]")    # Patching information
     
-    # Patching information
     if was_patched:
         console.print(f"[label]Patching:[/] [value.dimensions]{input_h}×{input_w} → {output_h}×{output_w}[/] [label]•[/] [value.samples]{actual_patch_count} patches[/]")
     else:
