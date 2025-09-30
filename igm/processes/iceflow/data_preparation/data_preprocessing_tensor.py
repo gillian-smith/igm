@@ -315,7 +315,17 @@ def _print_tensor_dimensions(fieldin: tf.Tensor, training_tensor: tf.Tensor, eff
     """
     Compare input fieldin dimensions with output training tensor dimensions and 
     explain the transformation (patching vs augmentation).
+    Only prints on first call to avoid cluttering output during optimization.
     """
+    # Track first call using function attribute (graph-friendly)
+    if not hasattr(_print_tensor_dimensions, '_first_call_done'):
+        _print_tensor_dimensions._first_call_done = False
+    
+    if _print_tensor_dimensions._first_call_done:
+        return  # Skip printing on subsequent calls
+    
+    _print_tensor_dimensions._first_call_done = True
+    
     console = Console(theme=data_prep_theme)
     
     # Input dimensions

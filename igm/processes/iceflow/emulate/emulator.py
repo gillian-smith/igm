@@ -100,9 +100,11 @@ def update_iceflow_emulator(cfg, state, fieldin, initial, it):
     if initial or run_it or warm_up:
         nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
-        patches = split_fieldin_to_patches(cfg, fieldin, state.iceflow.patching)
-        X, batch_size = create_input_tensor_from_fieldin(
-            patches, state.iceflow.preparation_params
+        X = create_input_tensor_from_fieldin(
+            fieldin, state.iceflow.patching, state.iceflow.preparation_params
+        )
+        _, _, batch_size = calculate_expected_dimensions(
+            state.thk.shape[0], state.thk.shape[1], state.iceflow.preparation_params
         )
 
         bag = get_emulator_bag(state, nbit, lr, batch_size)
