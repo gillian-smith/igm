@@ -46,7 +46,7 @@ jobs:
       run: pip install dist/*.whl
     - name: Run tests
       run: |
-        pip install pytest
+        pip install pytest pytest-sugar
         python -c "import os; print(os.getcwd())"
         cd tests
         python -m pytest -W ignore::DeprecationWarning -p no:cacheprovider
