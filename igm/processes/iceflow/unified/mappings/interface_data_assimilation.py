@@ -33,7 +33,12 @@ class InterfaceDataAssimilation(InterfaceMapping):
             transform = str(item.get("transform", "identity")).lower()
             if transform not in ("identity", "log10"):
                 raise ValueError(f"❌ Unsupported transform '{transform}' for '{name}'.")
-            specs.append(VariableSpec(name=name, transform=transform))
+            lb = item.get("lower_bound", None)
+            ub = item.get("upper_bound", None)
+            # Normalize "None"/"null" strings if they appear
+            if isinstance(lb, str) and lb.lower() in ("none", "null"): lb = None
+            if isinstance(ub, str) and ub.lower() in ("none", "null"): ub = None
+            specs.append(VariableSpec(name=name, transform=transform, lower_bound=lb, upper_bound=ub))
         return specs
 
 
