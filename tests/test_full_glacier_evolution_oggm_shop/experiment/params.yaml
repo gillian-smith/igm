@@ -17,7 +17,6 @@ defaults:
 inputs:
   oggm_shop:
     RGI_ID: RGI60-11.01238
-    RGI_version: 6
 
 processes:
   smb_simple:
@@ -39,7 +38,6 @@ processes:
       - 2.0
   iceflow:
     physics:
-      new_friction_param: true
       dim_arrhenius: 2
       init_slidingco: 0.1
   time:

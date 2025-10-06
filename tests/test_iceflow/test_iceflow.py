@@ -2,11 +2,13 @@ import igm, os
 import tensorflow as tf
 import pytest
  
-def test_iceflow():
-    
-    state = igm.State()
+import igm, os
 
-    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+def test_iceflow():
+
+    state = igm.common.State()
+    from igm.common.runner.configuration.loader import load_yaml_recursive
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
     Ny,Nx = 40,30
 

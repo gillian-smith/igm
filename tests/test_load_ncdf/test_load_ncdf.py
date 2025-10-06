@@ -2,18 +2,19 @@ import igm
 import tensorflow as tf
 import pytest
 import numpy as np
-from make_fake_ncdf import write_ncdf
+from .make_fake_ncdf import write_ncdf
 import os
  
 def test_load_ncdf():
     
     write_ncdf()
  
-    state = igm.State()
+    state = igm.common.State()
 
     state.original_cwd = ""
 
-    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+    from igm.common.runner.configuration.loader import load_yaml_recursive
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
     
     cfg.core.folder_data = ""
     cfg.inputs.load_ncdf.input_file = 'input.nc'

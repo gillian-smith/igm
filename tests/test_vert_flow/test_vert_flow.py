@@ -4,9 +4,10 @@ import pytest
 
 def test_vert_flow():
     
-    state = igm.State()
+    state = igm.common.State()
 
-    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+    from igm.common.runner.configuration.loader import load_yaml_recursive
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
     Nz,Ny,Nx = 10,40,30
 

@@ -7,8 +7,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from igm.processes.enthalpy import *
-from igm.processes.enthalpy.enthalpy import vertically_discretize_tf,TpmpEpmp_from_depth_tf
+from igm.processes.enthalpy.enthalpy import TpmpEpmp_from_depth_tf
 from igm.processes.enthalpy.enthalpy import surf_enthalpy_from_temperature_tf, compute_enthalpy_basalmeltrate, temperature_from_enthalpy_tf
+from igm.processes.iceflow.vert_disc import compute_levels, compute_dz, compute_depth
 
 # this file is avilable at https://github.com/WangYuzhe/PoLIM-Polythermal-Land-Ice-Model
 # verif = scipy.io.loadmat("sol_analytic/enthA_analy_result.mat")
@@ -20,7 +21,8 @@ def test_enthalpy():
 
     tim = np.arange(0, ttf, dt) + dt  # to put back to 300000
  
-    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+    from igm.common.runner.configuration.loader import load_yaml_recursive
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
  
     cfg.processes.iceflow.numerics.Nz = 50
     cfg.processes.iceflow.numerics.vert_spacing = 1
@@ -31,7 +33,9 @@ def test_enthalpy():
 
     thk = tf.Variable(1000 * tf.ones((1, 1)))
 
-    depth, dz = vertically_discretize_tf(thk, cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
+    levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
+    dz = compute_dz(thk, levels)
+    depth = compute_depth(dz)
 
     strainheat = tf.Variable(tf.zeros((cfg.processes.iceflow.numerics.Nz, 1, 1)))
     frictheat = tf.Variable(0.0 * tf.ones((1, 1)))
