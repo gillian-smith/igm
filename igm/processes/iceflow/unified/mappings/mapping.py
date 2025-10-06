@@ -54,3 +54,7 @@ class Mapping(ABC):
     @abstractmethod
     def unflatten_w(self, w_flat: tf.Tensor) -> Any:
         pass
+
+    @abstractmethod
+    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> tf.Tensor:
+        pass

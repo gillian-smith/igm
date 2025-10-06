@@ -67,6 +67,8 @@ class OptimizerAdam(Optimizer):
 
             batch_costs = tf.TensorArray(dtype=tf.float32, size=n_batches)
 
+            batch_grad_norms = tf.TensorArray(dtype=tf.float32, size=n_batches)
+            
             for i in tf.range(n_batches):
                 input = inputs[i, :, :, :, :]
 
@@ -75,7 +77,11 @@ class OptimizerAdam(Optimizer):
                 V_prev = tf.identity(V)
 
                 # Compute cost and grad
-                cost, grad_u, grad_w = self._get_grad(input)
+                cost, grad_w = self._get_grad(input)
+                
+                # Compute and store gradient norm for this batch
+                grad_norm = self._get_grad_norm(grad_w)
+                batch_grad_norms = batch_grad_norms.write(i, grad_norm)
 
                 # Apply Adam descent
                 self.optim_adam.apply_gradients(zip(grad_w, w))
@@ -87,9 +93,14 @@ class OptimizerAdam(Optimizer):
                 batch_costs = batch_costs.write(i, cost)
 
             iter_cost = tf.reduce_mean(batch_costs.stack())
-
-            self._progress_update(iter, iter_cost)
+            avg_grad_norm = tf.reduce_mean(batch_grad_norms.stack())
 
             costs = costs.write(iter, iter_cost)
+
+            should_stop = self._progress_update(iter, iter_cost, avg_grad_norm)
+
+            # Early stopping check
+            if should_stop:
+                break
 
         return costs.stack()

@@ -42,6 +42,7 @@ class MappingDataAssimilation(Mapping):
         self,
         bcs: List[str],
         base_mapping,
+        base_cost_fn,
         state,
         variables: List[VariableSpec],
         eps: float = 1e-12,
@@ -53,6 +54,12 @@ class MappingDataAssimilation(Mapping):
         self.base_mapping = base_mapping
         self.vars: List[VariableSpec] = variables
         self.eps = eps
+        self.base_cost_fn = base_cost_fn
+
+        self.base_cost = tf.Variable(0.0, trainable=False, name="base_cost")
+        self.initial_cost = tf.Variable(0.0, trainable=False, name="initial_cost") 
+        self.cost_initialized = tf.Variable(False, trainable=False, name="cost_initialized")
+    
         
         # Store field references as Variables for direct updates (lightweight approach)
         self._field_refs: Dict[str, tf.Variable] = {}
@@ -150,7 +157,11 @@ class MappingDataAssimilation(Mapping):
             
         # Set inputs on base mapping and delegate forward evaluation
         self.base_mapping.set_inputs(updated_inputs)
+        self.set_inputs(updated_inputs)  # Keep own inputs in sync (needed for cost function eval)
         U, V = self.base_mapping.get_UV_impl()
+
+        current_base_cost = self.base_cost_fn(U, V, updated_inputs)
+        self.base_cost.assign(current_base_cost)
         return U, V
 
     def update_state_fields(self, state):
@@ -191,11 +202,13 @@ class MappingDataAssimilation(Mapping):
     def flatten_w(self, w: List[tf.Variable | tf.Tensor]) -> tf.Tensor:
         flats = []
         for i, wi in enumerate(w):
-            if wi is None: # this is meant to catch and warn about None gradients, which would indicate that something is wrong
-                param_name = self.vars[i].name if i < len(self.vars) else f"param_{i}"
-                print(f"⚠️  None gradient for parameter: {param_name}")
-                zero_grad = tf.zeros(self._shapes[i], dtype=tf.float32)
-                flats.append(tf.reshape(zero_grad, [-1]))
+            if wi is None: # this is meant to catch None gradients, which would indicate that something is wrong
+                # throw error message
+                raise ValueError(f"❌  None gradient for parameter: {self.vars[i].name}")
+                # param_name = self.vars[i].name if i < len(self.vars) else f"param_{i}"
+                # print(f"⚠️  None gradient for parameter: {param_name}")
+                # zero_grad = tf.zeros(self._shapes[i], dtype=tf.float32)
+                # flats.append(tf.reshape(zero_grad, [-1]))
             else:
                 flats.append(tf.reshape(wi, [-1]))
         return tf.concat(flats, axis=0)
@@ -203,3 +216,38 @@ class MappingDataAssimilation(Mapping):
     def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
         splits = tf.split(w_flat, self._sizes)
         return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
+
+    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """
+        Check base cost increase halt criterion.
+        Returns: (halt_boolean, halt_message_string)
+        """
+
+        # Initialize cost on first call
+        def initialize_cost():
+            self.initial_cost.assign(self.base_cost)
+            self.cost_initialized.assign(True)
+            return tf.constant(False, dtype=tf.bool), tf.constant("", dtype=tf.string)
+        
+        def check_cost_increase():
+            rel_increase = (self.base_cost - self.initial_cost) / (tf.abs(self.initial_cost) + 1e-12)
+            
+            # Halt if cost increased by more than 10%
+            threshold = tf.constant(0.1, dtype=tf.float32)
+            should_halt = tf.greater(rel_increase, threshold)
+            
+            # Create halt message - use simple string to avoid tf.strings.format issues
+            halt_message = tf.cond(
+                should_halt,
+                lambda: tf.constant("Base cost increased beyond threshold (10.0%)", dtype=tf.string),
+                lambda: tf.constant("", dtype=tf.string)
+            )
+            
+            return should_halt, halt_message
+        
+        # Use tf.cond to handle initialization vs checking
+        return tf.cond(
+            self.cost_initialized,
+            check_cost_increase,
+            initialize_cost
+        )

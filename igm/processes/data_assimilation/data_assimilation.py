@@ -4,19 +4,18 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 import tensorflow as tf
 
-from .utils import compute_rms_std_optimization
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.unified.optimizers import Optimizers, InterfaceOptimizers
 
-
-from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator
 from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
 
 from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
     create_input_tensor_from_fieldin,
 )
 
-from igm.processes.iceflow import initialize as iceflow_initialize
+from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
+
+from .outputs.output_ncdf import update_ncdf_optimize
 
 class DataAssimilation:
     pass
@@ -39,6 +38,25 @@ def data_assimilation_initialize(cfg, state):
     state.data_assimilation = DataAssimilation()
     state.data_assimilation.optimizer = optimizer
 
+def smoothness_biharmonic(field, dx, lam):
+    # field: [Nx, Ny] float tensor
+    f = field[None, ..., None]  # [1, Nx, Ny, 1]
+    # Discrete 5-point Laplacian kernel (isotropic on a square grid)
+    k = tf.constant([[0., 1., 0.],
+                     [1., -4., 1.],
+                     [0., 1., 0.]], dtype=field.dtype)
+    k = k[:, :, None, None]  # [3,3,1,1]
+    # Reflect padding avoids edge bias and keeps shape
+    fpad = tf.pad(f, [[0,0],[1,1],[1,1],[0,0]], mode="REFLECT")
+    lap = tf.nn.conv2d(fpad, k, strides=1, padding="VALID")
+    # Scale for physical spacing (Δx, Δy). For a rectangular grid, divide by Δx² and Δy² appropriately.
+    # 5-point assumes Δx=Δy; for Δx≠Δy, you can use separable stencils or scale neighbors differently.
+    lap /= (dx*dx)  # if dx==dy; otherwise use a non-isotropic laplacian kernel (see note below)
+
+    # Biharmonic (curvature) penalty: ||∇² h||²
+    return lam * 0.5 * tf.reduce_mean(tf.square(lap))
+
+
 def get_cost_fn(cfg, state):
     
     def cost_function(U, V, inputs):
@@ -52,43 +70,48 @@ def get_cost_fn(cfg, state):
         REL = tf.expand_dims((tf.norm(velsurfobs, axis=-1) >= cfg.processes.data_assimilation.fitting.velsurfobs_thr), axis=-1)
         ACT = ~tf.math.is_nan(velsurfobs) 
 
-        cost = 0.5 * tf.reduce_mean(
+        cost1 = 0.5 * tf.reduce_mean(
             ((velsurfobs[ACT & REL] - velsurf[ACT & REL]) / cfg.processes.data_assimilation.fitting.velsurfobs_std) ** 2
         )
+
+        # Extract current thickness from inputs (channel 0) instead of state.thk
+        current_thk = inputs[0, :, :, 0]  # [batch, height, width, channels] -> [height, width]
+        lam = tf.cast(cfg.processes.data_assimilation.regularization.thk, current_thk.dtype)
+        REGU_H2 = smoothness_biharmonic(current_thk, state.dx, lam)  # Use current optimized thickness
+
+        cost = cost1 + REGU_H2
+
         return cost
-    
+
     return cost_function
 
 
 
 def initialize(cfg, state):
-    iceflow_initialize(cfg, state)  # initialize the iceflow model
+
     data_assimilation_initialize(cfg, state)  # initialize the optimizer
 
-    fieldin = get_fieldin(cfg, state)
-    inputs = create_input_tensor_from_fieldin(
-        fieldin, state.iceflow.patching, state.iceflow.preparation_params
-    )
-
-    state.cost = state.data_assimilation.optimizer.minimize(inputs)
-
-    # Update state with optimized values using the mapping method
-    state.data_assimilation.optimizer.map.update_state_fields(state)
 
 def update(cfg, state):
 
-    fieldin = get_fieldin(cfg, state)
-    inputs = create_input_tensor_from_fieldin(
-        fieldin, state.iceflow.patching, state.iceflow.preparation_params
-    )
+    for iter in range(100):
 
-    state.cost = state.iceflow.optimizer.minimize(inputs)
+        fieldin = get_fieldin(cfg, state)
+        inputs = create_input_tensor_from_fieldin(
+            fieldin, state.iceflow.patching, state.iceflow.preparation_params
+        )
 
+        state.cost = state.data_assimilation.optimizer.minimize(inputs)
 
-    state.cost = state.data_assimilation.optimizer.minimize(inputs)
+        # Update state with optimized values using the mapping method
+        state.data_assimilation.optimizer.map.update_state_fields(state)
 
-    # Update state with optimized values using the mapping method
-    state.data_assimilation.optimizer.map.update_state_fields(state)
+        evaluate_iceflow(cfg, state)
+
+        update_ncdf_optimize(cfg, state, iter)
+
+        state.cost = state.iceflow.optimizer.minimize(inputs)
+
 
 
 def finalize(cfg, state):

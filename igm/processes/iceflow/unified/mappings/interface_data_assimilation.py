@@ -50,11 +50,20 @@ class InterfaceDataAssimilation(InterfaceMapping):
                 "The main iceflow mapping must be initialized before data assimilation mapping."
             )
         
+        # Get the existing cost_fn from the iceflow optimizer (should also be set up)
+        if not hasattr(state.iceflow, 'optimizer') or state.iceflow.optimizer is None:
+            raise ValueError(
+                "❌ No optimizer found in state.iceflow.optimizer. "
+                "The main iceflow optimizer must be initialized before data assimilation mapping."
+            )
+        
         base_mapping = state.iceflow.mapping
+        base_cost_fn = state.iceflow.optimizer.cost_fn
         
         return {
             "bcs": bcs,
             "base_mapping": base_mapping,
+            "base_cost_fn": base_cost_fn,  # for halt diagnostics
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
         }
