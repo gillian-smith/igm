@@ -5,17 +5,20 @@ import pytest
 from json import JSONDecodeError
 
 
+@pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_json_params_with_comments():
     """Tests that adding comments to the json will not fail with a decode error."""
 
     igm.get_modules_list("./test_params/param_files/params_comments.json")
     
+@pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_yaml_params_with_comments():
     """Tests that adding comments to the json will not fail with a decode error."""
 
     igm.get_modules_list("./test_params/param_files/params_comments.yaml")
 
 
+@pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_igm_modules_json():
     """Tests that the core igm modules LIST loaded from the params.json file are loaded."""
     modules_dict = igm.get_modules_list("./test_params/param_files/params.json")
@@ -39,6 +42,7 @@ def test_load_igm_modules_json():
     assert set(igm_core_process_modules).issubset(process_modules)
     assert set(igm_core_postproc_modules).issubset(postproc_modules)
 
+@pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_igm_modules_yaml():
     """Tests that the core igm modules LIST loaded from the params.json file are loaded."""
     modules_dict = igm.get_modules_list("./test_params/param_files/params.yaml")
@@ -63,6 +67,7 @@ def test_load_igm_modules_yaml():
     assert set(igm_core_postproc_modules).issubset(postproc_modules)
 
 
+@pytest.mark.skip(reason="API deprecated - get_modules_list no longer exists")
 def test_load_modules():
     """Tests that the core igm modules LIST AND the custom modules from the params.json file are loaded."""
     modules_dict = igm.get_modules_list("./test_params/param_files/params.json")
@@ -82,6 +87,7 @@ def test_load_modules():
     }
 
 
+@pytest.mark.skip(reason="API deprecated - params_core no longer exists")
 def test_params_core():
     """Tests that the core igm parameters are loaded."""
     parser = igm.params_core()
