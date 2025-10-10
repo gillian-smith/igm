@@ -1,5 +1,11 @@
-from .vertical import LagrangreDiscr
+from .vertical_lagrange import LagrangeDiscr
+from .vertical_legendre import LegendreDiscr
+from .vertical_sia import SIADiscr
+from .vertical_ssa import SSADiscr
 
 VerticalDiscrs = {
-    "lagrange": LagrangreDiscr,
+    "lagrange": LagrangeDiscr,
+    "legendre": LegendreDiscr,
+    "sia": SIADiscr,
+    "ssa": SSADiscr,
 }
