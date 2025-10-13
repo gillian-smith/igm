@@ -36,7 +36,7 @@ def get_cost_fn(
             inputs=input,
             U=U,
             V=V,
-            vert_disc=state.vert_disc,
+            vert_disc=state.iceflow.vertical_discr,
             energy_components=energy_components,
         )
 

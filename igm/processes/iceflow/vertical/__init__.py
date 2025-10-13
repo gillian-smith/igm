@@ -1,3 +1,4 @@
+from .vertical import VerticalDiscr
 from .vertical_lagrange import LagrangeDiscr
 from .vertical_legendre import LegendreDiscr
 from .vertical_sia import SIADiscr

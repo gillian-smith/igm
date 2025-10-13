@@ -71,6 +71,7 @@ from igm.processes.iceflow.unified.unified import (
     update_iceflow_unified,
 )
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
+from igm.processes.iceflow.vertical import VerticalDiscrs
 
 
 class Iceflow:
@@ -96,6 +97,11 @@ def initialize(cfg, state):
 
     # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
     initialize_iceflow_fields(cfg, state)
+
+    # Initialize vertical discretization
+    vertical_basis = cfg_numerics.vert_basis.lower()
+    vertical_discr = VerticalDiscrs[vertical_basis](cfg)
+    state.iceflow.vertical_discr = vertical_discr
 
     # Set vertical discretization
     state.vert_weight = define_vertical_weight(

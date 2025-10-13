@@ -10,6 +10,7 @@ from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_prec
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.utils.velocities import get_velbase
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.processes.iceflow.vertical import VerticalDiscr
 
 from ..sliding import SlidingComponent
 
@@ -31,7 +32,7 @@ class Budd(SlidingComponent):
         U: tf.Tensor,
         V: tf.Tensor,
         fieldin: Dict,
-        vert_disc: Tuple,
+        vert_disc: VerticalDiscr,
         staggered_grid: bool,
     ) -> tf.Tensor:
         return cost_budd(U, V, fieldin, vert_disc, staggered_grid, self.params)
@@ -41,7 +42,7 @@ def cost_budd(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict,
-    vert_disc: Tuple,
+    vert_disc: VerticalDiscr,
     staggered_grid: bool,
     budd_params: BuddParams,
 ) -> tf.Tensor:
@@ -52,11 +53,10 @@ def cost_budd(
         fieldin["slidingco"],
         fieldin["dX"],
     )
-    zeta, dzeta, _, _ = vert_disc
+    V_b = vert_disc.V_b
 
     expo = budd_params.exponent
     regu = budd_params.regu
-    vert_basis = budd_params.vert_basis
 
     return _cost(
         U,
@@ -65,12 +65,10 @@ def cost_budd(
         usurf,
         slidingco,
         dX,
-        zeta,
-        dzeta,
         expo,
         regu,
+        V_b,
         staggered_grid,
-        vert_basis,
     )
 
 
@@ -82,12 +80,10 @@ def _cost(
     usurf,
     slidingco,
     dX,
-    zeta,
-    dzeta,
     expo,
     regu,
+    V_b,
     staggered_grid,
-    vert_basis,
 ):
     # Temporary fix for effective pressure - should be within the inputs
     N = get_effective_pressure_precentage(thk, percentage=0.0)
@@ -107,7 +103,8 @@ def _cost(
         C = stag4h(C)
 
     # Retrieve basal velocity
-    ux_b, uy_b = get_velbase(U, V, vert_basis)
+    ux_b = tf.einsum("j,bjkl->bkl", V_b, U)
+    uy_b = tf.einsum("j,bjkl->bkl", V_b, V)
 
     # Compute basal velocity magnitude (with norm M and regularization)
     corr_bed = ux_b * dbdx + uy_b * dbdy

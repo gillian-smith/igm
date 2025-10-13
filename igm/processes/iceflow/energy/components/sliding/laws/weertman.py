@@ -9,6 +9,7 @@ from typing import Dict, Tuple
 from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.utils.velocities import get_velbase
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.processes.iceflow.vertical import VerticalDiscr
 
 from ..sliding import SlidingComponent
 
@@ -30,7 +31,7 @@ class Weertman(SlidingComponent):
         U: tf.Tensor,
         V: tf.Tensor,
         fieldin: Dict,
-        vert_disc: Tuple,
+        vert_disc: VerticalDiscr,
         staggered_grid: bool,
     ) -> tf.Tensor:
         return cost_weertman(U, V, fieldin, vert_disc, staggered_grid, self.params)
@@ -40,7 +41,7 @@ def cost_weertman(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict,
-    vert_disc: Tuple,
+    vert_disc: VerticalDiscr,
     staggered_grid: bool,
     weertman_params: WeertmanParams,
 ) -> tf.Tensor:
@@ -51,11 +52,10 @@ def cost_weertman(
         fieldin["slidingco"],
         fieldin["dX"],
     )
-    zeta, dzeta, _, _ = vert_disc
+    V_b = vert_disc.V_b
 
     expo = weertman_params.exponent
     regu = weertman_params.regu
-    vert_basis = weertman_params.vert_basis
 
     return _cost(
         U,
@@ -64,12 +64,10 @@ def cost_weertman(
         usurf,
         slidingco,
         dX,
-        zeta,
-        dzeta,
         expo,
         regu,
+        V_b,
         staggered_grid,
-        vert_basis,
     )
 
 
@@ -81,12 +79,10 @@ def _cost(
     usurf,
     slidingco,
     dX,
-    zeta,
-    dzeta,
     expo,
     regu,
+    V_b,
     staggered_grid,
-    vert_basis,
 ):
 
     # Coefficient and effective exponent
@@ -103,7 +99,8 @@ def _cost(
         C = stag4h(C)
 
     # Retrieve basal velocity
-    ux_b, uy_b = get_velbase(U, V, vert_basis)
+    ux_b = tf.einsum("j,bjkl->bkl", V_b, U)
+    uy_b = tf.einsum("j,bjkl->bkl", V_b, V)
 
     # Compute basal velocity magnitude (with norm M and regularization)
     corr_bed = ux_b * dbdx + uy_b * dbdy
