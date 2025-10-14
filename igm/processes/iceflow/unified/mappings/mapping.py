@@ -13,11 +13,18 @@ TV = Union[tf.Tensor, tf.Variable]
 
 
 class Mapping(ABC):
-    def __init__(self, bcs: List[str] = []):
+    def __init__(self, bcs: List[str] = [], dtype: tf.DType = tf.float32):
         self.apply_bcs = [BoundaryConditions[bc]() for bc in bcs]
+        self.dtype = dtype
 
     def set_inputs(self, inputs: tf.Tensor) -> None:
         self.inputs = inputs
+
+    def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
+        return inputs
+
+    def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
+        return inputs
 
     @abstractmethod
     def get_UV_impl(self) -> Tuple[TV, TV]:
@@ -25,7 +32,8 @@ class Mapping(ABC):
 
     @tf.function(jit_compile=True)
     def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
-        self.set_inputs(inputs)
+        processed_inputs = self.synchronize_inputs(inputs)
+        self.set_inputs(processed_inputs)
         U, V = self.get_UV_impl()
         for apply_bc in self.apply_bcs:
             U, V = apply_bc(U, V)
@@ -58,3 +66,6 @@ class Mapping(ABC):
     @abstractmethod
     def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> tf.Tensor:
         pass
+
+    def on_minimize_start(self) -> None:
+        return None

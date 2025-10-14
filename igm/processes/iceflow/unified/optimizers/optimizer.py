@@ -56,7 +56,7 @@ class Optimizer(ABC):
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
         if self.print_cost:
             self._progress_setup()
-
+        self.map.on_minimize_start()
         costs = self.minimize_impl(inputs)
 
         return costs
@@ -75,12 +75,15 @@ class Optimizer(ABC):
     @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
-    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
+    ) -> Tuple[tf.Tensor, list[tf.Tensor]]:
         w = self.map.get_w()
         with tf.GradientTape(watch_accessed_variables=False) as tape:
-            for wi in w: tape.watch(wi)
+            for wi in w:
+                tape.watch(wi)
             U, V = self.map.get_UV(inputs)
-            cost = self.cost_fn(U, V, inputs)
+            processed_inputs = self.map.synchronize_inputs(inputs)
+            cost = self.cost_fn(U, V, processed_inputs)
+
         grad_w = tape.gradient(cost, w)
         del tape
         return cost, grad_w
