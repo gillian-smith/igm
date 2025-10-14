@@ -7,60 +7,43 @@ import tensorflow as tf
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig
 
-from ..utils import compute_levels, compute_zeta_dzeta, define_vertical_weight
-
 
 class VerticalDiscr(ABC):
+    """
+    Abstract vertical discretization.
 
-    levels: tf.Tensor
-    zeta: tf.Tensor
-    dzeta: tf.Tensor
-    Vnodal: tf.Tensor
-    Vnodal_b: tf.Tensor
-    Vnodal_s: tf.Tensor
-    Vnodal_bar: tf.Tensor
-    Vnodal_grad: tf.Tensor
+    Attributes
+    ----------
+    w : tf.Tensor
+        Quadrature weights, shape (Nq,).
+    V_q : tf.Tensor
+        Map DOFs → values at quadrature points, shape (Nq, Ndof).
+    V_q_grad : tf.Tensor
+        Map DOFs → vertical gradients at quad points, shape (Nq, Ndof).
+    V_q_int : tf.Tensor
+        Map DOFs → vertical integral at quad points, shape (Nq, Ndof).
+    V_b : tf.Tensor
+        Map DOFs → basal value (zeta=0), shape (Ndof,).
+    V_s : tf.Tensor
+        Map DOFs → surface value (zeta=1), shape (Ndof,).
+    V_bar : tf.Tensor
+        Map DOFs → vertical average, shape (Ndof,).
+    """
 
-    def __init__(self, cfg: DictConfig):
-        cfg_numerics = cfg.processes.iceflow.numerics
+    w: tf.Tensor
+    V_q: tf.Tensor
+    V_q_grad: tf.Tensor
+    V_q_int: tf.Tensor
+    V_b: tf.Tensor
+    V_s: tf.Tensor
+    V_bar: tf.Tensor
 
-        self.dtype = tf.float32
-        self.Nz = cfg_numerics.Nz
-        self.vertical_spacing = cfg_numerics.vert_spacing
-        self.staggered_grid = cfg_numerics.staggered_grid
-        self.vertical_basis = cfg_numerics.vert_basis
+    def __init__(self, cfg: DictConfig, dtype: tf.DType = tf.float32) -> None:
+        self.dtype = dtype
+        self._compute_discr(cfg)
 
     @abstractmethod
-    def build_matrices(self) -> None:
+    def _compute_discr(self, cfg: DictConfig) -> None:
         raise NotImplementedError(
-            "❌ The matrices construction is not implemented in this class."
+            "❌ The discretization is not implemented in this class."
         )
-
-
-class LagrangreDiscr(VerticalDiscr):
-
-    def __init__(self, cfg: DictConfig):
-        super().__init__(cfg)
-        self.build_matrices()
-
-    def build_matrices(self) -> None:
-        self.levels = compute_levels(self.Nz, self.vertical_spacing)
-        self.zeta, self.dzeta = compute_zeta_dzeta(self.levels)
-
-        vert_weight = define_vertical_weight(self.Nz, self.vertical_spacing)[:, 0, 0]
-
-        Nz = self.Nz
-
-        self.Vnodal = tf.eye(Nz, dtype=self.dtype)
-        self.Vnodal_b = tf.zeros(Nz, dtype=self.dtype)
-        self.Vnodal_s = tf.zeros(Nz, dtype=self.dtype)
-        self.Vnodal_b = tf.tensor_scatter_nd_update(self.Vnodal_b, [[0]], [1.0])
-        self.Vnodal_s = tf.tensor_scatter_nd_update(self.Vnodal_s, [[Nz - 1]], [1.0])
-        self.Vnodal_bar = vert_weight
-
-        if Nz == 1:
-            self.Vnodal_grad = tf.zeros(Nz, dtype=self.dtype)
-        else:
-            fd_upper = tf.linalg.diag(+1.0 / self.dzeta[None, :, None, None], k=1)
-            fd_lower = tf.linalg.diag(-1.0 / self.dzeta[None, :, None, None], k=0)
-            self.Vnodal_grad = fd_upper + fd_lower

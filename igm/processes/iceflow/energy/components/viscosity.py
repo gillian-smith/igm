@@ -9,6 +9,7 @@ from typing import Any, Dict, Tuple
 from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
 from igm.utils.gradient.compute_gradient import compute_gradient
 from .energy import EnergyComponent
+from igm.processes.iceflow.vertical import VerticalDiscr
 
 
 class ViscosityComponent(EnergyComponent):
@@ -50,7 +51,7 @@ def cost_viscosity(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict,
-    vert_disc: Tuple,
+    vert_disc: VerticalDiscr,
     staggered_grid: bool,
     viscosity_params: ViscosityParams,
 ) -> tf.Tensor:
@@ -63,14 +64,15 @@ def cost_viscosity(
         fieldin["dX"],
     )
 
-    zeta, dzeta, Leg_P, Leg_dPdz = vert_disc
+    V_q = vert_disc.V_q
+    V_q_grad = vert_disc.V_q_grad
+    w = vert_disc.w
 
     exp_glen = viscosity_params.exp_glen
     regu_glen = viscosity_params.regu_glen
     thr_ice_thk = viscosity_params.thr_ice_thk
     min_sr = viscosity_params.min_sr
     max_sr = viscosity_params.max_sr
-    vert_basis = viscosity_params.vert_basis
 
     return _cost(
         U,
@@ -80,17 +82,15 @@ def cost_viscosity(
         arrhenius,
         slidingco,
         dX,
-        zeta,
-        dzeta,
-        Leg_P,
-        Leg_dPdz,
         exp_glen,
         regu_glen,
         thr_ice_thk,
         min_sr,
         max_sr,
+        V_q,
+        V_q_grad,
+        w,
         staggered_grid,
-        vert_basis,
     )
 
 
@@ -191,17 +191,15 @@ def _cost(
     arrhenius,
     slidingco,
     dX,
-    zeta,
-    dzeta,
-    Leg_P,
-    Leg_dPdz,
     exp_glen,
     regu_glen,
     thr_ice_thk,
     min_sr,
     max_sr,
+    V_q,
+    V_q_grad,
+    w,
     staggered_grid,
-    vert_basis,
 ):
     # B has Unit Mpa y^(1/n)
     B = 2.0 * arrhenius ** (-1.0 / exp_glen)
@@ -224,62 +222,23 @@ def _cost(
         thk = stag4h(thk)
         B = stag4h(B)
 
-    if vert_basis.lower() == "lagrange":
+    dUdx = tf.einsum("ij,bjkl->bikl", V_q, dUdx)
+    dVdx = tf.einsum("ij,bjkl->bikl", V_q, dVdx)
+    dUdy = tf.einsum("ij,bjkl->bikl", V_q, dUdy)
+    dVdy = tf.einsum("ij,bjkl->bikl", V_q, dVdy)
 
-        dUdx = stag2v(dUdx)
-        dVdx = stag2v(dVdx)
-        dUdy = stag2v(dUdy)
-        dVdy = stag2v(dVdy)
-        B = stag2v(B)
+    dUdz = tf.einsum("ij,bjkl->bikl", V_q_grad, U)
+    dVdz = tf.einsum("ij,bjkl->bikl", V_q_grad, V)
 
-        dUdz, dVdz = compute_vertical_derivatives(U, V, thk, dzeta, thr=thr_ice_thk)
+    dUdz = dUdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
+    dVdz = dVdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
 
-        # TO DO: check it this term is necessary
-        dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
-
-        dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(
-            dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptopgx, sloptopgy
-        )
-
-    elif vert_basis.lower() == "legendre":
-
-        dUdx = tf.einsum("ij,bjkl->bikl", Leg_P, dUdx)
-        dVdx = tf.einsum("ij,bjkl->bikl", Leg_P, dVdx)
-        dUdy = tf.einsum("ij,bjkl->bikl", Leg_P, dUdy)
-        dVdy = tf.einsum("ij,bjkl->bikl", Leg_P, dVdy)
-
-        dUdz = tf.einsum("ij,bjkl->bikl", Leg_dPdz, U) / tf.maximum(
-            thk[:, None, :, :], thr_ice_thk
-        )
-        dVdz = tf.einsum("ij,bjkl->bikl", Leg_dPdz, V) / tf.maximum(
-            thk[:, None, :, :], thr_ice_thk
-        )
-
-    elif vert_basis.lower() == "sia":
-
-        dUdx = dUdx[:, 0:1, :, :] + (dUdx[:, -1:, :, :] - dUdx[:, 0:1, :, :]) * psia(
-            zeta[None, :, None, None], exp_glen
-        )
-        dVdy = dVdy[:, 0:1, :, :] + (dVdy[:, -1:, :, :] - dVdy[:, 0:1, :, :]) * psia(
-            zeta[None, :, None, None], exp_glen
-        )
-        dUdy = dUdy[:, 0:1, :, :] + (dUdy[:, -1:, :, :] - dUdy[:, 0:1, :, :]) * psia(
-            zeta[None, :, None, None], exp_glen
-        )
-        dVdx = dVdx[:, 0:1, :, :] + (dVdx[:, -1:, :, :] - dVdx[:, 0:1, :, :]) * psia(
-            zeta[None, :, None, None], exp_glen
-        )
-
-        dUdz = (
-            (U[:, -1:, :, :] - U[:, 0:1, :, :])
-            * psiap(zeta[None, :, None, None], exp_glen)
-            / tf.maximum(thk[:, None, :, :], thr_ice_thk)
-        )
-        dVdz = (
-            (V[:, -1:, :, :] - V[:, 0:1, :, :])
-            * psiap(zeta[None, :, None, None], exp_glen)
-            / tf.maximum(thk[:, None, :, :], thr_ice_thk)
-        )
+    # TODO: check these
+    B = stag2v(B)  # Make something better here?
+    dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
+    dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(
+        dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptopgx, sloptopgy
+    )
 
     sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
 
@@ -290,4 +249,4 @@ def _cost(
     p_term = ((sr2capped + regu_glen**2) ** ((p - 2) / 2)) * sr2 / p
 
     # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    return thk * tf.reduce_sum(B * dzeta[None, :, None, None] * p_term, axis=1)
+    return thk * tf.reduce_sum(B * w[None, :, None, None] * p_term, axis=1)
