@@ -4,14 +4,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Callable
+from typing import Any, Dict, List
 
 from omegaconf import DictConfig
 
 from igm.common.core import State
 from .interface import InterfaceMapping
 from .mapping_data_assimilation import MappingDataAssimilation, VariableSpec
+from .mapping_network import MappingNetwork
+from .transforms import TRANSFORMS
 
 
 class InterfaceDataAssimilation(InterfaceMapping):
@@ -31,14 +32,25 @@ class InterfaceDataAssimilation(InterfaceMapping):
         for item in cfg.processes.data_assimilation.variables:
             name = str(item["name"])
             transform = str(item.get("transform", "identity")).lower()
-            if transform not in ("identity", "log10"):
+            if transform not in TRANSFORMS.keys():
                 raise ValueError(f"❌ Unsupported transform '{transform}' for '{name}'.")
             lb = item.get("lower_bound", None)
             ub = item.get("upper_bound", None)
             # Normalize "None"/"null" strings if they appear
             if isinstance(lb, str) and lb.lower() in ("none", "null"): lb = None
             if isinstance(ub, str) and ub.lower() in ("none", "null"): ub = None
-            specs.append(VariableSpec(name=name, transform=transform, lower_bound=lb, upper_bound=ub))
+            mask = item.get("mask", None)
+            if isinstance(mask, str) and mask.lower() in ("none", "null", ""):
+                mask = None
+            specs.append(
+                VariableSpec(
+                    name=name,
+                    transform=transform,
+                    lower_bound=lb,
+                    upper_bound=ub,
+                    mask=mask,
+                )
+            )
         return specs
 
 
@@ -63,12 +75,19 @@ class InterfaceDataAssimilation(InterfaceMapping):
             )
         
         base_mapping = state.iceflow.mapping
-        base_cost_fn = state.iceflow.optimizer.cost_fn
-        
+        if not isinstance(base_mapping, MappingNetwork):
+            raise TypeError(
+                "❌ Data assimilation currently expects a MappingNetwork as the base mapping."
+            )
+
+        cost_fn = state.iceflow.optimizer.cost_fn
+
         return {
             "bcs": bcs,
-            "base_mapping": base_mapping,
-            "base_cost_fn": base_cost_fn,  # for halt diagnostics
+            "network": base_mapping.network,
+            "Nz": base_mapping.Nz,
+            "cost_fn": cost_fn,  # for halt diagnostics
+            "output_scale": base_mapping.output_scale,
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
         }

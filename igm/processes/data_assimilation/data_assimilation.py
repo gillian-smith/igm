@@ -25,18 +25,21 @@ def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.data_assimilation
 
     # Initialize mapping
-    mapping_args = InterfaceMappings["data_assimilation"].get_mapping_args(cfg, state)
-    mapping = Mappings["data_assimilation"](**mapping_args)
+    mapping_key = "combined_data_assimilation"
+    mapping_args = InterfaceMappings[mapping_key].get_mapping_args(cfg, state)
+    mapping_args["data_cost_fn"] = get_data_assimilation_cost_fn(cfg, state)
+    mapping = Mappings[mapping_key](**mapping_args)
 
-    # Initialize optimizer
+    # Initialize optimizer with combined cost function
     optimizer_name = cfg_da.optimizer
     optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
-        cfg=cfg, cost_fn=get_cost_fn(cfg, state), map=mapping
+        cfg=cfg, cost_fn=mapping.get_combined_cost_fn(), map=mapping
     )
 
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.data_assimilation = DataAssimilation()
     state.data_assimilation.optimizer = optimizer
+    state.data_assimilation.cost_components = {}
 
 def smoothness_biharmonic(field, dx, lam):
     # field: [Nx, Ny] float tensor
@@ -57,7 +60,7 @@ def smoothness_biharmonic(field, dx, lam):
     return lam * 0.5 * tf.reduce_mean(tf.square(lap))
 
 
-def get_cost_fn(cfg, state):
+def get_data_assimilation_cost_fn(cfg, state):
     
     def cost_function(U, V, inputs):
 
@@ -105,12 +108,13 @@ def update(cfg, state):
 
         # Update state with optimized values using the mapping method
         state.data_assimilation.optimizer.map.update_state_fields(state)
+        state.data_assimilation.cost_components = (
+            state.data_assimilation.optimizer.map.get_latest_cost_components()
+        )
 
         evaluate_iceflow(cfg, state)
 
         update_ncdf_optimize(cfg, state, iter)
-
-        state.cost = state.iceflow.optimizer.minimize(inputs)
 
 
 

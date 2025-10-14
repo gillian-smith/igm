@@ -9,40 +9,44 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple, Optional
 
 from .mapping import Mapping
+from .transforms import TRANSFORMS, ParameterTransform
+from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
 @dataclass
 class VariableSpec:
-    """Which state field we invert and which parameterization we use (in PHYSICAL space)."""
+    """
+    Which state field we invert and which parameterization we use (in PHYSICAL space).
+    Bounds are specified in PHYSICAL space, e.g., meters or Pa·s^n.
+
+    If ``mask`` is provided it must resolve to a tensor in ``state`` with the same
+    shape as the target field. Only entries where ``mask`` is ``True`` (or non-zero)
+    are exposed to the optimizer; the complement keeps its initial values.
+    """
+
     name: str                         # e.g. "thk", "slidingco"
-    transform: str                    # "identity" or "log10"
-    lower_bound: Optional[float] = None  # lower bound in PHYSICAL space (None = no bound)
-    upper_bound: Optional[float] = None  # upper bound in PHYSICAL space (None = no bound)
+    transform: str                    # key in TRANSFORMS (e.g., "identity", "log10", ...)
+    lower_bound: Optional[float] = None
+    upper_bound: Optional[float] = None
+    mask: Optional[str] = None        # dotted path on ``state`` resolving to a tensor mask
 
 
 class MappingDataAssimilation(Mapping):
     """
-    Parameterizes selected state fields as trainables (θ), projects them back to
-    physical fields before the forward pass, and delegates U,V to an existing mapping.
+    Exposes selected state fields as trainable θ, converts θ→physical via a registered
+    ``ParameterTransform`` and runs the shared neural network emulator directly.
 
-    Bounds:
-      - Bounds are specified in PHYSICAL space in VariableSpec (e.g., thickness in meters).
-      - This class converts those bounds once to θ-space (the space actually optimized).
-      - If a bound is None, it becomes ±inf in θ-space (i.e., no constraint for that side).
-      - For 'log10' transform: θ = log10(x). If lower_bound <= 0 or None -> θ-L = -inf.
-        If an upper_bound <= 0 is provided, it is invalid and will raise an error.
-
-    Notes:
-      * transform == "identity"  -> train θ = field,        feed field = θ
-      * transform == "log10"     -> train θ = log10(field), feed field = 10**θ
-        (positivity enforced; chain rule handled by TF)
+    - Bounds are given in PHYSICAL space and converted once into θ-space.
+    - ``apply_theta_to_inputs`` patches selected channels of the BHWC inputs on-the-fly.
     """
 
     def __init__(
         self,
         bcs: List[str],
-        base_mapping,
-        base_cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
+        network: tf.keras.Model,
+        Nz: tf.Tensor,
+        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
+        output_scale,
         state,
         variables: List[VariableSpec],
         eps: float = 1e-12,
@@ -51,17 +55,23 @@ class MappingDataAssimilation(Mapping):
         if not variables:
             raise ValueError("❌ DataAssimilation mapping requires at least one variable.")
 
-        self.base_mapping = base_mapping
+        self.network = network
+        self.Nz = Nz
+        self.output_scale = output_scale
         self.vars: List[VariableSpec] = variables
         self.eps = eps
-        self.base_cost_fn = base_cost_fn
+        self.cost_fn = cost_fn
 
-        # Diagnostics (unchanged behavior)
+        self.base_cost_reference = tf.Variable(float("nan"), trainable=False, name="base_cost_reference")
+        self._base_cost_tol = tf.constant(0.1, dtype=tf.float32)  # 10% threshold
+        self._base_cost_eps = tf.constant(1e-12, dtype=tf.float32)  # Small epsilon for division
+
+        # Diagnostics used by the halt criterion
         self.base_cost = tf.Variable(0.0, trainable=False, name="base_cost")
         self.initial_cost = tf.Variable(0.0, trainable=False, name="initial_cost")
         self.cost_initialized = tf.Variable(False, trainable=False, name="cost_initialized")
 
-        # Store field references as Variables for direct updates (kept for consistency)
+        # Ensure state fields are tf.Variable and keep references (for initialization parity).
         self._field_refs: Dict[str, tf.Variable] = {}
         for spec in self.vars:
             field_val = getattr(state, spec.name)
@@ -69,148 +79,151 @@ class MappingDataAssimilation(Mapping):
                 self._field_refs[spec.name] = field_val
             else:
                 field_var = tf.Variable(field_val, trainable=False, name=f"ref_{spec.name}")
-                setattr(state, spec.name, field_var)  # keep State in sync with a Variable
+                setattr(state, spec.name, field_var)
                 self._field_refs[spec.name] = field_var
 
-        # Create trainable parameters θ (one per selected field), track shapes/sizes
+        # Build transform objects, initialize θ from physical fields, record shapes/sizes.
+        self.transforms: List[ParameterTransform] = []
         self._w: List[tf.Variable] = []
         self._shapes: List[tf.TensorShape] = []
         self._sizes: List[tf.Tensor] = []
+        self._full_shapes: List[tf.TensorShape] = []
+        self._mask_bool: List[Optional[tf.Tensor]] = []
+        self._mask_indices: List[Optional[tf.Tensor]] = []
+        self._mask_backgrounds: List[Optional[tf.Tensor]] = []
 
         for spec in self.vars:
-            field_val = self._field_refs[spec.name]
-            if spec.transform == "log10":
-                # θ0 = log10(max(x0, eps))
-                ln10 = tf.constant(2.302585092994046, field_val.dtype)
-                theta0 = tf.math.log(tf.maximum(field_val, tf.cast(self.eps, field_val.dtype))) / ln10
-                theta = tf.Variable(theta0, trainable=True, name=f"theta_{spec.name}")
-            elif spec.transform == "identity":
-                theta = tf.Variable(field_val, trainable=True, name=f"{spec.name}")
-            else:
+            if spec.transform not in TRANSFORMS:
                 raise ValueError(f"❌ Unknown transform '{spec.transform}' for '{spec.name}'.")
+            tform = TRANSFORMS[spec.transform]()  # instance
+            self.transforms.append(tform)
 
+            x0_var = self._field_refs[spec.name]
+            x0 = tf.convert_to_tensor(x0_var)
+
+            mask_bool = None
+            mask_indices = None
+            mask_background = None
+            if spec.mask is not None:
+                mask_tensor = self._resolve_mask(state, spec.mask)
+                mask_bool = tf.cast(mask_tensor, tf.bool)
+                if mask_bool.shape != x0.shape:
+                    raise ValueError(
+                        f"❌ Mask '{spec.mask}' shape {mask_bool.shape} does not match field '{spec.name}' shape {x0.shape}."
+                    )
+                if not bool(tf.reduce_any(mask_bool)):
+                    raise ValueError(f"❌ Mask '{spec.mask}' for '{spec.name}' has no active elements.")
+                mask_indices = tf.where(mask_bool)
+                mask_background = tf.where(mask_bool, tf.zeros_like(x0), x0)
+
+            theta0_full = tform.to_theta(x0_var, eps=self.eps)
+            self._full_shapes.append(theta0_full.shape)
+
+            if mask_bool is not None:
+                theta0 = tf.boolean_mask(theta0_full, mask_bool)
+            else:
+                theta0 = theta0_full
+
+            theta = tf.Variable(theta0, trainable=True, name=f"theta_{spec.name}")
             self._w.append(theta)
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
+            self._mask_bool.append(mask_bool)
+            self._mask_indices.append(mask_indices)
+            self._mask_backgrounds.append(mask_background)
 
-        # Precompute θ-space bounds for all parameters (for optimizer use)
+        # Precompute θ-space bounds for optimizer consumption.
         self._L_list: List[tf.Tensor] = []
         self._U_list: List[tf.Tensor] = []
+        for spec, theta, tform in zip(self.vars, self._w, self.transforms):
+            Ls, Us = tform.theta_bounds(spec.lower_bound, spec.upper_bound, dtype=theta.dtype, eps=self.eps)
+            self._L_list.append(tf.fill(theta.shape, Ls))
+            self._U_list.append(tf.fill(theta.shape, Us))
 
-        for spec, theta in zip(self.vars, self._w):
-            dtype = theta.dtype
+    # ------- Forward plumbing -------------------------------------------------
 
-            L_phys = spec.lower_bound
-            U_phys = spec.upper_bound
+    @staticmethod
+    def _resolve_mask(state, path: str) -> tf.Tensor:
+        obj = state
+        for attr in path.split('.'):
+            if not hasattr(obj, attr):
+                raise ValueError(f"❌ Mask path '{path}' could not be resolved on state.")
+            obj = getattr(obj, attr)
+        return tf.convert_to_tensor(obj)
 
-            # Convert to θ-space scalars
-            if spec.transform == "identity":
-                L_theta_scalar = -tf.constant(float("inf"), dtype) if L_phys is None else tf.constant(L_phys, dtype)
-                U_theta_scalar =  tf.constant(float("inf"), dtype) if U_phys is None else tf.constant(U_phys, dtype)
-            elif spec.transform == "log10":
-                ln10 = tf.constant(2.302585092994046, dtype)
-                # Lower bound:
-                #   - None or <=0  -> -inf (no lower bound in θ; exp ensures positivity anyway)
-                #   - >0           -> log10(L)
-                if (L_phys is None) or (L_phys <= 0.0):
-                    L_theta_scalar = -tf.constant(float("inf"), dtype)
-                else:
-                    L_theta_scalar = tf.math.log(tf.constant(L_phys, dtype)) / ln10
-                # Upper bound:
-                #   - None         -> +inf
-                #   - <=0          -> invalid (cannot take log), raise
-                #   - >0           -> log10(U)
-                if U_phys is None:
-                    U_theta_scalar = tf.constant(float("inf"), dtype)
-                else:
-                    if U_phys <= 0.0:
-                        raise ValueError(
-                            f"❌ Invalid upper_bound ({U_phys}) for log10 transform of '{spec.name}': must be > 0."
-                        )
-                    U_theta_scalar = tf.math.log(tf.constant(U_phys, dtype)) / ln10
-            else:
-                # guarded above, but keep static analyzer happy
-                raise ValueError(f"❌ Unknown transform '{spec.transform}' for '{spec.name}'.")
+    def _theta_to_field(self, idx: int) -> tf.Tensor:
+        mask_bool = self._mask_bool[idx]
+        tform = self.transforms[idx]
+        theta = self._w[idx]
+        full_shape = self._full_shapes[idx]
 
-            # Broadcast per-variable scalars to the variable's shape (so later we can flatten & concat)
-            self._L_list.append(tf.fill(theta.shape, L_theta_scalar))
-            self._U_list.append(tf.fill(theta.shape, U_theta_scalar))
+        if mask_bool is None:
+            val = tform.to_physical(theta)
+            val.set_shape(full_shape)
+            return val
 
-    # ------- Mapping API: U,V from current parameters -------------------------
+        updates = tform.to_physical(theta)
+        updates = tf.reshape(updates, [-1])
+        background = tf.cast(self._mask_backgrounds[idx], updates.dtype)
+        indices = self._mask_indices[idx]
+        field = tf.tensor_scatter_nd_update(background, indices, updates)
+        field.set_shape(full_shape)
+        return field
+
+
+    @tf.function(reduce_retracing=True)
+    def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
+        """
+        Patch BHWC inputs with current physical-space values for selected fields.
+        Channel mapping follows your existing convention.
+        """
+        updated = inputs
+        field_to_channel = {'thk': 0, 'usurf': 1, 'arrhenius': 2, 'slidingco': 3, 'dX': 4}
+        for idx, spec in enumerate(self.vars):
+            ch = field_to_channel.get(spec.name, None)
+            if ch is None:
+                continue
+            val = self._theta_to_field(idx)
+            val = tf.cast(val, updated.dtype)
+            val_bhwc1 = tf.expand_dims(tf.expand_dims(val, axis=0), axis=-1)
+            C = tf.shape(updated)[-1]
+            channel_mask = tf.one_hot(ch, C, dtype=updated.dtype)
+            channel_mask = tf.reshape(channel_mask, [1, 1, 1, -1])
+            one = tf.cast(1.0, updated.dtype)
+            updated = updated * (one - channel_mask) + val_bhwc1 * channel_mask
+        return updated
+
+    def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
+        updated_inputs = self.apply_theta_to_inputs(inputs)
+        return updated_inputs
 
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
-        """
-        Map current θ → physical fields inside the input tensor (channel-wise), then
-        delegate to the base mapping's forward (get_UV_impl). No behavior change when
-        bounds are None; bounds are not enforced here (optimizer handles them).
-        """
-        updated_inputs = self.inputs
+        Y = self.network(self.inputs) * self.output_scale
+        U, V = Y_to_UV(self.Nz, Y)
 
-        # Map from field name to channel index in the input tensor
-        field_to_channel = {
-            'thk': 0,
-            'usurf': 1,
-            'arrhenius': 2,
-            'slidingco': 3,
-            'dX': 4,
-            # extend as needed
-        }
-
-        for spec, theta in zip(self.vars, self._w):
-            if spec.name in field_to_channel:
-                if spec.transform == "log10":
-                    ln10 = tf.constant(2.302585092994046, theta.dtype)
-                    val = tf.exp(ln10 * theta)  # 10**θ
-                else:
-                    val = theta
-
-                # Expand to [batch, H, W, 1] and replace the appropriate channel
-                val_bhwc1 = tf.expand_dims(tf.expand_dims(val, axis=0), axis=-1)
-                ch = field_to_channel[spec.name]
-
-                channel_updates = []
-                C = updated_inputs.shape[-1]
-                for i in range(C):
-                    if i == ch:
-                        channel_updates.append(val_bhwc1)
-                    else:
-                        channel_updates.append(updated_inputs[:, :, :, i:i+1])
-                updated_inputs = tf.concat(channel_updates, axis=-1)
-
-        # Keep base & self inputs in sync and delegate to base mapping's forward core
-        self.base_mapping.set_inputs(updated_inputs)
-        self.set_inputs(updated_inputs)
-        U, V = self.base_mapping.get_UV_impl()
-
-        # For diagnostics
-        current_base_cost = self.base_cost_fn(U, V, updated_inputs)
+        # Diagnostics for halt criterion use the same cost function as the base mapping
+        current_base_cost = self.cost_fn(U, V, self.inputs)
         self.base_cost.assign(current_base_cost)
         return U, V
 
-    def update_state_fields(self, state):
-        """Update state fields with current optimized parameter values (physical space)."""
-        for i, var_spec in enumerate(self.vars):
-            theta = self._w[i]
-            if var_spec.transform == "log10":
-                ln10 = tf.constant(2.302585092994046, theta.dtype)
-                physical_value = tf.exp(ln10 * theta)
-            else:
-                physical_value = theta
-            setattr(state, var_spec.name, physical_value)
+    # ------- State update -----------------------------------------------------
 
-    # ------- Bounds (θ-space) accessors for the optimizer ---------------------
+    def update_state_fields(self, state):
+        """Write current physical values back into `state` (post-optimization)."""
+        for idx, spec in enumerate(self.vars):
+            full_value = self._theta_to_field(idx)
+            ref = self._field_refs[spec.name]
+            ref.assign(tf.cast(full_value, ref.dtype))
+            setattr(state, spec.name, ref)
+
+    # ------- Bounds (θ-space) for optimizer ----------------------------------
 
     def get_box_bounds_flat(self) -> Tuple[tf.Tensor, tf.Tensor]:
-        """
-        Return flattened lower/upper bounds in θ-space for all parameters in self._w.
-        Bounds are ±inf where the user omitted them in the YAML.
-        This is a passive accessor: if the optimizer doesn't use it, nothing changes.
-        """
         L_flat = tf.concat([tf.reshape(Li, [-1]) for Li in self._L_list], axis=0)
         U_flat = tf.concat([tf.reshape(Ui, [-1]) for Ui in self._U_list], axis=0)
         return L_flat, U_flat
 
-    # ------- Mapping API: parameters (w) plumbing -----------------------------
+    # ------- Parameter plumbing ----------------------------------------------
 
     def get_w(self) -> List[tf.Variable]:
         return self._w
@@ -222,7 +235,6 @@ class MappingDataAssimilation(Mapping):
             var.assign(val)
 
     def copy_w(self, w: List[tf.Variable]) -> List[tf.Tensor]:
-        # Return immediate tensor snapshots (no aliasing)
         return [wi.read_value() for wi in w]
 
     def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
@@ -232,7 +244,6 @@ class MappingDataAssimilation(Mapping):
         flats = []
         for i, wi in enumerate(w):
             if wi is None:
-                # Defensive: None gradient would indicate wiring issues upstream
                 raise ValueError(f"❌ None gradient for parameter: {self.vars[i].name}")
             flats.append(tf.reshape(wi, [-1]))
         return tf.concat(flats, axis=0)
@@ -241,28 +252,31 @@ class MappingDataAssimilation(Mapping):
         splits = tf.split(w_flat, self._sizes)
         return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
-    # ------- Halt criterion  ------------------------------
+    # ------- Halt criterion (same behavior as before) ------------------------
 
     def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """
-        Check base cost increase halt criterion.
-        Returns: (halt_boolean, halt_message_string)
+        Halt if the base (forward) cost increased by >10% relative to its value at
+        the start of the current minimize call. Returns (halt_bool, message).
         """
+        reference = self.base_cost_reference.read_value()
 
-        def initialize_cost():
-            self.initial_cost.assign(self.base_cost)
-            self.cost_initialized.assign(True)
+        def _set_reference() -> Tuple[tf.Tensor, tf.Tensor]:
+            self.base_cost_reference.assign(self.base_cost)
             return tf.constant(False, dtype=tf.bool), tf.constant("", dtype=tf.string)
 
-        def check_cost_increase():
-            rel_increase = (self.base_cost - self.initial_cost) / (tf.abs(self.initial_cost) + 1e-12)
-            threshold = tf.constant(0.1, dtype=tf.float32)  # 10%
-            should_halt = tf.greater(rel_increase, threshold)
-            halt_message = tf.cond(
+        def _check_increase() -> Tuple[tf.Tensor, tf.Tensor]:
+            rel_increase = (self.base_cost - reference) / (tf.abs(reference) + self._base_cost_eps)
+            should_halt = tf.greater(rel_increase, self._base_cost_tol)
+            message = tf.cond(
                 should_halt,
                 lambda: tf.constant("Base cost increased beyond threshold (10.0%)", dtype=tf.string),
                 lambda: tf.constant("", dtype=tf.string),
             )
-            return should_halt, halt_message
+            return should_halt, message
 
-        return tf.cond(self.cost_initialized, check_cost_increase, initialize_cost)
+        return tf.cond(tf.math.is_nan(reference), _set_reference, _check_increase)
+
+    def on_minimize_start(self) -> None:
+        reset_value = tf.constant(float("nan"), dtype=self.base_cost_reference.dtype)
+        self.base_cost_reference.assign(reset_value)
