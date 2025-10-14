@@ -233,8 +233,10 @@ def _cost(
     dUdz = dUdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
     dVdz = dVdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
 
+    if B.shape[-3] > 1:
+        B = tf.einsum("ij,bjkl->bikl", V_q, B)
+
     # TODO: check these
-    B = stag2v(B)  # Make something better here?
     dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
     dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(
         dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptopgx, sloptopgy

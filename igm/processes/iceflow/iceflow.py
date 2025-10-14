@@ -52,11 +52,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     get_fieldin,
 )
 
-from igm.processes.iceflow.utils.vertical_discretization import (
-    define_vertical_weight,
-    compute_levels,
-    compute_zeta_dzeta,
-)
+from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 
 from igm.processes.iceflow.solve.solve import (
     initialize_iceflow_solver,
@@ -70,7 +66,6 @@ from igm.processes.iceflow.unified.unified import (
     initialize_iceflow_unified,
     update_iceflow_unified,
 )
-from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
 from igm.processes.iceflow.vertical import VerticalDiscrs
 
 
@@ -103,37 +98,10 @@ def initialize(cfg, state):
     vertical_discr = VerticalDiscrs[vertical_basis](cfg)
     state.iceflow.vertical_discr = vertical_discr
 
-    # Set vertical discretization
+    # Set vertical weights
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
-    vertical_basis = cfg_numerics.vert_basis.lower()
-
-    if vertical_basis == "lagrange":
-        state.levels = compute_levels(
-            cfg_numerics.Nz,
-            cfg_numerics.vert_spacing,
-        )
-        state.zeta, state.dzeta = compute_zeta_dzeta(state.levels)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
-    elif vertical_basis == "legendre":
-        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg_numerics.Nz)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = legendre_basis(
-            state.zeta, order=state.zeta.shape[0]
-        )
-    elif vertical_basis == "sia":
-        if cfg_numerics.Nz != 2:
-            raise ValueError("❌ SIA vertical basis only supports Nz=2.")
-        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
-    else:
-        raise ValueError(f"❌ Unknown vertical basis: <{cfg_numerics.vert_basis}>.")
-
-    vert_disc = [
-        vars(state)[f] for f in ["zeta", "dzeta", "Leg_P", "Leg_dPdz"]
-    ]  # Lets please not hard code this as it affects every function inside...
-    vert_disc = (vert_disc[0], vert_disc[1], vert_disc[2], vert_disc[3])
-    state.vert_disc = vert_disc
 
     # padding is necessary when using U-net emulator
     state.PAD = compute_PAD(

@@ -18,12 +18,12 @@ def compute_vertical_velocity_legendre(cfg, state):
 
     wvelbase = uvelbase * sloptopgx + vvelbase * sloptopgy # Lagrange basis
 
-    dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(state.U, state.V, state.dX[0,0], staggered_grid=False) # Legendre basis
+    dUdx, _, _, dVdy = compute_horizontal_derivatives(state.U, state.V, state.dX[0,0], staggered_grid=False) # Legendre basis
  
     # Lagrange basis
     WLA = wvelbase[None,...] \
-        - tf.tensordot(state.Leg_I, dUdx + dVdy, axes=[[1], [0]]) \
+        - tf.tensordot(state.vert_disc.V_q_int, dUdx + dVdy, axes=[[1], [0]]) \
         * state.thk[None,...]
     
     # Legendre basis
-    return tf.einsum('ji,jkl->ikl', state.Leg_P, WLA * state.dzeta[:,None,None])
+    return tf.einsum('ji,jkl->ikl', state.vert_disc.V_q, WLA * state.dzeta[:,None,None])
