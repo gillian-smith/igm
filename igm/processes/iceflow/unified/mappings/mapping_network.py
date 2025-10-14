@@ -26,7 +26,7 @@ class MappingNetwork(Mapping):
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
         
         # Patience-based halt criterion variables
-        self.patience = 200  # Default patience value; can be overridden
+        self.patience = 500  # Default patience value; can be overridden
         self.best_cost = tf.Variable(float('inf'), trainable=False, name="best_cost")
         self.patience_counter = tf.Variable(0, trainable=False, name="patience_counter")
         self.cost_initialized = tf.Variable(False, trainable=False, name="cost_initialized")
