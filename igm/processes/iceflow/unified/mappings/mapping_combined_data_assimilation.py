@@ -21,13 +21,17 @@ class CombinedVariableSpec:
 
     transform: one of TRANSFORMS keys (e.g., "identity", "log10", "softplus")
     bounds:    Given in PHYSICAL space; converted once to θ-space for the optimizer.
-    mask:      Not supported in this simplified BHWC-only version (must be None).
+    mask:      Optional boolean mask restricting optimization to a subregion.
+               Accepts either:
+                 • str  -> dotted path to a tensor on `state` (e.g. state.icemask)
+                 • Tensor/Variable -> directly used as the mask
+               True/1 = optimized (free), False/0 = frozen (keeps background values).
     """
     name: str
     transform: str = "identity"
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
-    mask: Optional[TV] = None
+    mask: Optional[Union[str, TV]] = None
 
 
 class MappingCombinedDataAssimilation(Mapping):
@@ -93,6 +97,12 @@ class MappingCombinedDataAssimilation(Mapping):
         # Keep transform objects per variable (so we don't relookup every time)
         self._transform_objs = []
 
+        # Mask bookkeeping (mirror masked DA mapping behavior)
+        self._full_shapes: List[tf.TensorShape] = []
+        self._mask_bool: List[Optional[tf.Tensor]] = []
+        self._mask_indices: List[Optional[tf.Tensor]] = []
+        self._mask_backgrounds: List[Optional[tf.Tensor]] = []
+
         for spec in variables:
             tname = spec.transform.lower()
             if tname not in TRANSFORMS:
@@ -101,33 +111,88 @@ class MappingCombinedDataAssimilation(Mapping):
             self._transform_objs.append(T)
 
             # Read physical value from state and cast to compute dtype
-            x_phys = getattr(state, spec.name)
-            x_phys = tf.convert_to_tensor(x_phys, dtype=self.compute_dtype)
+            x_phys_ref = getattr(state, spec.name)
+            x_phys = tf.convert_to_tensor(x_phys_ref, dtype=self.compute_dtype)
 
-            # θ initialization from physical via transform class
-            theta0 = T.to_theta(x_phys, eps=self.eps)
+            # Resolve mask (optional)
+            mask_bool = None
+            mask_indices = None
+            mask_background = None
+            if spec.mask is not None:
+                mask_tensor = self._resolve_mask(state, spec.mask)
+                mask_bool = tf.cast(mask_tensor, tf.bool)
+                if mask_bool.shape != x_phys.shape:
+                    raise ValueError(
+                        f"❌ Mask for '{spec.name}' has shape {mask_bool.shape}; expected {x_phys.shape}."
+                    )
+                if not bool(tf.reduce_any(mask_bool)):
+                    raise ValueError(f"❌ Mask for '{spec.name}' has no active elements.")
+                mask_indices = tf.where(mask_bool)
+                # Background in PHYSICAL space: keep original values where mask==False, zeros on True
+                mask_background = tf.where(mask_bool, tf.zeros_like(x_phys), x_phys)
+
+            # θ initialization from physical via transform class (full field)
+            theta0_full = T.to_theta(x_phys, eps=self.eps)
+            self._full_shapes.append(theta0_full.shape)
+
+            # If masked, keep only active entries in θ; else keep full θ
+            if mask_bool is not None:
+                theta0 = tf.boolean_mask(theta0_full, mask_bool)
+            else:
+                theta0 = theta0_full
+
             theta_var = tf.Variable(theta0, trainable=True, dtype=self.compute_dtype, name=f"theta_{spec.name}")
             self._theta_vars.append(theta_var)
             self._theta_shapes.append(theta_var.shape)
             self._theta_sizes.append(int(theta_var.shape.num_elements()))
+            self._mask_bool.append(mask_bool)
+            self._mask_indices.append(mask_indices)
+            self._mask_backgrounds.append(mask_background)
 
-            # Bounds: PHYSICAL → θ-space via transform
+            # Bounds: PHYSICAL → θ-space via transform (scalar), then broadcast to θ shape
             L_theta_scalar, U_theta_scalar = T.theta_bounds(
                 spec.lower_bound, spec.upper_bound, dtype=self.compute_dtype, eps=self.eps
             )
             self._L_theta_list.append(tf.fill(theta_var.shape, L_theta_scalar))
             self._U_theta_list.append(tf.fill(theta_var.shape, U_theta_scalar))
 
-        # Masks explicitly unsupported for now
-        for spec in self._specs:
-            if spec.mask is not None:
-                raise ValueError(
-                    f"Mask provided for '{spec.name}', but masks are disabled in the "
-                    "simplified combined mapping (BHWC-only, no masks)."
-                )
-
         # Cached totals for un/flattening
         self._theta_total = int(sum(self._theta_sizes))
+
+    # --------------------------------------------------------------------------
+    # Helpers: mask resolution & θ→full-field (PHYSICAL) reconstruction
+    # --------------------------------------------------------------------------
+    @staticmethod
+    def _resolve_mask(state: Any, mask: Union[str, TV]) -> tf.Tensor:
+        if isinstance(mask, str):
+            obj = state
+            for attr in mask.split("."):
+                if not hasattr(obj, attr):
+                    raise ValueError(f"❌ Mask path '{mask}' could not be resolved on state.")
+                obj = getattr(obj, attr)
+            return tf.convert_to_tensor(obj)
+        else:
+            return tf.convert_to_tensor(mask)
+
+    def _theta_to_full_physical(self, idx: int) -> tf.Tensor:
+        """Map current θ (possibly masked) back to a full PHYSICAL grid."""
+        T = self._transform_objs[idx]
+        theta = self._theta_vars[idx]
+        full_shape = self._full_shapes[idx]
+        mask_bool = self._mask_bool[idx]
+
+        if mask_bool is None:
+            val = T.to_physical(theta)
+            val.set_shape(full_shape)
+            return val
+
+        updates = T.to_physical(theta)           # (N_active,)
+        updates = tf.reshape(updates, [-1])
+        background = tf.cast(self._mask_backgrounds[idx], updates.dtype)  # PHYSICAL background
+        indices = self._mask_indices[idx]
+        field = tf.tensor_scatter_nd_update(background, indices, updates)
+        field.set_shape(full_shape)
+        return field
 
     # --------------------------------------------------------------------------
     # Forward & inputs synchronization
@@ -147,12 +212,12 @@ class MappingCombinedDataAssimilation(Mapping):
         updated = inputs
         B, H, W, C = tf.unstack(tf.shape(inputs))
 
-        for spec, theta, T in zip(self._specs, self._theta_vars, self._transform_objs):
-            # θ → physical via transform class
-            phys = T.to_physical(theta)
+        for i, (spec, T) in enumerate(zip(self._specs, self._transform_objs)):
+            # θ → full physical via transform class (handles masked/unmasked)
+            phys_full = self._theta_to_full_physical(i)
 
             # broadcast to batch and make BHWC1
-            phys_b = tf.tile(tf.reshape(phys, [1, H, W, 1]), [B, 1, 1, 1])
+            phys_b = tf.tile(tf.reshape(phys_full, [1, H, W, 1]), [B, 1, 1, 1])
 
             ch = int(self.field_to_channel[spec.name])
 
@@ -233,9 +298,9 @@ class MappingCombinedDataAssimilation(Mapping):
     # Optional helper: update State with current physical fields (post-optim)
     # --------------------------------------------------------------------------
     def update_state_fields(self, state: Any) -> None:
-        for spec, theta, T in zip(self._specs, self._theta_vars, self._transform_objs):
-            phys = T.to_physical(theta)
-            setattr(state, spec.name, phys)
+        for i, (spec, T) in enumerate(zip(self._specs, self._transform_objs)):
+            phys_full = self._theta_to_full_physical(i)
+            setattr(state, spec.name, phys_full)
 
     # --------------------------------------------------------------------------
     # Halt criterion (simple default; can be extended later)
