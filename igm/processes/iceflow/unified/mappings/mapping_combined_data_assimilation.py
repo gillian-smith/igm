@@ -56,8 +56,13 @@ class MappingCombinedDataAssimilation(Mapping):
         eps: float = 1e-12,
         *,
         precision: str | tf.dtypes.DType = "single",   # kept: precision support
+        store_freq: int = 0,
     ):
         super().__init__(bcs)
+
+        self.store_freq = int(store_freq)
+        self._progress_iter = []
+        self._progress_fields = {}
 
         # ----- precision config -----
         self.compute_dtype = _normalize_precision(precision)
@@ -303,7 +308,58 @@ class MappingCombinedDataAssimilation(Mapping):
             setattr(state, spec.name, phys_full)
 
     # --------------------------------------------------------------------------
-    # Halt criterion (simple default; can be extended later)
+    # Halt criterion
     # --------------------------------------------------------------------------
     def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         return tf.constant(False, tf.bool), tf.constant("", tf.string)
+
+    # --------------------------------------------------------------------------
+    # Progress storage hooks
+    # --------------------------------------------------------------------------
+
+    def on_minimize_start(self) -> None:
+        self._progress_iter = []
+        # spec names assumed available (e.g., self._specs)
+        self._progress_fields = {spec.name: [] for spec in self._specs}
+
+    def _collect_current_phys_fields(self) -> list[tf.Tensor]:
+        # full physical fields with mask reversed, one per spec
+        return [self._theta_to_full_physical(i) for i in range(len(self._specs))]
+
+    def _append_snapshot_py(self, it: int, *phys_np):
+        self._progress_iter.append(int(it))
+        for spec, arr in zip(self._specs, phys_np):
+            self._progress_fields[spec.name].append(arr)
+        return 0
+
+    def on_step_end(self, iteration: tf.Tensor) -> None:
+        # Make store_freq a tensor, so we can branch in graph
+        sf = tf.convert_to_tensor(self.store_freq, dtype=tf.int32)
+
+        def _do_append():
+            phys_list = self._collect_current_phys_fields()
+
+            def _append(i, *phys_np):
+                it_py = int(i)  # or i.item()
+                self._progress_iter.append(it_py)
+                for spec, arr in zip(self._specs, phys_np):
+                    self._progress_fields[spec.name].append(arr)
+                return 0  
+
+            return tf.py_function(_append, [iteration] + phys_list, Tout=tf.int32)
+
+        def _no_op():
+            return tf.constant(0, tf.int32)
+
+        tf.cond(
+            tf.logical_and(
+                tf.greater(sf, 0),
+                tf.equal(tf.math.floormod(iteration, sf), 0),
+            ),
+            _do_append,
+            _no_op,
+        )
+
+    def get_progress(self) -> dict:
+        return {"iteration": list(self._progress_iter),
+                "fields": {k: list(v) for k, v in self._progress_fields.items()}}
