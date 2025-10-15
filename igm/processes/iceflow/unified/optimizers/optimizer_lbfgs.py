@@ -367,6 +367,12 @@ class OptimizerLBFGS(Optimizer):
             # Bookkeeping / stop
             costs = costs.write(it, cost)
             grad_norm = self._get_grad_norm(grad_w)
+
+            tf.py_function(
+                func=lambda i: (self.map.on_step_end(i), 0)[1],  # returns dummy int
+                inp=[it],  
+                Tout=tf.int32,
+            )
             should_stop = self._progress_update(it, cost, grad_norm)
             if should_stop:
                 break

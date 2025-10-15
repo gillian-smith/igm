@@ -69,3 +69,7 @@ class Mapping(ABC):
 
     def on_minimize_start(self) -> None:
         return None
+    
+    def on_step_end(self, iteration: tf.Tensor) -> None:
+        """Called at the end of every optimizer iteration."""
+        pass
