@@ -4,95 +4,113 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Dict, Tuple
-
-from igm.processes.iceflow.energy.utils import stag4h
-from igm.processes.iceflow.utils.velocities import get_velbase
-from igm.utils.gradient.compute_gradient import compute_gradient
-from igm.processes.iceflow.vertical import VerticalDiscr
+from typing import Dict
 
 from ..sliding import SlidingComponent
+from igm.processes.iceflow.energy.utils import stag4h
+from igm.processes.iceflow.vertical import VerticalDiscr
+from igm.utils.gradient.compute_gradient import compute_gradient
 
 
 class WeertmanParams(tf.experimental.ExtensionType):
+    """Parameters for Weertman sliding law."""
 
     regu: float
     exponent: float
-    vert_basis: str
 
 
 class Weertman(SlidingComponent):
+    """Sliding component implementing Weertman's sliding law."""
 
-    def __init__(self, params: WeertmanParams):
+    def __init__(self, params: WeertmanParams) -> None:
+        """Initialize Weertman sliding component with parameters."""
         self.params = params
 
     def cost(
         self,
         U: tf.Tensor,
         V: tf.Tensor,
-        fieldin: Dict,
+        fieldin: Dict[str, tf.Tensor],
         vert_disc: VerticalDiscr,
         staggered_grid: bool,
     ) -> tf.Tensor:
+        """Compute Weertman sliding cost."""
         return cost_weertman(U, V, fieldin, vert_disc, staggered_grid, self.params)
 
 
 def cost_weertman(
     U: tf.Tensor,
     V: tf.Tensor,
-    fieldin: Dict,
+    fieldin: Dict[str, tf.Tensor],
     vert_disc: VerticalDiscr,
     staggered_grid: bool,
     weertman_params: WeertmanParams,
 ) -> tf.Tensor:
+    """Compute Weertman sliding cost from field inputs."""
 
-    thk, usurf, slidingco, dX = (
-        fieldin["thk"],
-        fieldin["usurf"],
-        fieldin["slidingco"],
-        fieldin["dX"],
-    )
+    h = fieldin["thk"]
+    s = fieldin["usurf"]
+    C = fieldin["slidingco"]
+    dx = fieldin["dX"]
+
     V_b = vert_disc.V_b
 
-    expo = weertman_params.exponent
-    regu = weertman_params.regu
+    m = weertman_params.exponent
+    u_regu = weertman_params.regu
 
-    return _cost(
-        U,
-        V,
-        thk,
-        usurf,
-        slidingco,
-        dX,
-        expo,
-        regu,
-        V_b,
-        staggered_grid,
-    )
+    return _cost(U, V, h, s, C, dx, m, u_regu, V_b, staggered_grid)
 
 
 @tf.function()
 def _cost(
-    U,
-    V,
-    thk,
-    usurf,
-    slidingco,
-    dX,
-    expo,
-    regu,
-    V_b,
-    staggered_grid,
-):
+    U: tf.Tensor,
+    V: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
+    C: tf.Tensor,
+    dx: tf.Tensor,
+    m: float,
+    u_regu: float,
+    V_b: tf.Tensor,
+    staggered_grid: bool,
+) -> tf.Tensor:
+    """
+    Compute the Weertman sliding law cost term.
 
-    # Coefficient and effective exponent
-    C = 1.0 * slidingco
-    s = 1.0 + 1.0 / expo
+    Calculates the sliding energy dissipation using Weertman's power law:
+    C * |u_b|^(1+1/m) / (1+1/m), where u_b is the basal velocity magnitude
+    corrected for bed topography.
 
-    # Bed gradients
-    dbdx, dbdy = compute_gradient(usurf - thk, dX, dX, staggered_grid)
+    Parameters
+    ----------
+    U : tf.Tensor
+        Horizontal velocity along x axis (m/year)
+    V : tf.Tensor
+        Horizontal velocity along y axis (m/year)
+    h : tf.Tensor
+        Ice thickness (m)
+    s : tf.Tensor
+        Upper-surface elevation (m)
+    C : tf.Tensor
+        Friction coefficient (MPa (m/year)^(-1/m))
+    dx : tf.Tensor
+        Grid spacing (m)
+    m : float
+        Weertman exponent (-)
+    u_regu : float
+        Regularization parameter for velocity magnitude (m/year)
+    V_b : tf.Tensor
+        Basal extraction vector: dofs -> basal
+    staggered_grid : bool
+        Additional staggering of (U, V, C)
 
-    # Optional staggering
+    Returns
+    -------
+    tf.Tensor
+        Weertman sliding cost in MPa m/year
+    """
+
+    # Optional additional staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
@@ -102,9 +120,16 @@ def _cost(
     ux_b = tf.einsum("j,bjkl->bkl", V_b, U)
     uy_b = tf.einsum("j,bjkl->bkl", V_b, V)
 
+    # Compute bed gradient ∇b
+    b = s - h
+    dbdx, dbdy = compute_gradient(b, dx, dx, staggered_grid)
+
     # Compute basal velocity magnitude (with norm M and regularization)
-    corr_bed = ux_b * dbdx + uy_b * dbdy
+    u_corr_b = ux_b * dbdx + uy_b * dbdy
+    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
 
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + regu * regu + corr_bed * corr_bed)
+    # Effective exponent
+    s = 1.0 + 1.0 / m
 
+    # C * |u_b|^s / s
     return C * tf.pow(u_b, s) / s

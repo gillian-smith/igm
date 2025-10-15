@@ -4,116 +4,149 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
+from omegaconf import DictConfig
 
-from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia
-from igm.utils.gradient.compute_gradient import compute_gradient
 from .energy import EnergyComponent
+from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.vertical import VerticalDiscr
-
-
-class GravityComponent(EnergyComponent):
-
-    def __init__(self, params):
-        self.params = params
-
-    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-        return cost_gravity(U, V, fieldin, vert_disc, staggered_grid, self.params)
+from igm.utils.gradient.compute_gradient import compute_gradient
 
 
 class GravityParams(tf.experimental.ExtensionType):
+    """Parameters for gravity energy component."""
 
-    exp_glen: float
-    ice_density: float
-    gravity_cst: float
-    force_negative_gravitational_energy: bool
-    vert_basis: str
+    ρ: float
+    g: float
+    fnge: bool
 
 
-def get_gravity_params_args(cfg) -> Dict[str, Any]:
+class GravityComponent(EnergyComponent):
+    """Energy component representing gravitational potential energy."""
 
-    cfg_numerics = cfg.processes.iceflow.numerics
+    def __init__(self, params: GravityParams) -> None:
+        """Initialize gravity component with parameters."""
+        self.params = params
+
+    def cost(
+        self,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        fieldin: Dict[str, tf.Tensor],
+        vert_disc: VerticalDiscr,
+        staggered_grid: bool,
+    ) -> tf.Tensor:
+        """Compute gravitational energy cost."""
+        return cost_gravity(U, V, fieldin, vert_disc, staggered_grid, self.params)
+
+
+def get_gravity_params_args(cfg: DictConfig) -> Dict[str, Any]:
+    """Extract gravity parameters from configuration."""
+
     cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "exp_glen": cfg_physics.exp_glen,
-        "ice_density": cfg_physics.ice_density,
-        "gravity_cst": cfg_physics.gravity_cst,
-        "force_negative_gravitational_energy": cfg_physics.force_negative_gravitational_energy,
-        "vert_basis": cfg_numerics.vert_basis,
+        "ρ": cfg_physics.ice_density,
+        "g": cfg_physics.gravity_cst,
+        "fnge": cfg_physics.force_negative_gravitational_energy,
     }
 
 
 def cost_gravity(
     U: tf.Tensor,
     V: tf.Tensor,
-    fieldin: Dict,
+    fieldin: Dict[str, tf.Tensor],
     vert_disc: VerticalDiscr,
     staggered_grid: bool,
     gravity_params: GravityParams,
 ) -> tf.Tensor:
+    """Compute gravitational energy cost from field inputs."""
 
-    thk, usurf, dX = fieldin["thk"], fieldin["usurf"], fieldin["dX"]
+    h = fieldin["thk"]
+    s = fieldin["usurf"]
+    dx = fieldin["dX"]
 
     V_q = vert_disc.V_q
     w = vert_disc.w
 
-    ice_density = gravity_params.ice_density
-    gravity_cst = gravity_params.gravity_cst
-    fnge = gravity_params.force_negative_gravitational_energy
+    ρ = gravity_params.ρ
+    g = gravity_params.g
+    fnge = gravity_params.fnge
 
-    return _cost(
-        U,
-        V,
-        usurf,
-        dX,
-        thk,
-        ice_density,
-        gravity_cst,
-        fnge,
-        V_q,
-        w,
-        staggered_grid,
-    )
+    return _cost(U, V, h, s, dx, ρ, g, fnge, V_q, w, staggered_grid)
 
 
 @tf.function()
 def _cost(
-    U,
-    V,
-    usurf,
-    dX,
-    thk,
-    ice_density,
-    gravity_cst,
-    fnge,
-    V_q,
-    w,
-    staggered_grid,
-):
+    U: tf.Tensor,
+    V: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
+    dx: tf.Tensor,
+    ρ: float,
+    g: float,
+    fnge: bool,
+    V_q: tf.Tensor,
+    w: tf.Tensor,
+    staggered_grid: bool,
+) -> tf.Tensor:
+    """
+    Compute the gravitational energy cost term.
 
-    slopsurfx, slopsurfy = compute_gradient(usurf, dX, dX, staggered_grid)
+    Calculates the work done by gravity: ρ * g * h * ∫(u·∇s)dz, where the
+    integral is computed over the ice thickness using vertical quadrature.
 
+    Parameters
+    ----------
+    U : tf.Tensor
+        Horizontal velocity along x axis (m/year)
+    V : tf.Tensor
+        Horizontal velocity along y axis (m/year)
+    h : tf.Tensor
+        Ice thickness (m)
+    s : tf.Tensor
+        Upper-surface elevation (m)
+    dx : tf.Tensor
+        Grid spacing (m)
+    ρ : float
+        Ice density (kg m^-3)
+    g : float
+        Gravity acceleration (m s^-2)
+    fnge : bool
+        Force negative gravitational energy flag
+    V_q : tf.Tensor
+        Quadrature matrix: dofs -> quads
+    w : tf.Tensor
+        Weights for vertical integration
+    staggered_grid : bool
+        Additional staggering of (U, V, h)
+
+    Returns
+    -------
+    tf.Tensor
+        Gravitational energy cost in MPa m/year
+    """
+
+    # Optional additional staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
-        thk = stag4h(thk)
+        h = stag4h(h)
 
-    U = tf.einsum("ij,bjkl->bikl", V_q, U)
-    V = tf.einsum("ij,bjkl->bikl", V_q, V)
+    # Retrieve velocity at quadrature points
+    u_q = tf.einsum("ij,bjkl->bikl", V_q, U)
+    v_q = tf.einsum("ij,bjkl->bikl", V_q, V)
 
-    uds = U * slopsurfx[:, None, :, :] + V * slopsurfy[:, None, :, :]
+    # Compute upper surface gradient ∇s
+    dsdx, dsdy = compute_gradient(s, dx, dx, staggered_grid)
+    dsdx_q = dsdx[:, None, :, :]
+    dsdy_q = dsdy[:, None, :, :]
 
+    # Product (u,v)*∇s
+    u_dsdl_q = u_q * dsdx_q + v_q * dsdy_q
     if fnge:
-        uds = tf.minimum(uds, 0.0)  # force non-postiveness
+        u_dsdl_q = tf.minimum(u_dsdl_q, 0.0)
 
-    #    uds = tf.where(thk[:, None, :, :]>0, uds, 0.0)
-
-    # C_slid is unit Mpa m^-1 m/y m = Mpa m/y
-    return (
-        ice_density
-        * gravity_cst
-        * 10 ** (-6)
-        * thk
-        * tf.reduce_sum(w[None, :, None, None] * uds, axis=1)
-    )
+    # rho * g * h * ∫ [(u,v)*∇s] dz in MPa * m/year
+    w_q = w[None, :, None, None]
+    return 10 ** (-6) * ρ * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)

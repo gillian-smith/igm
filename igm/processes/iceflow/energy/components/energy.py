@@ -7,7 +7,9 @@ from abc import ABC, abstractmethod
 
 
 class EnergyComponent(ABC):
+    """Generic energy component."""
 
     @abstractmethod
     def cost():
+        """Abstract cost computation."""
         pass

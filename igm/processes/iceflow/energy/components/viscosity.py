@@ -6,44 +6,52 @@
 import tensorflow as tf
 from typing import Any, Dict, Tuple
 
-from igm.processes.iceflow.energy.utils import stag4h, stag2v, psia, psiap
-from igm.utils.gradient.compute_gradient import compute_gradient
 from .energy import EnergyComponent
+from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.vertical import VerticalDiscr
-
-
-class ViscosityComponent(EnergyComponent):
-
-    def __init__(self, params):
-        self.params = params
-
-    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-        return cost_viscosity(U, V, fieldin, vert_disc, staggered_grid, self.params)
+from igm.utils.gradient.compute_gradient import compute_gradient
 
 
 class ViscosityParams(tf.experimental.ExtensionType):
-    """Viscosity parameters for the cost function."""
+    """Parameters for viscous energy component."""
 
-    exp_glen: float
-    regu_glen: float
-    thr_ice_thk: float
-    min_sr: float
-    max_sr: float
-    vert_basis: str
+    n: float
+    h_min: float
+    ε_dot_regu: float
+    ε_dot_min: float
+    ε_dot_max: float
+
+
+class ViscosityComponent(EnergyComponent):
+    """Energy component representing viscous energy dissipation."""
+
+    def __init__(self, params) -> None:
+        """Initialize viscous component with parameters."""
+        self.params = params
+
+    def cost(
+        self,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        fieldin: Dict[str, tf.Tensor],
+        vert_disc: VerticalDiscr,
+        staggered_grid: bool,
+    ) -> tf.Tensor:
+        """Compute viscous energy cost."""
+        return cost_viscosity(U, V, fieldin, vert_disc, staggered_grid, self.params)
 
 
 def get_viscosity_params_args(cfg) -> Dict[str, Any]:
+    """Extract viscous parameters from configuration."""
 
-    cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "exp_glen": cfg_physics.exp_glen,
-        "regu_glen": cfg_physics.regu_glen,
-        "thr_ice_thk": cfg_physics.thr_ice_thk,
-        "min_sr": cfg_physics.min_sr,
-        "max_sr": cfg_physics.max_sr,
-        "vert_basis": cfg_numerics.vert_basis,
+        "n": cfg_physics.exp_glen,
+        "h_min": cfg_physics.thr_ice_thk,
+        "ε_dot_regu": cfg_physics.regu_glen,
+        "ε_dot_min": cfg_physics.min_sr,
+        "ε_dot_max": cfg_physics.max_sr,
     }
 
 
@@ -55,38 +63,35 @@ def cost_viscosity(
     staggered_grid: bool,
     viscosity_params: ViscosityParams,
 ) -> tf.Tensor:
+    """Compute viscous energy cost from field inputs."""
 
-    thk, usurf, arrhenius, slidingco, dX = (
-        fieldin["thk"],
-        fieldin["usurf"],
-        fieldin["arrhenius"],
-        fieldin["slidingco"],
-        fieldin["dX"],
-    )
+    h = fieldin["thk"]
+    s = fieldin["usurf"]
+    A = fieldin["arrhenius"]
+    dx = fieldin["dX"]
 
     V_q = vert_disc.V_q
     V_q_grad = vert_disc.V_q_grad
     w = vert_disc.w
 
-    exp_glen = viscosity_params.exp_glen
-    regu_glen = viscosity_params.regu_glen
-    thr_ice_thk = viscosity_params.thr_ice_thk
-    min_sr = viscosity_params.min_sr
-    max_sr = viscosity_params.max_sr
+    n = viscosity_params.n
+    h_min = viscosity_params.h_min
+    ε_dot_regu = viscosity_params.ε_dot_regu
+    ε_dot_min = viscosity_params.ε_dot_min
+    ε_dot_max = viscosity_params.ε_dot_max
 
     return _cost(
         U,
         V,
-        thk,
-        usurf,
-        arrhenius,
-        slidingco,
-        dX,
-        exp_glen,
-        regu_glen,
-        thr_ice_thk,
-        min_sr,
-        max_sr,
+        h,
+        s,
+        A,
+        dx,
+        n,
+        h_min,
+        ε_dot_regu,
+        ε_dot_min,
+        ε_dot_max,
         V_q,
         V_q_grad,
         w,
@@ -95,7 +100,10 @@ def cost_viscosity(
 
 
 @tf.function()
-def compute_horizontal_derivatives(U, V, dx, staggered_grid):
+def compute_horizontal_derivatives(
+    U: tf.Tensor, V: tf.Tensor, dx: float, staggered_grid: bool
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Compute horizontal velocity derivatives using finite differences."""
 
     if staggered_grid:
 
@@ -124,7 +132,10 @@ def compute_horizontal_derivatives(U, V, dx, staggered_grid):
 
 
 @tf.function()
-def compute_srxy2(dUdx, dVdx, dUdy, dVdy):
+def compute_ε_dot2_xy(
+    dUdx: tf.Tensor, dVdx: tf.Tensor, dUdy: tf.Tensor, dVdy: tf.Tensor
+) -> tf.Tensor:
+    """Compute horizontal contribution to squared strain rate."""
 
     Exx = dUdx
     Eyy = dVdy
@@ -135,7 +146,8 @@ def compute_srxy2(dUdx, dVdx, dUdy, dVdy):
 
 
 @tf.function()
-def compute_srz2(dUdz, dVdz):
+def compute_ε_dot2_z(dUdz: tf.Tensor, dVdz: tf.Tensor) -> tf.Tensor:
+    """Compute vertical contribution to squared strain rate."""
 
     Exz = 0.5 * dUdz
     Eyz = 0.5 * dVdz
@@ -144,40 +156,52 @@ def compute_srz2(dUdz, dVdz):
 
 
 @tf.function()
-def compute_vertical_derivatives(U, V, thk, dzeta, thr):
+def compute_ε_dot2(
+    dUdx: tf.Tensor,
+    dVdx: tf.Tensor,
+    dUdy: tf.Tensor,
+    dVdy: tf.Tensor,
+    dUdz: tf.Tensor,
+    dVdz: tf.Tensor,
+) -> tf.Tensor:
+    """Compute squared strain rate."""
 
-    if U.shape[-3] > 1:
-        dUdz = (U[:, 1:, :, :] - U[:, :-1, :, :]) / (
-            dzeta[None, :, None, None] * tf.expand_dims(tf.maximum(thk, thr), axis=1)
-        )
-        dVdz = (V[:, 1:, :, :] - V[:, :-1, :, :]) / (
-            dzeta[None, :, None, None] * tf.expand_dims(tf.maximum(thk, thr), axis=1)
-        )
-    else:
-        dUdz = tf.zeros_like(U)
-        dVdz = tf.zeros_like(V)
+    ε_dot2_xy = compute_ε_dot2_xy(dUdx, dVdx, dUdy, dVdy)
+    ε_dot2_z = compute_ε_dot2_z(dUdz, dVdz)
 
-    return dUdz, dVdz
+    return ε_dot2_xy + ε_dot2_z
 
 
-def dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco, sc=0.01):
+def dampen_ε_dot_z_floating(
+    dUdz: tf.Tensor, dVdz: tf.Tensor, C: tf.Tensor, factor: float = 1e-2
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Dampen vertical velocity gradients in floating regions."""
 
-    dUdz = tf.where(slidingco[:, None, :, :] > 0, dUdz, sc * dUdz)
-    dVdz = tf.where(slidingco[:, None, :, :] > 0, dVdz, sc * dVdz)
+    dUdz = tf.where(C[:, None, :, :] > 0.0, dUdz, factor * dUdz)
+    dVdz = tf.where(C[:, None, :, :] > 0.0, dVdz, factor * dVdz)
 
     return dUdz, dVdz
 
 
 @tf.function()
 def correct_for_change_of_coordinate(
-    dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptopgx, sloptopgy
-):
-    # This correct for the change of coordinate z -> z - b
+    dUdx: tf.Tensor,
+    dVdx: tf.Tensor,
+    dUdy: tf.Tensor,
+    dVdy: tf.Tensor,
+    dUdz: tf.Tensor,
+    dVdz: tf.Tensor,
+    dldx: tf.Tensor,
+    dldy: tf.Tensor,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Correct derivatives for terrain-following coordinate transformation."""
 
-    dUdx = dUdx - dUdz * sloptopgx[:, None, :, :]
-    dUdy = dUdy - dUdz * sloptopgy[:, None, :, :]
-    dVdx = dVdx - dVdz * sloptopgx[:, None, :, :]
-    dVdy = dVdy - dVdz * sloptopgy[:, None, :, :]
+    # This correct for the change of coordinate z -> z - l
+
+    dUdx = dUdx - dUdz * dldx[:, None, :, :]
+    dUdy = dUdy - dUdz * dldy[:, None, :, :]
+    dVdx = dVdx - dVdz * dldx[:, None, :, :]
+    dVdy = dVdy - dVdz * dldy[:, None, :, :]
 
     return dUdx, dVdx, dUdy, dVdy
 
@@ -186,69 +210,125 @@ def correct_for_change_of_coordinate(
 def _cost(
     U,
     V,
-    thk,
-    usurf,
-    arrhenius,
-    slidingco,
-    dX,
-    exp_glen,
-    regu_glen,
-    thr_ice_thk,
-    min_sr,
-    max_sr,
+    h,
+    s,
+    A,
+    dx,
+    n,
+    h_min,
+    ε_dot_regu,
+    ε_dot_min,
+    ε_dot_max,
     V_q,
     V_q_grad,
     w,
     staggered_grid,
 ):
-    # B has Unit Mpa y^(1/n)
-    B = 2.0 * arrhenius ** (-1.0 / exp_glen)
+    """
+    Compute the viscous energy dissipation cost term.
+
+    Calculates the energy dissipation due to ice viscosity using Glen's flow law:
+    h * ∫(B * ε_dot^(1+1/n) / (1+1/n))dz, where ε_dot is the effective strain rate
+    and B is the ice stiffness parameter.
+
+    Parameters
+    ----------
+    U : tf.Tensor
+        Horizontal velocity along x axis (m/year)
+    V : tf.Tensor
+        Horizontal velocity along y axis (m/year)
+    h : tf.Tensor
+        Ice thickness (m)
+    s : tf.Tensor
+        Upper-surface elevation (m)
+    A : tf.Tensor
+        Arrhenius factor (Pa^-n year^-1)
+    dx : tf.Tensor
+        Grid spacing (m)
+    n : float
+        Glen's flow law exponent (-)
+    h_min : float
+        Minimum ice thickness threshold (m)
+    ε_dot_regu : float
+        Regularization parameter for strain rate (year^-1)
+    ε_dot_min : float
+        Minimum strain rate (year^-1)
+    ε_dot_max : float
+        Maximum strain rate (year^-1)
+    V_q : tf.Tensor
+        Quadrature matrix: dofs -> quads
+    V_q_grad : tf.Tensor
+        Gradient quadrature matrix: dofs -> grad at quads
+    w : tf.Tensor
+        Weights for vertical integration
+    staggered_grid : bool
+        Additional staggering of (U, V, h, B)
+
+    Returns
+    -------
+    tf.Tensor
+        Viscous energy dissipation cost in MPa m/year
+    """
+
+    # Ice stiffness parameter
+    B = 2.0 * tf.pow(A, -1.0 / n)
+
     if len(B.shape) == 3:
         B = B[:, None, :, :]
-    p = 1.0 + 1.0 / exp_glen
+
+    # Effective exponent
+    p = 1.0 + 1.0 / n
 
     dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(
-        U, V, dX[0, 0, 0], staggered_grid
+        U, V, dx[0, 0, 0], staggered_grid
     )
 
-    # TODO : sloptopgx, sloptopgy must be the elevaion of layers! not the bedrock, little effects?
-    sloptopgx, sloptopgy = compute_gradient(usurf - thk, dX, dX, staggered_grid)
+    # TODO: dldx, dldy must be the elevaion of layers! not the bedrock, little effects?
+    l = s - h
+    dldx, dldy = compute_gradient(l, dx, dx, staggered_grid)
 
-    # compute the horizontal average, these quantitites will be used for vertical derivatives
+    # Optional additional staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
-        slidingco = stag4h(slidingco)
-        thk = stag4h(thk)
+        h = stag4h(h)
         B = stag4h(B)
 
-    dUdx = tf.einsum("ij,bjkl->bikl", V_q, dUdx)
-    dVdx = tf.einsum("ij,bjkl->bikl", V_q, dVdx)
-    dUdy = tf.einsum("ij,bjkl->bikl", V_q, dUdy)
-    dVdy = tf.einsum("ij,bjkl->bikl", V_q, dVdy)
-
-    dUdz = tf.einsum("ij,bjkl->bikl", V_q_grad, U)
-    dVdz = tf.einsum("ij,bjkl->bikl", V_q_grad, V)
-
-    dUdz = dUdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
-    dVdz = dVdz / tf.expand_dims(tf.maximum(thk, thr_ice_thk), axis=1)
-
+    # Retrieve ice stiffness at quadrature points
     if B.shape[-3] > 1:
-        B = tf.einsum("ij,bjkl->bikl", V_q, B)
+        B_q = tf.einsum("ij,bjkl->bikl", V_q, B)
+    else:
+        B_q = B
 
-    # TODO: check these
-    dUdz, dVdz = dampen_vertical_derivatives_where_floating(dUdz, dVdz, slidingco)
-    dUdx, dVdx, dUdy, dVdy = correct_for_change_of_coordinate(
-        dUdx, dVdx, dUdy, dVdy, dUdz, dVdz, sloptopgx, sloptopgy
+    # Retrieve velocity gradients at quadrature points
+    dudx_q = tf.einsum("ij,bjkl->bikl", V_q, dUdx)
+    dvdx_q = tf.einsum("ij,bjkl->bikl", V_q, dVdx)
+    dudy_q = tf.einsum("ij,bjkl->bikl", V_q, dUdy)
+    dvdy_q = tf.einsum("ij,bjkl->bikl", V_q, dVdy)
+
+    dudz_q = tf.einsum("ij,bjkl->bikl", V_q_grad, U)
+    dvdz_q = tf.einsum("ij,bjkl->bikl", V_q_grad, V)
+
+    dudz_q = dudz_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
+    dvdz_q = dvdz_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
+    # dudz_q, dvdz_q = dampen_ε_dot_z_floating(dudz_q, dvdz_q, C)
+
+    # Correct for terrain-following coordinates
+    dudx_q, dvdx_q, dudy_q, dvdy_q = correct_for_change_of_coordinate(
+        dudx_q, dvdx_q, dudy_q, dvdy_q, dudz_q, dvdz_q, dldx, dldy
     )
 
-    sr2 = compute_srxy2(dUdx, dVdx, dUdy, dVdy) + compute_srz2(dUdz, dVdz)
+    # Compute strain rate
+    ε_dot2_q = compute_ε_dot2(dudx_q, dvdx_q, dudy_q, dvdy_q, dudz_q, dvdz_q)
 
-    sr2capped = tf.clip_by_value(sr2, min_sr**2, max_sr**2)
+    ε_dot2_min = tf.pow(ε_dot_min, 2.0)
+    ε_dot2_max = tf.pow(ε_dot_max, 2.0)
+    ε_dot2_q = tf.clip_by_value(ε_dot2_q, ε_dot2_min, ε_dot2_max)
 
-    #    sr2 = tf.where(thk[:, None, :, :]>0, sr2, 0.0)
+    # Compute viscous contribution
+    ε_dot2_regu = tf.pow(ε_dot_regu, 2.0)
+    visc_term_q = tf.pow(ε_dot2_q + ε_dot2_regu, (p - 2.0) / 2.0) * ε_dot2_q / p
 
-    p_term = ((sr2capped + regu_glen**2) ** ((p - 2) / 2)) * sr2 / p
-
-    # C_shear is unit  Mpa y^(1/n) y^(-1-1/n) * m = Mpa m/y
-    return thk * tf.reduce_sum(B * w[None, :, None, None] * p_term, axis=1)
+    # h * ∫ [B * ε_dot^(1+1/n) / (1+1/n)] dz
+    w_q = w[None, :, None, None]
+    return h * tf.reduce_sum(B_q * visc_term_q * w_q, axis=1)
