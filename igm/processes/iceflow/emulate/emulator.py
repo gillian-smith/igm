@@ -1,37 +1,36 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+from omegaconf import DictConfig
 from typing import Any, Dict, Tuple
 import tensorflow as tf
-import os
 import warnings
+
 import igm
-
-
-from igm.processes.iceflow.emulate import EmulatedParams
-from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
-from igm.processes.iceflow.emulate.utils.misc import (
-    get_pretrained_emulator_path,
-    get_effective_pressure_precentage,
-    load_model_from_path,
-)
+from igm.common.core import State
 from igm.processes.iceflow.energy import (
     EnergyComponents,
     EnergyParams,
     get_energy_params_args,
 )
-
+from igm.processes.iceflow.energy.energy import iceflow_energy_XY
+from igm.processes.iceflow.emulate import EmulatedParams
+from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
+from igm.processes.iceflow.emulate.utils.misc import (
+    get_pretrained_emulator_path,
+    load_model_from_path,
+)
 from igm.processes.iceflow.data_preparation.data_preprocessing import (
-    create_training_set_from_patches,
-    split_fieldin_to_patches,
     PreparationParams,
     calculate_expected_dimensions,
     get_input_params_args,
 )
-
-from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
     create_input_tensor_from_fieldin,
 )
-
-from igm.processes.iceflow.energy.energy import iceflow_energy_XY
+from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 
 
 class EmulatorParams(tf.experimental.ExtensionType):
@@ -48,7 +47,9 @@ class EmulatorParams(tf.experimental.ExtensionType):
     print_cost: bool
 
 
-def get_emulator_params_args(cfg, Nx: int, Ny: int, BatchSize: int) -> Dict[str, Any]:
+def get_emulator_params_args(
+    cfg: DictConfig, Nx: int, Ny: int, BatchSize: int
+) -> Dict[str, Any]:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
@@ -69,7 +70,9 @@ def get_emulator_params_args(cfg, Nx: int, Ny: int, BatchSize: int) -> Dict[str,
     }
 
 
-def get_emulator_bag(state, nbit, lr, batch_size) -> Dict:
+def get_emulator_bag(
+    state: State, nbit: int, lr: float, batch_size: int
+) -> Dict[str, Any]:
 
     return {
         "iceflow_model_inference": state.iceflow_model_inference,
@@ -77,7 +80,6 @@ def get_emulator_bag(state, nbit, lr, batch_size) -> Dict:
         "energy_components": state.iceflow.energy_components,
         "opti_retrain": state.opti_retrain,
         "nbit": nbit,
-        "effective_pressure": state.effective_pressure,
         "lr": lr,
         "PAD": state.PAD,
         "vert_disc": state.iceflow.vertical_discr,
@@ -85,15 +87,15 @@ def get_emulator_bag(state, nbit, lr, batch_size) -> Dict:
     }
 
 
-def update_iceflow_emulator(cfg, state, fieldin, initial, it):
+def update_iceflow_emulator(
+    cfg: DictConfig, state: State, fieldin: tf.Tensor, initial: bool, it: int
+) -> None:
 
     cfg_emulator = cfg.processes.iceflow.emulator
 
-    warm_up = int(it <= cfg_emulator.warm_up_it)
+    warm_up = it <= cfg_emulator.warm_up_it
     run_it = (
-        (cfg_emulator.retrain_freq > 0)
-        & (it > 0)
-        & (it % cfg_emulator.retrain_freq == 0)
+        cfg_emulator.retrain_freq > 0 and it > 0 and it % cfg_emulator.retrain_freq == 0
     )
 
     if initial or run_it or warm_up:
@@ -114,12 +116,11 @@ tf.config.optimizer.set_jit(True)
 
 
 @tf.function(jit_compile=False)
-def update_emulator(bag, X, parameters):
+def update_emulator(
+    bag: Dict[str, Any], X: tf.Tensor, parameters: EmulatorParams
+) -> tf.Tensor:
 
     emulator_cost_tensor = tf.TensorArray(dtype=tf.float32, size=bag["nbit"])
-    # emulator_grad_tensor = tf.TensorArray(
-    #     dtype=tf.float32, size=parameters.nbit
-    # )
 
     Nx = parameters.Nx
     Ny = parameters.Ny
@@ -176,19 +177,18 @@ def update_emulator(bag, X, parameters):
                 zip(gradients, bag["iceflow_model"].trainable_variables)
             )
 
+            del tape
+
             if parameters.print_cost:
                 tf.print("Iteration", iteration + 1, "/", bag["nbit"], end=" ")
                 tf.print(": Cost =", cost_emulator)
 
-            del tape
-
         emulator_cost_tensor = emulator_cost_tensor.write(iteration, cost_emulator)
-        # emulator_grad_tensor = emulator_grad_tensor.write(iteration, total_gradients)
 
     return emulator_cost_tensor.stack()
 
 
-def initialize_iceflow_emulator(cfg, state):
+def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     if not hasattr(cfg, "processes"):
         raise AttributeError("❌ <cfg.processes> does not exist.")
@@ -218,22 +218,17 @@ def initialize_iceflow_emulator(cfg, state):
     )
 
     # Retraining option
-    if (int(tf.__version__.split(".")[1]) <= 10) | (
-        int(tf.__version__.split(".")[1]) >= 16
-    ):
-        state.opti_retrain = getattr(tf.keras.optimizers, cfg_emulator.optimizer)(
-            learning_rate=cfg_emulator.lr,
-            epsilon=cfg_emulator.optimizer_epsilon,
-            clipnorm=cfg_emulator.optimizer_clipnorm,
-        )
+    version_tf = int(tf.__version__.split(".")[1])
+    if (version_tf <= 10) | (version_tf >= 16):
+        module_optimizer = tf.keras.optimizers
     else:
-        state.opti_retrain = getattr(
-            tf.keras.optimizers.legacy, cfg_emulator.optimizer
-        )(
-            learning_rate=cfg_emulator.lr,
-            epsilon=cfg_emulator.optimizer_epsilon,
-            clipnorm=cfg_emulator.optimizer_clipnorm,
-        )
+        module_optimizer = tf.keras.optimizers.legacy
+
+    state.opti_retrain = getattr(module_optimizer, cfg_emulator.optimizer)(
+        learning_rate=cfg_emulator.lr,
+        epsilon=cfg_emulator.optimizer_epsilon,
+        clipnorm=cfg_emulator.optimizer_clipnorm,
+    )
 
     if cfg_emulator.pretrained:
         dir_path = get_pretrained_emulator_path(cfg, state)
@@ -297,13 +292,3 @@ def initialize_iceflow_emulator(cfg, state):
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
-    if not hasattr(
-        state, "effective_pressure"
-    ):  # temporarly putting this here but should put in budd / coulomb
-
-        state.effective_pressure = get_effective_pressure_precentage(
-            state.thk, percentage=0.0
-        )
-        state.effective_pressure = tf.where(
-            state.effective_pressure < 1e-3, 1e-3, state.effective_pressure
-        )
