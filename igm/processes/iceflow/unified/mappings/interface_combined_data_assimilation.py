@@ -45,7 +45,7 @@ class InterfaceCombinedDataAssimilation(InterfaceMapping):
         bcs = cfg.processes.iceflow.unified.bcs
         specs = InterfaceCombinedDataAssimilation._to_combined_specs(cfg)
 
-        emu_cfg = getattr(getattr(cfg, "iceflow", object()), "emulator", object())
+        emu_cfg = cfg.processes.iceflow.emulator
         fieldin = getattr(emu_cfg, "fieldin", None)
         field_to_channel = {str(name): i for i, name in enumerate(fieldin)}
 
@@ -59,7 +59,7 @@ class InterfaceCombinedDataAssimilation(InterfaceMapping):
                 )
 
         da_cfg = getattr(getattr(cfg, "processes", object()), "data_assimilation", object())
-        precision = getattr(da_cfg, "precision", "double")
+        precision = getattr(da_cfg, "precision", "single")
 
         return {
             "bcs": bcs,

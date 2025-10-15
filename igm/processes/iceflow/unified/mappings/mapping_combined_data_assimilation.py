@@ -55,7 +55,7 @@ class MappingCombinedDataAssimilation(Mapping):
         field_to_channel: Optional[Dict[str, int]] = None,
         eps: float = 1e-12,
         *,
-        precision: str | tf.dtypes.DType = "double",   # kept: precision support
+        precision: str | tf.dtypes.DType = "single",   # kept: precision support
     ):
         super().__init__(bcs)
 

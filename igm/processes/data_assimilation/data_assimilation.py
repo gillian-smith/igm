@@ -15,7 +15,7 @@ from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
 
 from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
 
-from .outputs.output_ncdf import update_ncdf_optimize
+from .outputs.output_ncdf import output_ncdf_optimize_final
 
 class DataAssimilation:
     pass
@@ -27,13 +27,12 @@ def data_assimilation_initialize(cfg, state):
     # Initialize mapping
     mapping_key = "combined_data_assimilation"
     mapping_args = InterfaceMappings[mapping_key].get_mapping_args(cfg, state)
-    mapping_args["data_cost_fn"] = get_data_assimilation_cost_fn(cfg, state)
     mapping = Mappings[mapping_key](**mapping_args)
 
     # Initialize optimizer with combined cost function
     optimizer_name = cfg_da.optimizer
     optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
-        cfg=cfg, cost_fn=mapping.get_combined_cost_fn(), map=mapping
+        cfg=cfg, cost_fn=get_data_assimilation_cost_fn(cfg, state), map=mapping
     )
 
     optimizer = Optimizers[optimizer_name](**optimizer_args)
@@ -97,26 +96,19 @@ def initialize(cfg, state):
 
 def update(cfg, state):
 
-    for iter in range(100):
+    fieldin = get_fieldin(cfg, state)
+    inputs = create_input_tensor_from_fieldin(
+        fieldin, state.iceflow.patching, state.iceflow.preparation_params
+    )
 
-        fieldin = get_fieldin(cfg, state)
-        inputs = create_input_tensor_from_fieldin(
-            fieldin, state.iceflow.patching, state.iceflow.preparation_params
-        )
+    state.cost = state.data_assimilation.optimizer.minimize(inputs)
 
-        state.cost = state.data_assimilation.optimizer.minimize(inputs)
+    # Update state with optimized values using the mapping method
+    state.data_assimilation.optimizer.map.update_state_fields(state)
 
-        # Update state with optimized values using the mapping method
-        state.data_assimilation.optimizer.map.update_state_fields(state)
-        state.data_assimilation.cost_components = (
-            state.data_assimilation.optimizer.map.get_latest_cost_components()
-        )
+    evaluate_iceflow(cfg, state)
 
-        evaluate_iceflow(cfg, state)
-
-        update_ncdf_optimize(cfg, state, iter)
-
-
+    output_ncdf_optimize_final(cfg, state)
 
 def finalize(cfg, state):
     pass
