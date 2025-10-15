@@ -59,10 +59,15 @@ class MappingCombinedDataAssimilation(Mapping):
         store_freq: int = 0,
     ):
         super().__init__(bcs)
-
+        
         self.store_freq = int(store_freq)
-        self._progress_iter = []
-        self._progress_fields = {}
+        self._num_vars = None
+
+        # Snapshot state (allocated in on_minimize_start)
+        self._snap_idx: tf.Variable | None = None
+        self._iter_var: tf.Variable | None = None      # shape [T_cap], int32
+        self._fields_var: tf.Variable | None = None    # shape [T_cap, V, H, W], dtype = physical
+        self._t_cap: int = 0
 
         # ----- precision config -----
         self.compute_dtype = _normalize_precision(precision)
@@ -317,49 +322,82 @@ class MappingCombinedDataAssimilation(Mapping):
     # Progress storage hooks
     # --------------------------------------------------------------------------
 
-    def on_minimize_start(self) -> None:
-        self._progress_iter = []
-        # spec names assumed available (e.g., self._specs)
-        self._progress_fields = {spec.name: [] for spec in self._specs}
+    def on_minimize_start(self, iter_max: int) -> None:
+        # Called eagerly. Prepare fixed-size Variables for snapshots.
+        self._num_vars = len(self._specs)
 
-    def _collect_current_phys_fields(self) -> list[tf.Tensor]:
-        # full physical fields with mask reversed, one per spec
-        return [self._theta_to_full_physical(i) for i in range(len(self._specs))]
+        # Infer (H, W) and dtype from a sample physical field
+        sample = self._theta_to_full_physical(0)              # (H, W)
+        phys_dtype = sample.dtype
+        H = int(sample.shape[0]) if sample.shape[0] is not None else int(tf.shape(sample)[0])
+        W = int(sample.shape[1]) if sample.shape[1] is not None else int(tf.shape(sample)[1])
 
-    def _append_snapshot_py(self, it: int, *phys_np):
-        self._progress_iter.append(int(it))
-        for spec, arr in zip(self._specs, phys_np):
-            self._progress_fields[spec.name].append(arr)
-        return 0
+        # Compute capacity (no snapshots if disabled)
+        if self.store_freq <= 0 or not iter_max or iter_max <= 0:
+            self._t_cap = 0
+        else:
+            self._t_cap = int(iter_max // self.store_freq + 2)
 
+        # Allocate / reset Variables
+        self._snap_idx = tf.Variable(0, dtype=tf.int32, trainable=False, name="snap_idx")
+
+        if self._t_cap > 0:
+            self._iter_var = tf.Variable(
+                tf.zeros([self._t_cap], dtype=tf.int32),
+                trainable=False, name="iter_snapshots"
+            )
+            self._fields_var = tf.Variable(
+                tf.zeros([self._t_cap, self._num_vars, H, W], dtype=phys_dtype),
+                trainable=False, name="field_snapshots"
+            )
+        else:
+            # Keep placeholders (won’t be used)
+            self._iter_var = None
+            self._fields_var = None
+
+    @tf.function(experimental_relax_shapes=True)
     def on_step_end(self, iteration: tf.Tensor) -> None:
-        # Make store_freq a tensor, so we can branch in graph
-        sf = tf.convert_to_tensor(self.store_freq, dtype=tf.int32)
+        sf = tf.constant(self.store_freq, tf.int32)
 
-        def _do_append():
-            phys_list = self._collect_current_phys_fields()
+        def _append():
+            idx = self._snap_idx.read_value()
 
-            def _append(i, *phys_np):
-                it_py = int(i)  # or i.item()
-                self._progress_iter.append(it_py)
-                for spec, arr in zip(self._specs, phys_np):
-                    self._progress_fields[spec.name].append(arr)
-                return 0  
+            # Build (V, H, W) stack in TF
+            phys_list = [self._theta_to_full_physical(i) for i in range(self._num_vars)]
+            stacked = tf.stack(phys_list, axis=0)  # (V, H, W)
 
-            return tf.py_function(_append, [iteration] + phys_list, Tout=tf.int32)
-
-        def _no_op():
+            # Scatter into Variables at index idx
+            self._iter_var.scatter_nd_update(indices=tf.reshape(idx, [1, 1]),
+                                             updates=tf.reshape(iteration, [1]))
+            self._fields_var.scatter_nd_update(indices=tf.reshape(idx, [1, 1]),
+                                               updates=tf.expand_dims(stacked, axis=0))
+            # Bump counter
+            self._snap_idx.assign_add(1)
             return tf.constant(0, tf.int32)
 
-        tf.cond(
-            tf.logical_and(
+        # Guard everything when disabled or capacity==0
+        def _enabled_and_capacity():
+            return tf.cond(
                 tf.greater(sf, 0),
-                tf.equal(tf.math.floormod(iteration, sf), 0),
-            ),
-            _do_append,
-            _no_op,
-        )
+                lambda: tf.cond(tf.equal(tf.math.floormod(iteration, sf), 0), _append, lambda: tf.constant(0, tf.int32)),
+                lambda: tf.constant(0, tf.int32),
+            )
+
+        # If you want to also guard on capacity at graph-time:
+        if self._t_cap == 0 or self._iter_var is None or self._fields_var is None:
+            return
+        _ = _enabled_and_capacity()
 
     def get_progress(self) -> dict:
-        return {"iteration": list(self._progress_iter),
-                "fields": {k: list(v) for k, v in self._progress_fields.items()}}
+        # Eager: materialize after optimize()
+        if self._t_cap == 0 or self._snap_idx is None or self._iter_var is None or self._fields_var is None:
+            return {"iteration": [], "fields": {}}
+
+        T = int(self._snap_idx.numpy())
+        if T == 0:
+            return {"iteration": [], "fields": {spec.name: [] for spec in self._specs}}
+
+        it = self._iter_var.numpy()[:T]                              # (T,)
+        F  = self._fields_var.numpy()[:T, :, :, :]                    # (T, V, H, W)
+        fields = {spec.name: F[:, k, :, :] for k, spec in enumerate(self._specs)}
+        return {"iteration": it, "fields": fields}

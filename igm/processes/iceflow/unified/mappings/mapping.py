@@ -67,9 +67,9 @@ class Mapping(ABC):
     def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> tf.Tensor:
         pass
 
-    def on_minimize_start(self) -> None:
-        return None
-    
+    def on_minimize_start(self, iter_max: int) -> None:
+        pass
+
+    @tf.function
     def on_step_end(self, iteration: tf.Tensor) -> None:
-        """Called at the end of every optimizer iteration."""
         pass

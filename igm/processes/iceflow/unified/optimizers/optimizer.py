@@ -56,7 +56,7 @@ class Optimizer(ABC):
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
         if self.print_cost:
             self._progress_setup()
-        self.map.on_minimize_start()
+        self.map.on_minimize_start(int(self.iter_max))
         costs = self.minimize_impl(inputs)
 
         return costs
