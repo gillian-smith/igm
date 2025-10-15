@@ -24,7 +24,6 @@ from igm.processes.iceflow.utils.velocities import (
 class EvaluatorParams(tf.experimental.ExtensionType):
     Nz: int
     force_max_velbar: float
-    vertical_basis: str
     dim_arrhenius: int
 
 
@@ -37,7 +36,6 @@ def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
         "dim_arrhenius": cfg_physics.dim_arrhenius,
         "Nz": cfg_numerics.Nz,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
-        "vertical_basis": cfg_numerics.vert_basis,
     }
 
 
@@ -45,8 +43,10 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
-        "vert_weight": state.vert_weight,
         "mapping": state.iceflow.mapping,
+        "V_bar": state.iceflow.vertical_discr.V_bar,
+        "V_b": state.iceflow.vertical_discr.V_b,
+        "V_s": state.iceflow.vertical_discr.V_s,
     }
 
 
@@ -81,18 +81,12 @@ def evaluator_iceflow(
     V = tf.where(kwargs["thk"] > 0.0, V, 0.0)
 
     if parameters.force_max_velbar > 0.0:
-        U, V = clip_max_velbar(
-            U,
-            V,
-            parameters.force_max_velbar,
-            parameters.vertical_basis,
-            kwargs["vert_weight"],
-        )
+        U, V = clip_max_velbar(U, V, kwargs["V_bar"], parameters.force_max_velbar)
 
     # Retrieve derived quantities from velocity fields
-    uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
-    uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(U, V, kwargs["vert_weight"], parameters.vertical_basis)
+    uvelbase, vvelbase = get_velbase(U, V, kwargs["V_b"])
+    uvelsurf, vvelsurf = get_velsurf(U, V, kwargs["V_s"])
+    ubar, vbar = get_velbar(U, V, kwargs["V_bar"])
 
     return {
         "U": U,

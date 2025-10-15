@@ -21,21 +21,18 @@ class EmulatedParams(tf.experimental.ExtensionType):
     exclude_borders: int
     multiple_window_size: int
     force_max_velbar: float
-    vertical_basis: str
 
 
 def get_emulated_params_args(cfg) -> Dict[str, Any]:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
 
     return {
         "Nz": cfg_numerics.Nz,
         "exclude_borders": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
-        "vertical_basis": cfg_numerics.vert_basis,
     }
 
 
@@ -44,9 +41,9 @@ def get_emulated_bag(state) -> Dict[str, Any]:
     return {
         "thk": state.thk,
         "PAD": state.PAD,
-        "vert_weight": state.vert_weight,
-        "U": state.U,
-        "V": state.V,
+        "V_b": state.iceflow.vertical_discr.V_b,
+        "V_s": state.iceflow.vertical_discr.V_s,
+        "V_bar": state.iceflow.vertical_discr.V_bar,
         "iceflow_model_inference": state.iceflow_model_inference,
     }
 
@@ -95,15 +92,14 @@ def update_emulated(
         U, V = clip_max_velbar(
             U,
             V,
+            bag["V_bar"],
             parameters.force_max_velbar,
-            parameters.vertical_basis,
-            bag["vert_weight"],
         )
 
     # Retrieve derived quantities from velocity fields
-    uvelbase, vvelbase = get_velbase(U, V, parameters.vertical_basis)
-    uvelsurf, vvelsurf = get_velsurf(U, V, parameters.vertical_basis)
-    ubar, vbar = get_velbar(U, V, bag["vert_weight"], parameters.vertical_basis)
+    uvelbase, vvelbase = get_velbase(U, V, bag["V_b"])
+    uvelsurf, vvelsurf = get_velsurf(U, V, bag["V_s"])
+    ubar, vbar = get_velbar(U, V, bag["V_bar"])
 
     return {
         "U": U,
