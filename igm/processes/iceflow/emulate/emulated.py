@@ -1,13 +1,14 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+from omegaconf import DictConfig
 from typing import Dict, Any
 import tensorflow as tf
 
-from igm.processes.iceflow.utils.data_preprocessing import (
-    fieldin_to_X_2d,
-    fieldin_to_X_3d,
-    Y_to_UV,
-    prepare_X,
-)
-
+from igm.common.core import State
+from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV, prepare_X
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
     get_velsurf,
@@ -23,7 +24,7 @@ class EmulatedParams(tf.experimental.ExtensionType):
     force_max_velbar: float
 
 
-def get_emulated_params_args(cfg) -> Dict[str, Any]:
+def get_emulated_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
@@ -36,7 +37,7 @@ def get_emulated_params_args(cfg) -> Dict[str, Any]:
     }
 
 
-def get_emulated_bag(state) -> Dict[str, Any]:
+def get_emulated_bag(state: State) -> Dict[str, Any]:
 
     return {
         "thk": state.thk,
@@ -48,7 +49,7 @@ def get_emulated_bag(state) -> Dict[str, Any]:
     }
 
 
-def update_iceflow_emulated(cfg, state, fieldin):
+def update_iceflow_emulated(cfg: DictConfig, state: State, fieldin: tf.Tensor) -> None:
 
     X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
     bag = get_emulated_bag(state)
