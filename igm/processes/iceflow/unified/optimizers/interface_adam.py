@@ -22,6 +22,7 @@ class InterfaceAdam(InterfaceOptimizer):
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
+        precision = cfg.processes.iceflow.numerics.precision
 
         return {
             "cost_fn": cost_fn,
@@ -30,6 +31,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "iter_max": cfg_unified.nbit,
             "print_cost": cfg_unified.print_cost,
             "print_cost_freq": cfg_unified.print_cost_freq,
+            "precision": precision,
         }
 
     @staticmethod

@@ -29,6 +29,7 @@ iceflow:
     force_negative_gravitational_energy: false
     cf_eswn: []
   numerics:
+    precision: single
     Nz: 10
     vert_spacing: 4.0
     staggered_grid: 1
@@ -48,7 +49,6 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
-      precision: single
     bcs: []
     inputs: [thk, usurf, arrhenius, slidingco, dX]
     inputs_scales: 

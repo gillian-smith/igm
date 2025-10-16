@@ -10,12 +10,12 @@ from .mapping import Mapping
 
 
 class MappingIdentity(Mapping):
-    def __init__(self, bcs: List[str], U_guess: tf.Tensor, V_guess: tf.Tensor):
+    def __init__(self, bcs: List[str], U_guess: tf.Tensor, V_guess: tf.Tensor, precision: str = "float32"):
 
         if U_guess.shape != V_guess.shape:
             raise ValueError("❌ U_guess and V_guess must have the same shape.")
 
-        super().__init__(bcs)
+        super().__init__(bcs, precision)
         self.shape = U_guess.shape
         self.type = U_guess.dtype
         self.U = tf.Variable(U_guess, trainable=True)
@@ -50,9 +50,8 @@ class MappingIdentity(Mapping):
         V = tf.reshape(v_flat, self.shape)
         return [U, V]
     
-    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> tf.Tensor:
-
+    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         halt = tf.constant(False, dtype=tf.bool)
-        
-        return halt
+        halt_message = tf.constant("", dtype=tf.string)
+        return halt, halt_message
 

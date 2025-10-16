@@ -19,12 +19,13 @@ class OptimizerAdam(Optimizer):
         map: Mapping,
         print_cost: bool,
         print_cost_freq: int,
+        precision: str,
         lr: float = 1e-3,
         iter_max: int = int(1e5),
         lr_decay: float = 0.0,
         lr_decay_steps: int = 1000,
     ):
-        super().__init__(cost_fn, map, print_cost, print_cost_freq)
+        super().__init__(cost_fn, map, print_cost, print_cost_freq, precision)
         self.name = "adam"
         self.print_cost = print_cost
 
@@ -61,14 +62,14 @@ class OptimizerAdam(Optimizer):
         U, V = self.map.get_UV(inputs[0, :, :, :])
         n_batches = inputs.shape[0]
 
-        costs = tf.TensorArray(dtype=tf.float32, size=int(self.iter_max))
+        costs = tf.TensorArray(dtype=self.precision, size=int(self.iter_max))
 
         for iter in tf.range(self.iter_max):
 
-            batch_costs = tf.TensorArray(dtype=tf.float32, size=n_batches)
+            batch_costs = tf.TensorArray(dtype=self.precision, size=n_batches)
 
-            batch_grad_norms = tf.TensorArray(dtype=tf.float32, size=n_batches)
-            
+            batch_grad_norms = tf.TensorArray(dtype=self.precision, size=n_batches)
+
             for i in tf.range(n_batches):
                 input = inputs[i, :, :, :, :]
 

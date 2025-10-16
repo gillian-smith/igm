@@ -125,11 +125,13 @@ def _cost(
     dbdx, dbdy = compute_gradient(b, dx, dx, staggered_grid)
 
     # Compute basal velocity magnitude (with norm M and regularization)
+    dtype = U.dtype
+    u_regu_const = tf.constant(u_regu, dtype=dtype)
     u_corr_b = ux_b * dbdx + uy_b * dbdy
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
+    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu_const * u_regu_const + u_corr_b * u_corr_b)
 
     # Effective exponent
-    s = 1.0 + 1.0 / m
+    s = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / tf.constant(m, dtype=dtype)
 
     # C * |u_b|^s / s
     return C * tf.pow(u_b, s) / s

@@ -20,6 +20,7 @@ class PreparationParams(tf.experimental.ExtensionType):
     fieldin_names: Tuple[
         str, ...
     ]  # names of input fields for selective noise application
+    precision: str  # 'single' or 'double' precision for training
     noise_channels: Tuple[str, ...]  # names of input fields to apply noise
     skip_preparation: bool  # true if not training an emulator (identity mapping with unified method)
 
@@ -80,6 +81,7 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
         "noise_scale": cfg_data_preparation.noise_scale,
         "target_samples": cfg_data_preparation.target_samples,
         "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
+        "precision": cfg.processes.iceflow.numerics.precision,
         "noise_channels": _determine_noise_channels(cfg),
         "skip_preparation": _should_skip_preparation(cfg),
     }

@@ -142,11 +142,14 @@ def _cost(
     dsdx_q = dsdx[:, None, :, :]
     dsdy_q = dsdy[:, None, :, :]
 
+    dtype = U.dtype
+
     # Product (u,v)*∇s
     u_dsdl_q = u_q * dsdx_q + v_q * dsdy_q
     if fnge:
-        u_dsdl_q = tf.minimum(u_dsdl_q, 0.0)
+        u_dsdl_q = tf.minimum(u_dsdl_q, tf.constant(0.0, dtype=dtype))
 
     # rho * g * h * ∫ [(u,v)*∇s] dz in MPa * m/year
     w_q = w[None, :, None, None]
-    return 10 ** (-6) * ρ * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)
+    scale_factor = tf.constant(10.0 ** (-6), dtype=dtype)
+    return scale_factor * tf.constant(ρ, dtype=dtype) * tf.constant(g, dtype=dtype) * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)

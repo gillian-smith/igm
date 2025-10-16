@@ -6,13 +6,17 @@
 import numpy as np
 import tensorflow as tf
 
+from igm.utils.math.precision import _normalize_precision
 
 def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
     """
     Routine serve to build a convolutional neural network
     """
 
-    inputs = tf.keras.layers.Input(shape=[None, None, nb_inputs])
+    precision = cfg.processes.iceflow.numerics.precision
+    dtype = _normalize_precision(precision)
+
+    inputs = tf.keras.layers.Input(shape=[None, None, nb_inputs], dtype=dtype)
 
     if input_normalizer is not None:
         inputs = input_normalizer(inputs)
@@ -61,6 +65,7 @@ def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
                 padding="same",
                 depthwise_regularizer=kernel_regularizer,
                 pointwise_regularizer=kernel_regularizer,
+                dtype=dtype,
             )(conv)
 
         else:
@@ -73,10 +78,11 @@ def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
                 kernel_initializer=cfg.processes.iceflow.emulator.network.weight_initialization,
                 padding="same",
                 kernel_regularizer=kernel_regularizer,
+                dtype=dtype,
             )(conv)
 
         if use_batch_norm:
-            conv = tf.keras.layers.BatchNormalization()(conv)
+            conv = tf.keras.layers.BatchNormalization(dtype=dtype)(conv)
 
         conv = activation(conv)
 
@@ -103,6 +109,7 @@ def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
                     cfg.processes.iceflow.emulator.network.conv_ker_size,
                 ),
                 padding="same",
+                dtype=dtype,
             )(conv)
 
             conv = tf.keras.layers.UpSampling3D(size=(2, 1, 1))(conv)
@@ -122,6 +129,7 @@ def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
         ),
         kernel_initializer=cfg.processes.iceflow.emulator.network.weight_initialization,
         activation=None,
+        dtype=dtype,
     )(outputs)
 
     return tf.keras.models.Model(inputs=inputs, outputs=outputs)
@@ -163,14 +171,17 @@ def build_norm_layer(cfg, nb_inputs, scales):
         raise ValueError(
             f"Expected inputs scales of length {nb_inputs}, got {len(scales)}"
         )
-
-    norm = tf.keras.layers.Normalization(axis=-1)  # per-channel (last dim)
+    
+    precision = cfg.processes.iceflow.numerics.precision
+    dtype = _normalize_precision(precision)
+    
+    norm = tf.keras.layers.Normalization(axis=-1, dtype=dtype)
     norm.build((None, None, None, nb_inputs))  # N,H,W,C so variables exist
 
-    mu = np.array(scales)
+    mu  = np.array(scales, dtype=dtype)
     # TODO: make the variance an input parameter
-    var = np.array([1000.0, 1000.0, 1.0, 1.0, 1.0])
-    count = tf.Variable(1.0)  # Use tf.Variable with scalar value
+    var = np.array([1000.0, 1000.0, 1.0, 1.0, 1.0], dtype=dtype)
+    count = tf.Variable(1.0, dtype=dtype)  # Use tf.Variable with scalar value
 
     norm.set_weights([mu, var, count])  # Now provide all 3 weights
 

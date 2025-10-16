@@ -18,6 +18,7 @@ from rich.progress import (
 )
 
 from ..mappings import Mapping
+from igm.utils.math.precision import _normalize_precision
 
 progress_theme = Theme(
     {
@@ -38,6 +39,7 @@ class Optimizer(ABC):
         map: Mapping,
         print_cost: bool = True,
         print_cost_freq: int = 1,
+        precision: str = "float32",
         convergence_tolerance: float = 1e-6,
     ):
         self.name = ""
@@ -45,6 +47,7 @@ class Optimizer(ABC):
         self.map = map
         self.print_cost = print_cost
         self.print_cost_freq = print_cost_freq
+        self.precision = _normalize_precision(precision)
         self.convergence_tolerance = convergence_tolerance
 
     @abstractmethod

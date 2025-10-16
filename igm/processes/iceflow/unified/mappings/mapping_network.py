@@ -17,8 +17,9 @@ class MappingNetwork(Mapping):
         network: tf.keras.Model,
         Nz: tf.Tensor,
         output_scale: tf.Tensor = 1.0,
+        precision: str = "float32",
     ):
-        super().__init__(bcs)
+        super().__init__(bcs, precision)
         self.network = network
         self.Nz = Nz
         self.output_scale = output_scale
@@ -27,7 +28,7 @@ class MappingNetwork(Mapping):
         
         # Patience-based halt criterion variables
         self.patience = 500  # Default patience value; can be overridden
-        self.best_cost = tf.Variable(float('inf'), trainable=False, name="best_cost")
+        self.best_cost = tf.Variable(float('inf'), trainable=False, name="best_cost", dtype=self.precision)
         self.patience_counter = tf.Variable(0, trainable=False, name="patience_counter")
         self.cost_initialized = tf.Variable(False, trainable=False, name="cost_initialized")
         self.minimize_call_started = tf.Variable(False, trainable=False, name="minimize_call_started")

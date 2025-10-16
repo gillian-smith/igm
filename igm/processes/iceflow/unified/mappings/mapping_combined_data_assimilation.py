@@ -8,8 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .mapping import Mapping
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
-from .transforms import TRANSFORMS          # NEW: use transform classes
-from ..utils import _normalize_precision    # (kept from your precision-aware version)
+from .transforms import TRANSFORMS 
 
 TV = Union[tf.Tensor, tf.Variable]
 
@@ -55,10 +54,10 @@ class MappingCombinedDataAssimilation(Mapping):
         field_to_channel: Optional[Dict[str, int]] = None,
         eps: float = 1e-12,
         *,
-        precision: str | tf.dtypes.DType = "single",   # kept: precision support
+        precision: str = "single",   # kept: precision support
         store_freq: int = 0,
     ):
-        super().__init__(bcs)
+        super().__init__(bcs, precision)
         
         self.store_freq = int(store_freq)
         self._num_vars = None
@@ -69,21 +68,18 @@ class MappingCombinedDataAssimilation(Mapping):
         self._fields_var: tf.Variable | None = None    # shape [T_cap, V, H, W], dtype = physical
         self._t_cap: int = 0
 
-        # ----- precision config -----
-        self.compute_dtype = _normalize_precision(precision)
-
         # ----- Core model pieces -----
         self.network = network
         self.Nz = Nz
-        self.output_scale = tf.cast(output_scale, self.compute_dtype)
+        self.output_scale = tf.cast(output_scale, self.precision)
         self.eps = float(eps)
 
         # Ensure network weights already match requested precision
         for v in self.network.trainable_variables:
-            if v.dtype != self.compute_dtype:
+            if v.dtype != self.precision:
                 raise TypeError(
                     f"[CombinedDA] Network variable dtype is {v.dtype.name}, "
-                    f"but requested precision is {self.compute_dtype.name}. "
+                    f"but requested precision is {self.precision.name}. "
                     "Please build/load the network in the same precision."
                 )
 
@@ -122,7 +118,7 @@ class MappingCombinedDataAssimilation(Mapping):
 
             # Read physical value from state and cast to compute dtype
             x_phys_ref = getattr(state, spec.name)
-            x_phys = tf.convert_to_tensor(x_phys_ref, dtype=self.compute_dtype)
+            x_phys = tf.cast(x_phys_ref, dtype=self.precision)
 
             # Resolve mask (optional)
             mask_bool = None
@@ -151,7 +147,7 @@ class MappingCombinedDataAssimilation(Mapping):
             else:
                 theta0 = theta0_full
 
-            theta_var = tf.Variable(theta0, trainable=True, dtype=self.compute_dtype, name=f"theta_{spec.name}")
+            theta_var = tf.Variable(theta0, trainable=True, dtype=self.precision, name=f"theta_{spec.name}")
             self._theta_vars.append(theta_var)
             self._theta_shapes.append(theta_var.shape)
             self._theta_sizes.append(int(theta_var.shape.num_elements()))
@@ -161,7 +157,7 @@ class MappingCombinedDataAssimilation(Mapping):
 
             # Bounds: PHYSICAL → θ-space via transform (scalar), then broadcast to θ shape
             L_theta_scalar, U_theta_scalar = T.theta_bounds(
-                spec.lower_bound, spec.upper_bound, dtype=self.compute_dtype, eps=self.eps
+                spec.lower_bound, spec.upper_bound, dtype=self.precision, eps=self.eps
             )
             self._L_theta_list.append(tf.fill(theta_var.shape, L_theta_scalar))
             self._U_theta_list.append(tf.fill(theta_var.shape, U_theta_scalar))
@@ -263,7 +259,7 @@ class MappingCombinedDataAssimilation(Mapping):
         return tf.identity(w_flat)
 
     def flatten_w(self, w: List[Union[tf.Variable, tf.Tensor]]) -> tf.Tensor:
-        flats = [tf.reshape(tf.cast(wi, self.compute_dtype), [-1]) for wi in w]
+        flats = [tf.reshape(tf.cast(wi, self.precision), [-1]) for wi in w]
         return tf.concat(flats, axis=0)
 
     def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
@@ -287,19 +283,19 @@ class MappingCombinedDataAssimilation(Mapping):
     # --------------------------------------------------------------------------
     def get_box_bounds_flat(self) -> Tuple[tf.Tensor, tf.Tensor]:
         if self._net_total > 0:
-            neg_inf = tf.constant(-float("inf"), self.compute_dtype)
-            pos_inf = tf.constant(float("inf"), self.compute_dtype)
+            neg_inf = tf.constant(-float("inf"), self.precision)
+            pos_inf = tf.constant(float("inf"), self.precision)
             net_L = tf.fill([self._net_total], neg_inf)
             net_U = tf.fill([self._net_total], pos_inf)
         else:
-            net_L = net_U = tf.zeros([0], dtype=self.compute_dtype)
+            net_L = net_U = tf.zeros([0], dtype=self.precision)
 
         if self._theta_vars:
             L_th = tf.concat([tf.reshape(Li, [-1]) for Li in self._L_theta_list], axis=0)
             U_th = tf.concat([tf.reshape(Ui, [-1]) for Ui in self._U_theta_list], axis=0)
             return (
-                tf.concat([net_L, tf.cast(L_th, self.compute_dtype)], 0),
-                tf.concat([net_U, tf.cast(U_th, self.compute_dtype)], 0),
+                tf.concat([net_L, tf.cast(L_th, self.precision)], 0),
+                tf.concat([net_U, tf.cast(U_th, self.precision)], 0),
             )
         else:
             return net_L, net_U

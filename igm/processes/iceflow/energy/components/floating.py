@@ -75,21 +75,31 @@ def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_
     # if activae this applies the stress condition along the calving front
 
     lsurf = usurf - thk
+    dtype = thk.dtype
 
     #   Check formula (17) in [Jouvet and Graeser 2012], Unit is Mpa
+    zero = tf.constant(0.0, dtype=dtype)
+    half = tf.constant(0.5, dtype=dtype)
+    scale = tf.constant(10.0 ** (-6), dtype=dtype)
+    g_const = tf.constant(9.81, dtype=dtype)
+    rho_ice = tf.constant(910.0, dtype=dtype)
+    rho_water = tf.constant(1000.0, dtype=dtype)
+    
     P = (
         tf.where(
-            lsurf < 0,
-            0.5 * 10 ** (-6) * 9.81 * 910 * (thk**2 - (1000 / 910) * lsurf**2),
-            0.0,
+            lsurf < zero,
+            half * scale * g_const * rho_ice * (thk**2 - (rho_water / rho_ice) * lsurf**2),
+            zero,
         )
         / dX[:, 0, 0]
     )
 
+    one = tf.constant(1.0, dtype=dtype)
+    
     if len(cf_eswn) == 0:
-        thkext = tf.pad(thk, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=1)
+        thkext = tf.pad(thk, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=one)
         lsurfext = tf.pad(
-            lsurf, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=1
+            lsurf, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=one
         )
     else:
         thkext = thk
@@ -97,84 +107,84 @@ def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_
             thkext,
             [[0, 0], [1, 0], [0, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("S" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("S" not in cf_eswn), dtype=dtype),
         )
         thkext = tf.pad(
             thkext,
             [[0, 0], [0, 1], [0, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("N" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("N" not in cf_eswn), dtype=dtype),
         )
         thkext = tf.pad(
             thkext,
             [[0, 0], [0, 0], [1, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("W" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("W" not in cf_eswn), dtype=dtype),
         )
         thkext = tf.pad(
             thkext,
             [[0, 0], [0, 0], [0, 1]],
             "CONSTANT",
-            constant_values=1.0 * ("E" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("E" not in cf_eswn), dtype=dtype),
         )
         lsurfext = lsurf
         lsurfext = tf.pad(
             lsurfext,
             [[0, 0], [1, 0], [0, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("S" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("S" not in cf_eswn), dtype=dtype),
         )
         lsurfext = tf.pad(
             lsurfext,
             [[0, 0], [0, 1], [0, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("N" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("N" not in cf_eswn), dtype=dtype),
         )
         lsurfext = tf.pad(
             lsurfext,
             [[0, 0], [0, 0], [1, 0]],
             "CONSTANT",
-            constant_values=1.0 * ("W" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("W" not in cf_eswn), dtype=dtype),
         )
         lsurfext = tf.pad(
             lsurfext,
             [[0, 0], [0, 0], [0, 1]],
             "CONSTANT",
-            constant_values=1.0 * ("E" not in cf_eswn),
+            constant_values=tf.constant(1.0 * ("E" not in cf_eswn), dtype=dtype),
         )
 
     # this permits to locate the calving front in a cell in the 4 directions
     CF_W = tf.where(
-        (lsurf < 0)
-        & (thk > 0)
-        & (thkext[:, 1:-1, :-2] == 0)
-        & (lsurfext[:, 1:-1, :-2] <= 0),
-        1.0,
-        0.0,
+        (lsurf < zero)
+        & (thk > zero)
+        & (thkext[:, 1:-1, :-2] == zero)
+        & (lsurfext[:, 1:-1, :-2] <= zero),
+        one,
+        zero,
     )
     CF_E = tf.where(
-        (lsurf < 0)
-        & (thk > 0)
-        & (thkext[:, 1:-1, 2:] == 0)
-        & (lsurfext[:, 1:-1, 2:] <= 0),
-        1.0,
-        0.0,
+        (lsurf < zero)
+        & (thk > zero)
+        & (thkext[:, 1:-1, 2:] == zero)
+        & (lsurfext[:, 1:-1, 2:] <= zero),
+        one,
+        zero,
     )
     CF_S = tf.where(
-        (lsurf < 0)
-        & (thk > 0)
-        & (thkext[:, :-2, 1:-1] == 0)
-        & (lsurfext[:, :-2, 1:-1] <= 0),
-        1.0,
-        0.0,
+        (lsurf < zero)
+        & (thk > zero)
+        & (thkext[:, :-2, 1:-1] == zero)
+        & (lsurfext[:, :-2, 1:-1] <= zero),
+        one,
+        zero,
     )
     CF_N = tf.where(
-        (lsurf < 0)
-        & (thk > 0)
-        & (thkext[:, 2:, 1:-1] == 0)
-        & (lsurfext[:, 2:, 1:-1] <= 0),
-        1.0,
-        0.0,
+        (lsurf < zero)
+        & (thk > zero)
+        & (thkext[:, 2:, 1:-1] == zero)
+        & (lsurfext[:, 2:, 1:-1] <= zero),
+        one,
+        zero,
     )
 
     if Nz > 1:
@@ -182,7 +192,7 @@ def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_
         levels = compute_levels(Nz, vert_spacing)
         temd = levels[1:] - levels[:-1]
         weight = tf.stack(
-            [tf.ones_like(thk) * z for z in temd], axis=1
+            [tf.ones_like(thk, dtype=dtype) * tf.constant(z, dtype=dtype) for z in temd], axis=1
         )  # dimensionless,
         C_float = (
             P

@@ -51,6 +51,12 @@ def create_input_tensor_from_fieldin(
     Returns:
         training_tensor: Shape [num_batches, batch_size, height, width, channels]
     """
+
+    # Step 0: Check if fieldin precision matches preparation_params.precision
+    desired_dtype = tf.float32 if preparation_params.precision == "single" else tf.float64
+    if fieldin.dtype != desired_dtype:
+        fieldin = tf.cast(fieldin, desired_dtype)
+
     # If skip_preparation is true, return fieldin with correct dimensions
     if preparation_params.skip_preparation:
         # Reshape fieldin from [height, width, channels] to [1, 1, height, width, channels]

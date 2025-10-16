@@ -90,7 +90,7 @@ class InterfaceCombinedDataAssimilation(InterfaceMapping):
 
         # Precision + store_freq live under processes.data_assimilation
         da_cfg = cfg.processes.data_assimilation
-        precision = getattr(da_cfg, "precision", "single")
+        precision = cfg.processes.iceflow.numerics.precision
         store_freq = int(getattr(da_cfg, "store_freq", 0))
 
         return {

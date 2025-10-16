@@ -18,7 +18,8 @@ class InterfaceIdentity(InterfaceMapping):
 
         Nx = state.thk.shape[1]
         Ny = state.thk.shape[0]
-        Nz = cfg.processes.iceflow.numerics.Nz
+        cfg_numerics = cfg.processes.iceflow.numerics
+        Nz = cfg_numerics.Nz
 
         U_guess = tf.zeros((1, Nz, Ny, Nx))
         V_guess = tf.zeros((1, Nz, Ny, Nx))
@@ -29,4 +30,5 @@ class InterfaceIdentity(InterfaceMapping):
             "bcs": bcs,
             "U_guess": U_guess,
             "V_guess": V_guess,
+            "precision": cfg_numerics.precision,
         }

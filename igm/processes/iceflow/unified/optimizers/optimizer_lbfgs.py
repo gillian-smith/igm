@@ -8,7 +8,7 @@ from typing import Callable, Tuple
 from ..mappings import Mapping
 from .optimizer import Optimizer
 from .line_search import LineSearches, ValueAndGradient
-from ..utils import _normalize_precision
+from igm.utils.math.precision import _normalize_precision
 
 tf.config.optimizer.set_jit(True)
 
@@ -21,65 +21,69 @@ class OptimizerLBFGS(Optimizer):
         map: Mapping,
         print_cost: bool,
         print_cost_freq: int,
+        precision: str,
         line_search_method: str,
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
-        *,
-        precision: str | tf.dtypes.DType = "double",  # NEW
     ):
-        super().__init__(cost_fn, map, print_cost, print_cost_freq)
+        super().__init__(cost_fn, map, print_cost, print_cost_freq, precision)
         self.name = "lbfgs"
-
-        # --- precision config (STRICT; no auto-casting) ---
-        self.compute_dtype = _normalize_precision(precision)
 
         self.line_search = LineSearches[line_search_method]()
         self.iter_max = tf.Variable(iter_max)
-        self.alpha_min = tf.Variable(tf.cast(alpha_min, self.compute_dtype), dtype=self.compute_dtype)
+        self.alpha_min = tf.Variable(tf.cast(alpha_min, self.precision), dtype=self.precision)
         self.memory = memory
 
         if self.memory < 1:
             raise ValueError("L-BFGS memory must be at least 1")
+
+        # Precision-dependent small constants
+        if self.precision == tf.float32:
+            self.eps_tiny = tf.constant(1e-30, self.precision)  # Avoid division by zero
+            self.eps_small = tf.constant(1e-12, self.precision)  # Box constraint and memory threshold
+        else:  # tf.float64
+            self.eps_tiny = tf.constant(1e-200, self.precision)  # Avoid division by zero
+            self.eps_small = tf.constant(1e-12, self.precision)  # Box constraint and memory threshold
 
         # Detect once whether the mapping exposes θ-space bounds
         self._has_box_bounds = hasattr(map, "get_box_bounds_flat")
 
     def update_parameters(self, iter_max: int, alpha_min: float) -> None:
         self.iter_max.assign(iter_max)
-        self.alpha_min.assign(tf.cast(alpha_min, self.compute_dtype))
+        self.alpha_min.assign(tf.cast(alpha_min, self.precision))
 
     # ---------- STRICT dtype checks (kept local to LBFGS) ----------
     @tf.function(reduce_retracing=True)
     def _ensure_precision_strict(self, inputs: tf.Tensor) -> tf.Tensor:
         # Inputs
         tf.debugging.assert_type(
-            inputs, self.compute_dtype,
-            message=f"[LBFGS] inputs must be {self.compute_dtype.name}"
+            inputs, self.precision,
+            message=f"[LBFGS] inputs must be {self.precision}"
         )
         # Variables
         for w in self.map.get_w():
             tf.debugging.assert_type(
-                w, self.compute_dtype,
-                message=f"[LBFGS] mapping variables must be {self.compute_dtype.name}"
+                w, self.precision,
+                message=f"[LBFGS] mapping variables must be {self.precision}"
             )
         # Bounds (if any)
         if self._has_box_bounds:
             L, U = self.map.get_box_bounds_flat()
-            tf.debugging.assert_type(L, self.compute_dtype, message="[LBFGS] lower bounds must match optimizer dtype")
-            tf.debugging.assert_type(U, self.compute_dtype, message="[LBFGS] upper bounds must match optimizer dtype")
+            tf.debugging.assert_type(L, self.precision, message="[LBFGS] lower bounds must match optimizer dtype")
+            tf.debugging.assert_type(U, self.precision, message="[LBFGS] upper bounds must match optimizer dtype")
         return inputs
 
     # ---------- reduction helpers: now use selected precision (name kept) ----------
     @tf.function(reduce_retracing=True)
     def _dot64(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        # name preserved; operates in self.compute_dtype
-        return tf.tensordot(tf.cast(a, self.compute_dtype), tf.cast(b, self.compute_dtype), axes=1)
+        # name preserved; operates in self.precision
+        return tf.tensordot(tf.cast(a, self.precision), tf.cast(b, self.precision), axes=1)
 
     @tf.function(reduce_retracing=True)
     def _norm64(self, a: tf.Tensor) -> tf.Tensor:
-        # name preserved; operates in self.compute_dtype
-        return tf.norm(tf.cast(a, self.compute_dtype))
+        # name preserved; operates in self.precision
+        return tf.norm(tf.cast(a, self.precision))
 
     # ---------- L-BFGS two-loop (H0 tempering via `tau`) ----------
     @tf.function(reduce_retracing=True)
@@ -87,14 +91,14 @@ class OptimizerLBFGS(Optimizer):
         self, grad: tf.Tensor, s_list: tf.Tensor, y_list: tf.Tensor, tau: tf.Tensor
     ) -> tf.Tensor:
         q = grad
-        alpha_list = tf.TensorArray(dtype=self.compute_dtype, size=0, dynamic_size=True)
+        alpha_list = tf.TensorArray(dtype=self.precision, size=0, dynamic_size=True)
         num_elems = tf.shape(s_list)[0]
 
         # First loop
         for i in tf.range(num_elems - 1, -1, -1):
             s_i = s_list[i]
             y_i = y_list[i]
-            rho = tf.cast(1.0, self.compute_dtype) / (self._dot64(y_i, s_i) + tf.constant(1e-300, self.compute_dtype))
+            rho = tf.cast(1.0, self.precision) / (self._dot64(y_i, s_i) + self.eps_tiny)
             alpha_i = rho * self._dot64(s_i, q)
             alpha_list = alpha_list.write(i, alpha_i)
             q = q - tf.cast(alpha_i, q.dtype) * tf.cast(y_i, q.dtype)
@@ -104,10 +108,10 @@ class OptimizerLBFGS(Optimizer):
             last_s = s_list[num_elems - 1]
             ys = self._dot64(last_y, last_s)
             yy = self._dot64(last_y, last_y)
-            return ys / (yy + tf.constant(1e-300, self.compute_dtype))
+            return ys / (yy + self.eps_tiny)
 
         gamma = tf.cond(
-            num_elems > 0, compute_gamma_fn, lambda: tf.cast(1.0, self.compute_dtype)
+            num_elems > 0, compute_gamma_fn, lambda: tf.cast(1.0, self.precision)
         )
 
         # H0 tempering: r = (tau * gamma) * q
@@ -118,7 +122,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             alpha_i = alpha_list.read(i)
-            rho = tf.cast(1.0, self.compute_dtype) / (self._dot64(y_i, s_i) + tf.constant(1e-300, self.compute_dtype))
+            rho = tf.cast(1.0, self.precision) / (self._dot64(y_i, s_i) + self.eps_tiny)
             beta = rho * self._dot64(y_i, r)
             r = r + tf.cast(s_i, r.dtype) * (tf.cast(alpha_i - beta, r.dtype))
 
@@ -131,7 +135,7 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function(reduce_retracing=True)
     def _free_mask(self, w_flat: tf.Tensor, grad_flat: tf.Tensor, L_flat: tf.Tensor, U_flat: tf.Tensor) -> tf.Tensor:
-        eps = tf.constant(1e-12, w_flat.dtype)
+        eps = self.eps_small
         inside = tf.logical_and(w_flat > L_flat + eps, w_flat < U_flat - eps)
         atL_in = tf.logical_and(w_flat <= L_flat + eps, grad_flat > 0.0)  # inward from L
         atU_in = tf.logical_and(w_flat >= U_flat - eps, grad_flat < 0.0)  # inward from U
@@ -185,7 +189,7 @@ class OptimizerLBFGS(Optimizer):
             grad_flat = self.map.flatten_w(grad)
 
             # Directional derivative along projected path: df = g^T (J ⊙ p)
-            eps = tf.constant(1e-12, w_alpha.dtype)
+            eps = self.eps_small
             atL = w_alpha <= (L_flat + eps)
             atU = w_alpha >= (U_flat - eps)
             outward_at_L = tf.logical_and(atL, p_flat < 0.0)
@@ -212,7 +216,7 @@ class OptimizerLBFGS(Optimizer):
         y: tf.Tensor,
     ):
         ys = self._dot64(y, s)
-        cond_update = ys > tf.constant(1e-10, self.compute_dtype)
+        cond_update = ys > self.eps_small
 
         s_store = tf.cast(s, s_flat_mem.dtype)
         y_store = tf.cast(y, y_flat_mem.dtype)
@@ -257,14 +261,14 @@ class OptimizerLBFGS(Optimizer):
 
         # Initial state
         w_flat = self.map.flatten_w(self.map.get_w())
-        tf.debugging.assert_type(w_flat, self.compute_dtype, message="[LBFGS] flatten_w must return compute dtype")
+        tf.debugging.assert_type(w_flat, self.precision, message="[LBFGS] flatten_w must return compute dtype")
 
         # Optional θ-space bounds (only if mapping provides them)
         if self._has_box_bounds:
             L_flat, U_flat = self.map.get_box_bounds_flat()
             # Strict: no casting; require correct dtype
-            tf.debugging.assert_type(L_flat, self.compute_dtype, message="[LBFGS] lower bounds must match dtype")
-            tf.debugging.assert_type(U_flat, self.compute_dtype, message="[LBFGS] upper bounds must match dtype")
+            tf.debugging.assert_type(L_flat, self.precision, message="[LBFGS] lower bounds must match dtype")
+            tf.debugging.assert_type(U_flat, self.precision, message="[LBFGS] upper bounds must match dtype")
             # Start feasible
             w_flat = self._project_box(w_flat, L_flat, U_flat)
             self.map.set_w(self.map.unflatten_w(w_flat))
@@ -276,7 +280,7 @@ class OptimizerLBFGS(Optimizer):
         # Evaluate at initial point
         cost, grad_w = self._get_grad(input)
         grad_w_flat = self.map.flatten_w(grad_w)
-        tf.debugging.assert_type(grad_w_flat, self.compute_dtype, message="[LBFGS] flattened gradient dtype mismatch")
+        tf.debugging.assert_type(grad_w_flat, self.precision, message="[LBFGS] flattened gradient dtype mismatch")
 
         # L-BFGS memory
         w_dim = tf.shape(w_flat)[0]
@@ -316,7 +320,7 @@ class OptimizerLBFGS(Optimizer):
             # Enforce descent
             gTp = self._dot64(grad_w_flat, p_flat)
             p_flat = tf.cond(gTp >= 0.0, lambda: -grad_w_flat, lambda: p_flat)
-
+            
             # Line search (projected-path if bounded; else original)
             if self._has_box_bounds:
                 alpha = self._line_search_projected(w_flat, p_flat, input, L_flat, U_flat)
@@ -343,7 +347,7 @@ class OptimizerLBFGS(Optimizer):
             # New value/grad
             cost, grad_w = self._get_grad(input)
             grad_w_flat = self.map.flatten_w(grad_w)
-            tf.debugging.assert_type(grad_w_flat, self.compute_dtype, message="[LBFGS] flattened gradient dtype mismatch")
+            tf.debugging.assert_type(grad_w_flat, self.precision, message="[LBFGS] flattened gradient dtype mismatch")
 
             # Curvature pair (clean for projection if needed)
             s = w_flat - w_prev

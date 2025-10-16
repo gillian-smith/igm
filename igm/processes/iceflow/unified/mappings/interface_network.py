@@ -71,6 +71,7 @@ class InterfaceNetwork(InterfaceMapping):
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,
+            "precision": cfg_numerics.precision,
         }
 
     

@@ -22,7 +22,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
-        precision = getattr(getattr(cfg_unified, "lbfgs", object()), "precision", "double")
+        precision = cfg.processes.iceflow.numerics.precision
 
         return {
             "cost_fn": cost_fn,

@@ -129,18 +129,20 @@ def _cost(
     dbdx, dbdy = compute_gradient(b, dx, dx, staggered_grid)
 
     # Compute basal velocity magnitude (with norm M and regularization)
+    dtype = U.dtype
+    u_regu_const = tf.constant(u_regu, dtype=dtype)
     u_corr_b = ux_b * dbdx + uy_b * dbdy
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
+    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu_const * u_regu_const + u_corr_b * u_corr_b)
 
     # Temporary fix for effective pressure - should be within the inputs
-    N = get_effective_pressure_precentage(h, percentage=0.0)
-    N = tf.where(N < 1e-3, 1e-3, N)
+    N = get_effective_pressure_precentage(h, percentage=tf.constant(0.0, dtype=dtype))
+    N = tf.where(N < tf.constant(1e-3, dtype=dtype), tf.constant(1e-3, dtype=dtype), N)
 
     # Effective exponent
-    s = 1.0 + 1.0 / m
+    s = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / tf.constant(m, dtype=dtype)
 
     # Compute smooth transition between Weertman and Coulomb following Shapero et al. (2021)
-    τ_c = μ * N
-    u_c = tf.pow(τ_c / C, m)
+    τ_c = tf.constant(μ, dtype=dtype) * N
+    u_c = tf.pow(τ_c / C, tf.constant(m, dtype=dtype))
     # τ_c * [ (|u_b|^s + |u_c|^s)^(1/s) - u_c]
-    return τ_c * (tf.pow(tf.pow(u_b, s) + tf.pow(u_c, s), 1.0 / s) - u_c)
+    return τ_c * (tf.pow(tf.pow(u_b, s) + tf.pow(u_c, s), tf.constant(1.0, dtype=dtype) / s) - u_c)

@@ -20,11 +20,13 @@ def iceflow_energy(
     staggered_shape = (batch_size, Ny - 1, Nx - 1)
     nonstaggered_shape = (batch_size, Ny, Nx)
 
+    dtype = U.dtype
+
     energy_tensor_staggered = tf.TensorArray(
-        dtype=tf.float32, size=energy_tensor_length, element_shape=staggered_shape
+        dtype=dtype, size=energy_tensor_length, element_shape=staggered_shape
     )
     energy_tensor_nonstaggered = tf.TensorArray(
-        dtype=tf.float32, size=energy_tensor_length, element_shape=nonstaggered_shape
+        dtype=dtype, size=energy_tensor_length, element_shape=nonstaggered_shape
     )  # do not make this dynamic for some reason... (slice dimension issue with XLA)
 
     i = 0
