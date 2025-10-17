@@ -4,10 +4,14 @@ from .optimizer_lbfgs import OptimizerLBFGS
 from .interface import InterfaceOptimizer, Status
 from .interface_adam import InterfaceAdam
 from .interface_lbfgs import InterfaceLBFGS
+from .optimizer_lbfgs_DA import OptimizerLBFGSDataAssimilation
+from .optimizer_adam_DA import OptimizerAdamDataAssimilation
 
 Optimizers = {
     "adam": OptimizerAdam,
     "lbfgs": OptimizerLBFGS,
+    "lbfgs_da": OptimizerLBFGSDataAssimilation,
+    "adam_da": OptimizerAdamDataAssimilation,
 }
 
 InterfaceOptimizers = {

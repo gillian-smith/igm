@@ -203,6 +203,17 @@ class MappingCombinedDataAssimilation(Mapping):
     # --------------------------------------------------------------------------
     # Forward & inputs synchronization
     # --------------------------------------------------------------------------
+
+    @tf.function(jit_compile=True)
+    def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
+        processed_inputs = self.synchronize_inputs(inputs)
+        self.set_inputs(processed_inputs)
+        U, V = self.get_UV_impl()
+        for apply_bc in self.apply_bcs:
+            U, V = apply_bc(U, V)
+        return U, V
+
+
     @tf.function(reduce_retracing=True)
     def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         return self.apply_theta_to_inputs(inputs)

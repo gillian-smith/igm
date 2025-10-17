@@ -84,8 +84,7 @@ class Optimizer(ABC):
             for wi in w:
                 tape.watch(wi)
             U, V = self.map.get_UV(inputs)
-            processed_inputs = self.map.synchronize_inputs(inputs)
-            cost = self.cost_fn(U, V, processed_inputs)
+            cost = self.cost_fn(U, V, inputs)
 
         grad_w = tape.gradient(cost, w)
         del tape

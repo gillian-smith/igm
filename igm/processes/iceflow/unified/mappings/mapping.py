@@ -21,20 +21,13 @@ class Mapping(ABC):
     def set_inputs(self, inputs: tf.Tensor) -> None:
         self.inputs = inputs
 
-    def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
-        return inputs
-
-    def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
-        return inputs
-
     @abstractmethod
     def get_UV_impl(self) -> Tuple[TV, TV]:
         pass
 
     @tf.function(jit_compile=True)
     def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
-        processed_inputs = self.synchronize_inputs(inputs)
-        self.set_inputs(processed_inputs)
+        self.set_inputs(inputs)
         U, V = self.get_UV_impl()
         for apply_bc in self.apply_bcs:
             U, V = apply_bc(U, V)

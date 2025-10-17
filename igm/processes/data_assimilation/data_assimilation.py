@@ -39,7 +39,9 @@ def data_assimilation_initialize(cfg, state):
         cfg=cfg, cost_fn=get_data_assimilation_cost_fn(cfg, state), map=mapping
     )
 
-    optimizer = Optimizers[optimizer_name](**optimizer_args)
+    optimizer_name_da = cfg_da.optimizer + "_da"
+
+    optimizer = Optimizers[optimizer_name_da](**optimizer_args)
     state.data_assimilation = DataAssimilation()
     state.data_assimilation.optimizer = optimizer
     state.data_assimilation.cost_components = {}
@@ -101,7 +103,7 @@ def get_data_assimilation_cost_fn(cfg, state):
         cost = cost1 + tf.constant(10000.0, dtype=cost2.dtype) * cost2 # + REGU_H2
         # print both costs
         # tf.print("Data cost:", cost1, "Physics cost:", cost2)  # , "Regu cost:", REGU_H2)
-        return cost
+        return cost, cost1, cost2
 
     return cost_function
 
