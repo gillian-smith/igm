@@ -3,6 +3,8 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 import tensorflow as tf
+import numpy as np
+import xarray as xr
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.unified.optimizers import Optimizers, InterfaceOptimizers
@@ -14,6 +16,8 @@ from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
 )
 
 from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
+from igm.processes.iceflow.unified.utils import get_cost_fn
+
 
 from .outputs.output_ncdf import output_ncdf_optimize_final
 
@@ -60,14 +64,17 @@ def smoothness_biharmonic(field, dx, lam):
 
 
 def get_data_assimilation_cost_fn(cfg, state):
-    
-    def cost_function(U, V, inputs):
 
+    physics_cost_fn = get_cost_fn(cfg, state)
+
+    def data_loss(U, V, inputs):
         U_reshape = U[0,-1,:,:] # surface velocity, assumes no patching!
         V_reshape = V[0,-1,:,:]
 
         velsurf    = tf.stack([U_reshape, V_reshape], axis=-1)
-        velsurfobs = tf.stack([state.uvelsurfobs, state.vvelsurfobs], axis=-1)
+        # Cast observations to match the precision of the forward pass results
+        velsurfobs = tf.stack([tf.cast(state.uvelsurfobs, U_reshape.dtype), 
+                              tf.cast(state.vvelsurfobs, U_reshape.dtype)], axis=-1)
 
         REL = tf.expand_dims((tf.norm(velsurfobs, axis=-1) >= cfg.processes.data_assimilation.fitting.velsurfobs_thr), axis=-1)
         ACT = ~tf.math.is_nan(velsurfobs) 
@@ -76,18 +83,48 @@ def get_data_assimilation_cost_fn(cfg, state):
             ((velsurfobs[ACT & REL] - velsurf[ACT & REL]) / cfg.processes.data_assimilation.fitting.velsurfobs_std) ** 2
         )
 
+        return cost1
+
+    def physics_loss(U, V, inputs):
+        return physics_cost_fn(U, V, inputs)
+    
+    def cost_function(U, V, inputs):
+
+        cost1 = data_loss(U, V, inputs)
+        cost2 = physics_loss(U, V, inputs)
+
         # Extract current thickness from inputs (channel 0) instead of state.thk
-        current_thk = inputs[0, :, :, 0]  # [batch, height, width, channels] -> [height, width]
-        lam = tf.cast(cfg.processes.data_assimilation.regularization.thk, current_thk.dtype)
-        REGU_H2 = smoothness_biharmonic(current_thk, state.dx, lam)  # Use current optimized thickness
+        # current_thk = inputs[0, :, :, 0]  # [batch, height, width, channels] -> [height, width]
+        # lam = tf.cast(cfg.processes.data_assimilation.regularization.thk, current_thk.dtype)
+        # REGU_H2 = smoothness_biharmonic(current_thk, state.dx, lam)  # Use current optimized thickness
 
-        cost = cost1 + REGU_H2
-
+        cost = cost1 + tf.constant(10000.0, dtype=cost2.dtype) * cost2 # + REGU_H2
+        # print both costs
+        # tf.print("Data cost:", cost1, "Physics cost:", cost2)  # , "Regu cost:", REGU_H2)
         return cost
 
     return cost_function
 
+def write_progress_to_netcdf(prog: dict, path: str, *, attrs: dict | None = None, complevel: int = 4) -> str:
+    """
+    prog: {"iteration": [ints], "fields": {name: [np.ndarray (H,W), ...], ...}}
+    path: output .nc path
+    """
 
+    it = np.asarray(prog["iteration"], dtype=np.int64)
+    data_vars = {}
+    for name, snaps in prog["fields"].items():
+        arr = np.stack(snaps, axis=0)  # (T, H, W)
+        H, W = arr.shape[1], arr.shape[2]
+        data_vars[name] = xr.DataArray(arr, dims=("time", "y", "x"),
+                                       coords={"time": it, "y": np.arange(H), "x": np.arange(W)})
+
+    ds = xr.Dataset(data_vars)
+    if attrs: ds.attrs.update(attrs)
+
+    enc = {k: {"zlib": True, "complevel": int(complevel)} for k in ds.data_vars}
+    ds.to_netcdf(path, encoding=enc)
+    return path
 
 def initialize(cfg, state):
 
@@ -102,6 +139,10 @@ def update(cfg, state):
     )
 
     state.cost = state.data_assimilation.optimizer.minimize(inputs)
+
+    prog = state.data_assimilation.optimizer.map.get_progress()
+    out = write_progress_to_netcdf(prog, "progress_snapshots.nc", attrs={"source":"LBFGS CombinedDA"})
+    print("Wrote", out)
 
     # Update state with optimized values using the mapping method
     state.data_assimilation.optimizer.map.update_state_fields(state)

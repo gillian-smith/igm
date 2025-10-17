@@ -306,7 +306,10 @@ class MappingCombinedDataAssimilation(Mapping):
     def update_state_fields(self, state: Any) -> None:
         for i, (spec, T) in enumerate(zip(self._specs, self._transform_objs)):
             phys_full = self._theta_to_full_physical(i)
-            setattr(state, spec.name, phys_full)
+            # Cast back to the original dtype of the state variable to maintain consistency
+            original_var = getattr(state, spec.name)
+            phys_full_cast = tf.cast(phys_full, original_var.dtype)
+            setattr(state, spec.name, phys_full_cast)
 
     # --------------------------------------------------------------------------
     # Halt criterion

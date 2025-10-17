@@ -98,6 +98,8 @@ class OptimizerAdam(Optimizer):
 
             costs = costs.write(iter, iter_cost)
 
+            self.map.on_step_end(iter)
+
             should_stop = self._progress_update(iter, iter_cost, avg_grad_norm)
 
             # Early stopping check
