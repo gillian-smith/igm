@@ -31,13 +31,13 @@ from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
     create_input_tensor_from_fieldin,
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+from igm.processes.iceflow.unified.utils import get_energy_components
 
 
 class EmulatorParams(tf.experimental.ExtensionType):
     lr_decay: float
     Nx: int
     Ny: int
-    BatchSize: int
     Nz: int
     iz: int
     multiple_window_size: int
@@ -47,9 +47,7 @@ class EmulatorParams(tf.experimental.ExtensionType):
     print_cost: bool
 
 
-def get_emulator_params_args(
-    cfg: DictConfig, Nx: int, Ny: int, BatchSize: int
-) -> Dict[str, Any]:
+def get_emulator_params_args(cfg: DictConfig, Nx: int, Ny: int) -> Dict[str, Any]:
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
@@ -59,7 +57,6 @@ def get_emulator_params_args(
         "lr_decay": cfg_emulator.lr_decay,
         "Nx": Nx,
         "Ny": Ny,
-        "BatchSize": BatchSize,
         "Nz": cfg_numerics.Nz,
         "iz": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
@@ -209,7 +206,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     state.iceflow.preparation_params = preparation_params
 
-    Ny, Nx, effective_batch_size = calculate_expected_dimensions(
+    Ny, Nx, _ = calculate_expected_dimensions(
         input_height, input_width, preparation_params
     )
 
@@ -256,33 +253,10 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     state.iceflow_model_inference = fast_inference
 
     # Initialize energy components
-    state.iceflow.energy_components = []
-    for component in cfg_physics.energy_components:
-        if component not in EnergyComponents:
-            raise ValueError(f"❌ Unknown energy component: <{component}>.")
-
-        # Get component and params class
-        if component == "sliding":
-            law = cfg_physics.sliding.law
-            component_class = EnergyComponents[component][law]
-            params_class = EnergyParams[component][law]
-        else:
-            component_class = EnergyComponents[component]
-            params_class = EnergyParams[component]
-
-        # Get args extractor
-        get_params_args = get_energy_params_args[component]
-
-        # Instantiate params and component classes
-        params_args = get_params_args(cfg)
-        params = params_class(**params_args)
-        component_obj = component_class(params)
-
-        # Add component to the list of components
-        state.iceflow.energy_components.append(component_obj)
+    state.iceflow.energy_components = get_energy_components(cfg)
 
     # Instantiate emulator params
-    emulator_params_args = get_emulator_params_args(cfg, Nx, Ny, effective_batch_size)
+    emulator_params_args = get_emulator_params_args(cfg, Nx, Ny)
     emulator_params = EmulatorParams(**emulator_params_args)
 
     # Instantiate emulated params
