@@ -34,26 +34,13 @@ function _update_iceflow_solved. Doing so is not very different to retrain the
 emulator as we minmize the same energy, however, with different controls,
 namely directly the velocity field U and V instead of the emulator parameters.
 """
-import tensorflow as tf
-import warnings
+from omegaconf import DictConfig
 
-from igm.processes.iceflow.emulate.emulated import (
-    update_iceflow_emulated,
-)
+from igm.common.core import State
 from igm.processes.iceflow.emulate.emulator import (
     update_iceflow_emulator,
     initialize_iceflow_emulator,
 )
-from igm.processes.iceflow.emulate.utils import save_iceflow_model
-
-from igm.processes.iceflow.utils.misc import initialize_iceflow_fields
-from igm.processes.iceflow.utils.data_preprocessing import (
-    compute_PAD,
-    get_fieldin,
-)
-
-from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
-
 from igm.processes.iceflow.solve.solve import (
     initialize_iceflow_solver,
     update_iceflow_solved,
@@ -66,6 +53,9 @@ from igm.processes.iceflow.unified.unified import (
     initialize_iceflow_unified,
     update_iceflow_unified,
 )
+from igm.processes.iceflow.emulate.utils import save_iceflow_model
+from igm.processes.iceflow.utils.init import initialize_iceflow_fields
+from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
 
 
@@ -73,117 +63,74 @@ class Iceflow:
     pass
 
 
-def initialize(cfg, state):
+def initialize(cfg: DictConfig, state: State) -> None:
 
     # Make sure this function is only called once
-    if hasattr(state, "was_initialize_iceflow_already_called"):
+    if getattr(state, "iceflow_initialized", False):
         return
-    else:
-        state.was_initialize_iceflow_already_called = True
+    state._iceflow_initialized = True
 
     # Create ice flow object
-    iceflow = Iceflow()
-    state.iceflow = iceflow
+    state.iceflow = Iceflow()
 
-    # Parameters aliases
-    cfg_emulator = cfg.processes.iceflow.emulator
-    cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
-
-    # deinfe the fields of the ice flow such a U, V, but also sliding coefficient, arrhenius, ectt
+    # Initialize ice-flow fields: U, V, slidingco, arrhenius
     initialize_iceflow_fields(cfg, state)
 
     # Initialize vertical discretization
+    cfg_numerics = cfg.processes.iceflow.numerics
+
     vertical_basis = cfg_numerics.vert_basis.lower()
     vertical_discr = VerticalDiscrs[vertical_basis](cfg)
     state.iceflow.vertical_discr = vertical_discr
 
-    # Set vertical weights
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
 
-    # padding is necessary when using U-net emulator
-    state.PAD = compute_PAD(
-        cfg_emulator.network.multiple_window_size,
-        state.thk.shape[1],
-        state.thk.shape[0],
-    )
-
-    # Set ice-flow method
+    # Initialize ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
 
     if iceflow_method == "emulated":
-        # define the emulator, and the optimizer
-        initialize_iceflow_emulator(cfg, state)
+        initialize_iceflow = initialize_iceflow_emulator
     elif iceflow_method == "solved":
-        # define the solver, and the optimizer
-        initialize_iceflow_solver(cfg, state)
+        initialize_iceflow = initialize_iceflow_solver
     elif iceflow_method == "diagnostic":
-        # define the second velocity field
-        initialize_iceflow_diagnostic(cfg, state)
+        initialize_iceflow = initialize_iceflow_diagnostic
     elif iceflow_method == "unified":
-        # define the velocity through a mapping
-        initialize_iceflow_unified(cfg, state)
+        initialize_iceflow = initialize_iceflow_unified
     else:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
-    if not iceflow_method in ["solved", "unified"]:
-
-        fieldin = get_fieldin(cfg, state)
-
-        update_iceflow_emulator(
-            cfg,
-            state,
-            fieldin,
-            initial=True,
-            it=0,
-        )
-
-        update_iceflow_emulated(cfg, state, fieldin)
-
-    assert (cfg_emulator.exclude_borders == 0) | (
-        cfg_emulator.network.multiple_window_size == 0
-    )
-    # if (cfg.processes.iceflow.emulator.exclude_borders==0) and (cfg.processes.iceflow.emulator.network.multiple_window_size==0):
-    # raise ValueError("The emulator must exclude borders or use multiple windows, otherwise it will not work properly.")
+    initialize_iceflow(cfg, state)
 
 
-def update(cfg, state):
+def update(cfg: DictConfig, state: State) -> None:
 
+    # Logger
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
 
+    # Update ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
 
-    if iceflow_method in ["emulated", "diagnostic"]:
-
-        fieldin = get_fieldin(cfg, state)
-
-        update_iceflow_emulator(
-            cfg,
-            state,
-            fieldin,
-            initial=False,
-            it=state.it,
-        )
-
-        update_iceflow_emulated(cfg, state, fieldin)
-
-        if iceflow_method == "diagnostic":
-            update_iceflow_diagnostic(cfg, state)
-
+    if iceflow_method == "emulated":
+        update_iceflow = update_iceflow_emulator
     elif iceflow_method == "solved":
-        update_iceflow_solved(cfg, state)
-
+        update_iceflow = update_iceflow_solved
+    elif iceflow_method == "diagnostic":
+        update_iceflow = update_iceflow_diagnostic
     elif iceflow_method == "unified":
-        update_iceflow_unified(cfg, state)
-
+        update_iceflow = update_iceflow_unified
     else:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
+    update_iceflow(cfg, state)
 
-def finalize(cfg, state):
 
-    if cfg.processes.iceflow.emulator.save_model:
-        save_iceflow_model(cfg, state)
+def finalize(cfg: DictConfig, state: State) -> None:
+
+    # Save emulated model
+    iceflow_method = cfg.processes.iceflow.method.lower()
+    if iceflow_method == "emulated":
+        if cfg.processes.iceflow.emulator.save_model:
+            save_iceflow_model(cfg, state)

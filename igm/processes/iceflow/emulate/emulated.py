@@ -8,7 +8,11 @@ from typing import Dict, Any
 import tensorflow as tf
 
 from igm.common.core import State
-from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV, prepare_X
+from igm.processes.iceflow.utils.data_preprocessing import (
+    Y_to_UV,
+    prepare_X,
+    get_fieldin,
+)
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
     get_velsurf,
@@ -49,8 +53,9 @@ def get_emulated_bag(state: State) -> Dict[str, Any]:
     }
 
 
-def update_iceflow_emulated(cfg: DictConfig, state: State, fieldin: tf.Tensor) -> None:
+def update_iceflow_emulated(cfg: DictConfig, state: State) -> None:
 
+    fieldin = get_fieldin(cfg, state)
     X = prepare_X(cfg, fieldin, pertubate=False, split_into_patches=False)
     bag = get_emulated_bag(state)
     updated_variable_dict = update_emulated(bag, X, state.iceflow.emulated_params)

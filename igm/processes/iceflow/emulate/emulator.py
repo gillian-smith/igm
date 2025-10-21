@@ -10,11 +10,6 @@ import warnings
 
 import igm
 from igm.common.core import State
-from igm.processes.iceflow.energy import (
-    EnergyComponents,
-    EnergyParams,
-    get_energy_params_args,
-)
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.emulate import EmulatedParams
 from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
@@ -31,7 +26,9 @@ from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
     create_input_tensor_from_fieldin,
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+from igm.processes.iceflow.utils.data_preprocessing import get_fieldin, compute_PAD
 from igm.processes.iceflow.unified.utils import get_energy_components
+from .emulated import update_iceflow_emulated
 
 
 class EmulatorParams(tf.experimental.ExtensionType):
@@ -85,28 +82,32 @@ def get_emulator_bag(
 
 
 def update_iceflow_emulator(
-    cfg: DictConfig, state: State, fieldin: tf.Tensor, initial: bool, it: int
+    cfg: DictConfig, state: State, initial: bool = False
 ) -> None:
-
     cfg_emulator = cfg.processes.iceflow.emulator
-
+    it = 0 if initial else state.it
     warm_up = it <= cfg_emulator.warm_up_it
-    run_it = (
-        cfg_emulator.retrain_freq > 0 and it > 0 and it % cfg_emulator.retrain_freq == 0
+    run_it = cfg_emulator.retrain_freq > 0 and it % cfg_emulator.retrain_freq == 0
+
+    if not (initial or run_it or warm_up):
+        return
+
+    nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
+    lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
+
+    fieldin = get_fieldin(cfg, state)
+    X = create_input_tensor_from_fieldin(
+        fieldin, state.iceflow.patching, state.iceflow.preparation_params
     )
 
-    if initial or run_it or warm_up:
-        nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
-        lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
-        X = create_input_tensor_from_fieldin(
-            fieldin, state.iceflow.patching, state.iceflow.preparation_params
-        )
-        _, _, batch_size = calculate_expected_dimensions(
-            state.thk.shape[0], state.thk.shape[1], state.iceflow.preparation_params
-        )
+    _, _, batch_size = calculate_expected_dimensions(
+        state.thk.shape[0], state.thk.shape[1], state.iceflow.preparation_params
+    )
 
-        bag = get_emulator_bag(state, nbit, lr, batch_size)
-        state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+    bag = get_emulator_bag(state, nbit, lr, batch_size)
+    state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+
+    update_iceflow_emulated(cfg, state)
 
 
 tf.config.optimizer.set_jit(True)
@@ -201,6 +202,13 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     input_height = state.thk.shape[0]
     input_width = state.thk.shape[1]
 
+    # padding is necessary when using U-net emulator
+    state.PAD = compute_PAD(
+        cfg_emulator.network.multiple_window_size,
+        input_height,
+        input_height,
+    )
+
     preparation_params_args = get_input_params_args(cfg)
     preparation_params = PreparationParams(**preparation_params_args)
 
@@ -266,3 +274,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     # Save emulator/emulated in the state
     state.iceflow.emulator_params = emulator_params
     state.iceflow.emulated_params = emulated_params
+
+    # Update the emulator and evaluate it once
+    update_iceflow_emulator(cfg, state, initial=True)
+    update_iceflow_emulated(cfg, state)
