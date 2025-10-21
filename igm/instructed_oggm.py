@@ -15,6 +15,7 @@ from oggm import cfg, utils
 from oggm.cfg import G, SEC_IN_YEAR, SEC_IN_DAY
 
 import igm
+from igm.common import State, EmptyClass, load_yaml_as_cfg
 from oggm.core.sia2d import Model2D
 
 class IGM_Model2D(Model2D):
@@ -75,10 +76,10 @@ class IGM_Model2D(Model2D):
         
         """
 
-        self.state = igm.State() 
+        self.state = State()
 
-        self.cfg = igm.EmptyClass()  
-        self.cfg.processes = igm.load_yaml_as_cfg(os.path.join("conf","processes","iceflow.yaml"))
+        self.cfg = EmptyClass()
+        self.cfg.processes = load_yaml_as_cfg(os.path.join("..", "..", "..", "conf","processes","iceflow.yaml"))
 
         # Parameter
         self.cfl = 0.25
@@ -122,7 +123,7 @@ class IGM_Model2D(Model2D):
 
         # retrurn the divergence of the flux using upwind fluxes
         divflux = (
-            igm.processes.utils.compute_divflux(
+            igm.utils.gradient.compute_divflux.compute_divflux(
                 self.state.ubar,
                 self.state.vbar,
                 self.state.thk,
