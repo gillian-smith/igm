@@ -17,9 +17,9 @@ class ViscosityParams(tf.experimental.ExtensionType):
 
     n: float
     h_min: float
-    ε_dot_regu: float
-    ε_dot_min: float
-    ε_dot_max: float
+    eps_dot_regu: float
+    eps_dot_min: float
+    eps_dot_max: float
 
 
 class ViscosityComponent(EnergyComponent):
@@ -49,9 +49,9 @@ def get_viscosity_params_args(cfg) -> Dict[str, Any]:
     return {
         "n": cfg_physics.exp_glen,
         "h_min": cfg_physics.thr_ice_thk,
-        "ε_dot_regu": cfg_physics.regu_glen,
-        "ε_dot_min": cfg_physics.min_sr,
-        "ε_dot_max": cfg_physics.max_sr,
+        "eps_dot_regu": cfg_physics.regu_glen,
+        "eps_dot_min": cfg_physics.min_sr,
+        "eps_dot_max": cfg_physics.max_sr,
     }
 
 
@@ -74,11 +74,12 @@ def cost_viscosity(
     V_q_grad = vert_disc.V_q_grad
     w = vert_disc.w
 
-    n = viscosity_params.n
-    h_min = viscosity_params.h_min
-    ε_dot_regu = viscosity_params.ε_dot_regu
-    ε_dot_min = viscosity_params.ε_dot_min
-    ε_dot_max = viscosity_params.ε_dot_max
+    dtype = U.dtype
+    n = tf.cast(viscosity_params.n, dtype)
+    h_min = tf.cast(viscosity_params.h_min, dtype)
+    eps_dot_regu = tf.cast(viscosity_params.eps_dot_regu, dtype)
+    eps_dot_min = tf.cast(viscosity_params.eps_dot_min, dtype)
+    eps_dot_max = tf.cast(viscosity_params.eps_dot_max, dtype)
 
     return _cost(
         U,
@@ -89,9 +90,9 @@ def cost_viscosity(
         dx,
         n,
         h_min,
-        ε_dot_regu,
-        ε_dot_min,
-        ε_dot_max,
+        eps_dot_regu,
+        eps_dot_min,
+        eps_dot_max,
         V_q,
         V_q_grad,
         w,
@@ -132,14 +133,14 @@ def compute_horizontal_derivatives(
 
 
 @tf.function()
-def compute_ε_dot2_xy(
+def compute_eps_dot2_xy(
     dUdx: tf.Tensor, dVdx: tf.Tensor, dUdy: tf.Tensor, dVdy: tf.Tensor
 ) -> tf.Tensor:
     """Compute horizontal contribution to squared strain rate."""
 
     dtype = dUdx.dtype
     half = tf.constant(0.5, dtype=dtype)
-    
+
     Exx = dUdx
     Eyy = dVdy
     Ezz = -dUdx - dVdy
@@ -149,12 +150,12 @@ def compute_ε_dot2_xy(
 
 
 @tf.function()
-def compute_ε_dot2_z(dUdz: tf.Tensor, dVdz: tf.Tensor) -> tf.Tensor:
+def compute_eps_dot2_z(dUdz: tf.Tensor, dVdz: tf.Tensor) -> tf.Tensor:
     """Compute vertical contribution to squared strain rate."""
 
     dtype = dUdz.dtype
     half = tf.constant(0.5, dtype=dtype)
-    
+
     Exz = half * dUdz
     Eyz = half * dVdz
 
@@ -162,7 +163,7 @@ def compute_ε_dot2_z(dUdz: tf.Tensor, dVdz: tf.Tensor) -> tf.Tensor:
 
 
 @tf.function()
-def compute_ε_dot2(
+def compute_eps_dot2(
     dUdx: tf.Tensor,
     dVdx: tf.Tensor,
     dUdy: tf.Tensor,
@@ -172,13 +173,13 @@ def compute_ε_dot2(
 ) -> tf.Tensor:
     """Compute squared strain rate."""
 
-    ε_dot2_xy = compute_ε_dot2_xy(dUdx, dVdx, dUdy, dVdy)
-    ε_dot2_z = compute_ε_dot2_z(dUdz, dVdz)
+    eps_dot2_xy = compute_eps_dot2_xy(dUdx, dVdx, dUdy, dVdy)
+    eps_dot2_z = compute_eps_dot2_z(dUdz, dVdz)
 
-    return ε_dot2_xy + ε_dot2_z
+    return eps_dot2_xy + eps_dot2_z
 
 
-def dampen_ε_dot_z_floating(
+def dampen_eps_dot_z_floating(
     dUdz: tf.Tensor, dVdz: tf.Tensor, C: tf.Tensor, factor: float = 1e-2
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Dampen vertical velocity gradients in floating regions."""
@@ -186,7 +187,7 @@ def dampen_ε_dot_z_floating(
     dtype = dUdz.dtype
     zero = tf.constant(0.0, dtype=dtype)
     factor_const = tf.constant(factor, dtype=dtype)
-    
+
     dUdz = tf.where(C[:, None, :, :] > zero, dUdz, factor_const * dUdz)
     dVdz = tf.where(C[:, None, :, :] > zero, dVdz, factor_const * dVdz)
 
@@ -218,27 +219,27 @@ def correct_for_change_of_coordinate(
 
 @tf.function()
 def _cost(
-    U,
-    V,
-    h,
-    s,
-    A,
-    dx,
-    n,
-    h_min,
-    ε_dot_regu,
-    ε_dot_min,
-    ε_dot_max,
-    V_q,
-    V_q_grad,
-    w,
-    staggered_grid,
-):
+    U: tf.Tensor,
+    V: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
+    A: tf.Tensor,
+    dx: tf.Tensor,
+    n: tf.Tensor,
+    h_min: tf.Tensor,
+    eps_dot_regu: tf.Tensor,
+    eps_dot_min: tf.Tensor,
+    eps_dot_max: tf.Tensor,
+    V_q: tf.Tensor,
+    V_q_grad: tf.Tensor,
+    w: tf.Tensor,
+    staggered_grid: bool,
+) -> tf.Tensor:
     """
     Compute the viscous energy dissipation cost term.
 
     Calculates the energy dissipation due to ice viscosity using Glen's flow law:
-    h * ∫(B * ε_dot^(1+1/n) / (1+1/n))dz, where ε_dot is the effective strain rate
+    h * ∫(B * eps_dot^(1+1/n) / (1+1/n))dz, where eps_dot is the effective strain rate
     and B is the ice stiffness parameter.
 
     Parameters
@@ -255,15 +256,15 @@ def _cost(
         Arrhenius factor (Pa^-n year^-1)
     dx : tf.Tensor
         Grid spacing (m)
-    n : float
+    n : tf.Tensor
         Glen's flow law exponent (-)
-    h_min : float
+    h_min : tf.Tensor
         Minimum ice thickness threshold (m)
-    ε_dot_regu : float
+    eps_dot_regu : tf.Tensor
         Regularization parameter for strain rate (year^-1)
-    ε_dot_min : float
+    eps_dot_min : tf.Tensor
         Minimum strain rate (year^-1)
-    ε_dot_max : float
+    eps_dot_max : tf.Tensor
         Maximum strain rate (year^-1)
     V_q : tf.Tensor
         Quadrature matrix: dofs -> quads
@@ -282,15 +283,15 @@ def _cost(
 
     # Get dtype from input tensors
     dtype = U.dtype
-    
+
     # Ice stiffness parameter
-    B = tf.constant(2.0, dtype=dtype) * tf.pow(A, tf.constant(-1.0, dtype=dtype) / tf.constant(n, dtype=dtype))
+    B = tf.constant(2.0, dtype=dtype) * tf.pow(A, tf.constant(-1.0, dtype=dtype) / n)
 
     if len(B.shape) == 3:
         B = B[:, None, :, :]
 
     # Effective exponent
-    p = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / tf.constant(n, dtype=dtype)
+    p = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / n
 
     dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(
         U, V, dx[0, 0, 0], staggered_grid
@@ -324,7 +325,7 @@ def _cost(
 
     dudz_q = dudz_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
     dvdz_q = dvdz_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
-    # dudz_q, dvdz_q = dampen_ε_dot_z_floating(dudz_q, dvdz_q, C)
+    # dudz_q, dvdz_q = dampen_eps_dot_z_floating(dudz_q, dvdz_q, C)
 
     # Correct for terrain-following coordinates
     dudx_q, dvdx_q, dudy_q, dvdy_q = correct_for_change_of_coordinate(
@@ -332,19 +333,17 @@ def _cost(
     )
 
     # Compute strain rate
-    ε_dot2_q = compute_ε_dot2(dudx_q, dvdx_q, dudy_q, dvdy_q, dudz_q, dvdz_q)
+    eps_dot2_q = compute_eps_dot2(dudx_q, dvdx_q, dudy_q, dvdy_q, dudz_q, dvdz_q)
 
-    dtype = U.dtype
-
-    ε_dot2_min = tf.pow(tf.constant(ε_dot_min, dtype=dtype), 2.0)
-    ε_dot2_max = tf.pow(tf.constant(ε_dot_max, dtype=dtype), 2.0)
-    ε_dot2_q = tf.clip_by_value(ε_dot2_q, ε_dot2_min, ε_dot2_max)
+    eps_dot2_min = tf.pow(eps_dot_min, 2.0)
+    eps_dot2_max = tf.pow(eps_dot_max, 2.0)
+    eps_dot2_q = tf.clip_by_value(eps_dot2_q, eps_dot2_min, eps_dot2_max)
 
     # Compute viscous contribution
-    ε_dot2_regu = tf.pow(tf.constant(ε_dot_regu, dtype=dtype), tf.constant(2.0, dtype=dtype))
+    eps_dot2_regu = tf.pow(eps_dot_regu, tf.constant(2.0, dtype=dtype))
     exponent = (p - tf.constant(2.0, dtype=dtype)) / tf.constant(2.0, dtype=dtype)
-    visc_term_q = tf.pow(ε_dot2_q + ε_dot2_regu, exponent) * ε_dot2_q / p
+    visc_term_q = tf.pow(eps_dot2_q + eps_dot2_regu, exponent) * eps_dot2_q / p
 
-    # h * ∫ [B * ε_dot^(1+1/n) / (1+1/n)] dz
+    # h * ∫ [B * eps_dot^(1+1/n) / (1+1/n)] dz
     w_q = w[None, :, None, None]
     return h * tf.reduce_sum(B_q * visc_term_q * w_q, axis=1)

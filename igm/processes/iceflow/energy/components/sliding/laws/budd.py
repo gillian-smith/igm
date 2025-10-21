@@ -56,8 +56,9 @@ def cost_budd(
 
     V_b = vert_disc.V_b
 
-    m = budd_params.exponent
-    u_regu = budd_params.regu
+    dtype = U.dtype
+    m = tf.cast(budd_params.exponent, dtype)
+    u_regu = tf.cast(budd_params.regu, dtype)
 
     return _cost(U, V, h, s, C, dx, m, u_regu, V_b, staggered_grid)
 
@@ -70,8 +71,8 @@ def _cost(
     s: tf.Tensor,
     C: tf.Tensor,
     dx: tf.Tensor,
-    m: float,
-    u_regu: float,
+    m: tf.Tensor,
+    u_regu: tf.Tensor,
     V_b: tf.Tensor,
     staggered_grid: bool,
 ) -> tf.Tensor:
@@ -96,9 +97,9 @@ def _cost(
         Friction coefficient ((m/year)^(-1/m))
     dx : tf.Tensor
         Grid spacing (m)
-    m : float
+    m : tf.Tensor
         Budd exponent (-)
-    u_regu : float
+    u_regu : tf.Tensor
         Regularization parameter for velocity magnitude (m/year)
     V_b : tf.Tensor
         Basal extraction vector: dofs -> basal
@@ -126,17 +127,16 @@ def _cost(
     dbdx, dbdy = compute_gradient(b, dx, dx, staggered_grid)
 
     # Compute basal velocity magnitude (with norm M and regularization)
-    dtype = U.dtype
-    u_regu_const = tf.constant(u_regu, dtype=dtype)
     u_corr_b = ux_b * dbdx + uy_b * dbdy
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu_const * u_regu_const + u_corr_b * u_corr_b)
+    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
 
     # Temporary fix for effective pressure - should be within the inputs
+    dtype = U.dtype
     N = get_effective_pressure_precentage(h, percentage=tf.constant(0.0, dtype=dtype))
     N = tf.where(N < tf.constant(1e-3, dtype=dtype), tf.constant(1e-3, dtype=dtype), N)
 
     # Effective exponent
-    s = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / tf.constant(m, dtype=dtype)
+    s = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / m
 
     # C * N * |u_b|^s / s
     return C * N * tf.pow(u_b, s) / s

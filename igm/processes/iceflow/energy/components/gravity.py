@@ -16,7 +16,7 @@ from igm.utils.gradient.compute_gradient import compute_gradient
 class GravityParams(tf.experimental.ExtensionType):
     """Parameters for gravity energy component."""
 
-    ρ: float
+    rho: float
     g: float
     fnge: bool
 
@@ -46,7 +46,7 @@ def get_gravity_params_args(cfg: DictConfig) -> Dict[str, Any]:
     cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "ρ": cfg_physics.ice_density,
+        "rho": cfg_physics.ice_density,
         "g": cfg_physics.gravity_cst,
         "fnge": cfg_physics.force_negative_gravitational_energy,
     }
@@ -69,11 +69,12 @@ def cost_gravity(
     V_q = vert_disc.V_q
     w = vert_disc.w
 
-    ρ = gravity_params.ρ
-    g = gravity_params.g
+    dtype = U.dtype
+    rho = tf.cast(gravity_params.rho, dtype)
+    g = tf.cast(gravity_params.g, dtype)
     fnge = gravity_params.fnge
 
-    return _cost(U, V, h, s, dx, ρ, g, fnge, V_q, w, staggered_grid)
+    return _cost(U, V, h, s, dx, rho, g, fnge, V_q, w, staggered_grid)
 
 
 @tf.function()
@@ -83,8 +84,8 @@ def _cost(
     h: tf.Tensor,
     s: tf.Tensor,
     dx: tf.Tensor,
-    ρ: float,
-    g: float,
+    rho: tf.Tensor,
+    g: tf.Tensor,
     fnge: bool,
     V_q: tf.Tensor,
     w: tf.Tensor,
@@ -93,7 +94,7 @@ def _cost(
     """
     Compute the gravitational energy cost term.
 
-    Calculates the work done by gravity: ρ * g * h * ∫(u·∇s)dz, where the
+    Calculates the work done by gravity: rho * g * h * ∫(u·∇s)dz, where the
     integral is computed over the ice thickness using vertical quadrature.
 
     Parameters
@@ -108,7 +109,7 @@ def _cost(
         Upper-surface elevation (m)
     dx : tf.Tensor
         Grid spacing (m)
-    ρ : float
+    rho : float
         Ice density (kg m^-3)
     g : float
         Gravity acceleration (m s^-2)
@@ -152,4 +153,4 @@ def _cost(
     # rho * g * h * ∫ [(u,v)*∇s] dz in MPa * m/year
     w_q = w[None, :, None, None]
     scale_factor = tf.constant(10.0 ** (-6), dtype=dtype)
-    return scale_factor * tf.constant(ρ, dtype=dtype) * tf.constant(g, dtype=dtype) * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)
+    return scale_factor * rho * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)
