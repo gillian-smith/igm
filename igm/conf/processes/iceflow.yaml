@@ -37,11 +37,14 @@ iceflow:
   solver:
     step_size: 1.0
     nbitmax: 100
-    stop_if_no_decrease: true
     optimizer: Adam
-    lbfgs: false
-    save_cost: ''
-    plot_sol: False
+    print_cost: false
+    fieldin:
+    - thk
+    - usurf
+    - arrhenius
+    - slidingco
+    - dX
   unified:
     mapping: network
     optimizer: adam
