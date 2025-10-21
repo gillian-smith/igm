@@ -7,10 +7,10 @@ import tensorflow as tf
 from typing import Dict
 
 from ..sliding import SlidingComponent
-from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.stag.stag import stag4h
 
 
 class CoulombParams(tf.experimental.ExtensionType):

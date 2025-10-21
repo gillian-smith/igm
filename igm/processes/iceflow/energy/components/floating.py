@@ -6,8 +6,8 @@
 import tensorflow as tf
 from typing import Tuple, Dict, Any
 
-from igm.processes.iceflow.energy.utils import stag2
 from igm.processes.iceflow.utils.vertical_discretization import compute_levels
+from igm.utils.stag.stag import stag2
 from .energy import EnergyComponent
 
 
@@ -84,18 +84,22 @@ def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_
     g_const = tf.constant(9.81, dtype=dtype)
     rho_ice = tf.constant(910.0, dtype=dtype)
     rho_water = tf.constant(1000.0, dtype=dtype)
-    
+
     P = (
         tf.where(
             lsurf < zero,
-            half * scale * g_const * rho_ice * (thk**2 - (rho_water / rho_ice) * lsurf**2),
+            half
+            * scale
+            * g_const
+            * rho_ice
+            * (thk**2 - (rho_water / rho_ice) * lsurf**2),
             zero,
         )
         / dX[:, 0, 0]
     )
 
     one = tf.constant(1.0, dtype=dtype)
-    
+
     if len(cf_eswn) == 0:
         thkext = tf.pad(thk, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=one)
         lsurfext = tf.pad(
@@ -192,7 +196,11 @@ def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_
         levels = compute_levels(Nz, vert_spacing)
         temd = levels[1:] - levels[:-1]
         weight = tf.stack(
-            [tf.ones_like(thk, dtype=dtype) * tf.constant(z, dtype=dtype) for z in temd], axis=1
+            [
+                tf.ones_like(thk, dtype=dtype) * tf.constant(z, dtype=dtype)
+                for z in temd
+            ],
+            axis=1,
         )  # dimensionless,
         C_float = (
             P

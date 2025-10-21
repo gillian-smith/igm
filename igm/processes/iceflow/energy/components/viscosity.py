@@ -7,9 +7,9 @@ import tensorflow as tf
 from typing import Any, Dict, Tuple
 
 from .energy import EnergyComponent
-from igm.processes.iceflow.energy.utils import stag4h
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.stag.stag import stag4h
 
 
 class ViscosityParams(tf.experimental.ExtensionType):
