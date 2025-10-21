@@ -30,7 +30,7 @@ setup(
     description="IGM - a glacier evolution model",
     long_description=readme,
     long_description_content_type="text/markdown",
-    python_requires="<3.11",
+    python_requires="<3.12",
     install_requires=[
         "tensorflow[and-cuda]==2.15.1",
         "matplotlib",
