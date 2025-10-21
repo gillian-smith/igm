@@ -28,18 +28,19 @@ def initialize_iceflow_solver(cfg: DictConfig, state: State) -> None:
         raise AttributeError("❌ <state.thk> does not exist.")
 
     # Initialize optimizer
-    optimizer_name = cfg.processes.iceflow.solver.optimizer
+    optimizer_name = cfg.processes.iceflow.solver.optimizer.lower()
     learning_rate = cfg.processes.iceflow.solver.step_size
 
-    version_tf = int(tf.__version__.split(".")[1])
-    if (version_tf <= 10) | (version_tf >= 16):
-        module_optimizer = tf.keras.optimizers
-    else:
-        module_optimizer = tf.keras.optimizers.legacy
+    if optimizer_name == "adam":
+        version_tf = int(tf.__version__.split(".")[1])
+        if (version_tf <= 10) | (version_tf >= 16):
+            module_optimizer = tf.keras.optimizers
+        else:
+            module_optimizer = tf.keras.optimizers.legacy
 
-    state.optimizer = getattr(module_optimizer, optimizer_name)(
-        learning_rate=learning_rate
-    )
+        state.optimizer = module_optimizer.Adam(learning_rate=learning_rate)
+    else:
+        state.optimizer = None
 
     # Initialize energy components
     state.iceflow.energy_components = get_energy_components(cfg)

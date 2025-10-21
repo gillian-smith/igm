@@ -37,7 +37,7 @@ iceflow:
   solver:
     step_size: 1.0
     nbitmax: 100
-    optimizer: Adam
+    optimizer: adam
     print_cost: false
     fieldin:
     - thk
