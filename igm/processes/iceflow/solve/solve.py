@@ -12,7 +12,7 @@ from igm.processes.iceflow.data_preparation.data_preprocessing import (
     calculate_expected_dimensions,
     get_input_params_args,
 )
-from igm.processes.iceflow.unified.utils import get_energy_components
+from igm.processes.iceflow.energy.utils import get_energy_components
 
 from .evaluator import evaluate_iceflow, EvaluatorParams, get_evaluator_params_args
 from .solver import solve_iceflow, SolverParams, get_solver_params_args

@@ -27,7 +27,7 @@ from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 from igm.processes.iceflow.utils.data_preprocessing import get_fieldin, compute_PAD
-from igm.processes.iceflow.unified.utils import get_energy_components
+from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
 
 

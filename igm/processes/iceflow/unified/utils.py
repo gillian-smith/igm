@@ -5,16 +5,12 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Callable, List
+from typing import Callable
 
 from igm.common.core import State
-from igm.processes.iceflow.energy import (
-    EnergyComponent,
-    EnergyComponents,
-    EnergyParams,
-    get_energy_params_args,
-)
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
+from igm.processes.iceflow.energy.utils import get_energy_components
+
 
 def get_cost_fn(
     cfg: DictConfig, state: State
@@ -49,35 +45,3 @@ def get_cost_fn(
         return total_energy
 
     return cost_fn
-
-
-def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
-
-    cfg_physics = cfg.processes.iceflow.physics
-
-    energy_components = []
-    for component in cfg_physics.energy_components:
-        if component not in EnergyComponents:
-            raise ValueError(f"❌ Unknown energy component: <{component}>.")
-
-        # Get component and params class
-        if component == "sliding":
-            law = cfg_physics.sliding.law
-            component_class = EnergyComponents[component][law]
-            params_class = EnergyParams[component][law]
-        else:
-            component_class = EnergyComponents[component]
-            params_class = EnergyParams[component]
-
-        # Get args extractor
-        get_params_args = get_energy_params_args[component]
-
-        # Instantiate params and component classes
-        params_args = get_params_args(cfg)
-        params = params_class(**params_args)
-        component_obj = component_class(params)
-
-        # Add component to the list of components
-        energy_components.append(component_obj)
-
-    return energy_components

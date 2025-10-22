@@ -54,7 +54,7 @@ from igm.processes.iceflow.unified.unified import (
     update_iceflow_unified,
 )
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
-from igm.processes.iceflow.utils.init import initialize_iceflow_fields
+from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
 
@@ -68,7 +68,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Make sure this function is only called once
     if getattr(state, "iceflow_initialized", False):
         return
-    state._iceflow_initialized = True
+    state.iceflow_initialized = True
 
     # Create ice flow object
     state.iceflow = Iceflow()

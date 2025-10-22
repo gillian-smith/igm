@@ -24,7 +24,7 @@ from .vertical_discretization import (
     compute_levels,
     compute_zeta_dzeta,
 )
-from .init import (
+from .fields import (
     initialize_iceflow_fields,
 )
 
