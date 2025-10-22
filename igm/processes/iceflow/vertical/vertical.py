@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from omegaconf import DictConfig
 from igm.utils.math.precision import _normalize_precision
 
+
 class VerticalDiscr(ABC):
     """
     Abstract vertical discretization.
@@ -16,6 +17,8 @@ class VerticalDiscr(ABC):
     ----------
     w : tf.Tensor
         Quadrature weights, shape (Nq,).
+    zeta: tf.Tensor
+        Quadrature point in reference element [0, 1], shape (Nq,).
     V_q : tf.Tensor
         Map DOFs → values at quadrature points, shape (Nq, Ndof).
     V_q_grad : tf.Tensor
@@ -31,6 +34,7 @@ class VerticalDiscr(ABC):
     """
 
     w: tf.Tensor
+    zeta: tf.Tensor
     V_q: tf.Tensor
     V_q_grad: tf.Tensor
     V_q_int: tf.Tensor

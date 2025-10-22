@@ -37,6 +37,7 @@ def test_matrices_shapes(cfg: DictConfig, Nz: int) -> None:
     discr = LagrangeDiscr(cfg)
 
     assert discr.w.shape == (Nz - 1,)
+    assert discr.zeta.shape == (Nz - 1,)
     assert discr.V_q.shape == (Nz - 1, Nz)
     assert discr.V_q_grad.shape == (Nz - 1, Nz)
     assert discr.V_q_int.shape == (Nz - 1, Nz)
@@ -59,6 +60,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     discr = LagrangeDiscr(cfg)
 
     w_computed = discr.w.numpy()
+    zeta_computed = discr.zeta.numpy()
     V_q_computed = discr.V_q.numpy()
     V_q_grad_computed = discr.V_q_grad.numpy()
     V_q_int_computed = discr.V_q_int.numpy()
@@ -67,6 +69,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     V_bar_computed = discr.V_bar.numpy()
 
     w_expected = np.array([0.5, 0.5])
+    zeta_expected = np.array([0.25, 0.75])
     V_q_expected = np.array([[0.5, 0.5, 0.0], [0.0, 0.5, 0.5]])
     V_q_grad_expected = np.array([[-2.0, 2.0, 0.0], [0.0, -2.0, 2.0]])
     V_q_int_expected = np.array([[0.1875, 0.0625, 0.0], [0.25, 0.4375, 0.0625]])
@@ -75,6 +78,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     V_bar_expected = np.array([0.25, 0.5, 0.25])
 
     np.testing.assert_allclose(w_computed, w_expected)
+    np.testing.assert_allclose(zeta_computed, zeta_expected)
     np.testing.assert_allclose(V_q_computed, V_q_expected)
     np.testing.assert_allclose(V_q_grad_computed, V_q_grad_expected)
     np.testing.assert_allclose(V_q_int_computed, V_q_int_expected)

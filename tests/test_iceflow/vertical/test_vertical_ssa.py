@@ -42,6 +42,7 @@ def test_matrices_shapes(cfg: DictConfig) -> None:
     discr = SSADiscr(cfg)
 
     assert discr.w.shape == (1,)
+    assert discr.zeta.shape == (1,)
     assert discr.V_q.shape == (1, 1)
     assert discr.V_q_grad.shape == (1, 1)
     assert discr.V_q_int.shape == (1, 1)
@@ -75,6 +76,7 @@ def test_matrices_basis(cfg: DictConfig) -> None:
     )
 
     np.testing.assert_allclose(discr.w, w_quad)
+    np.testing.assert_allclose(discr.zeta, x_quad)
     np.testing.assert_allclose(discr.V_q, V_q)
     np.testing.assert_allclose(discr.V_q_grad, V_q_grad)
     np.testing.assert_allclose(discr.V_q_int, V_q_int)

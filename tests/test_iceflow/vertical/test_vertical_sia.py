@@ -42,6 +42,7 @@ def test_matrices_shapes(cfg: DictConfig) -> None:
     discr = SIADiscr(cfg)
 
     assert discr.w.shape == (5,)
+    assert discr.zeta.shape == (5,)
     assert discr.V_q.shape == (5, 2)
     assert discr.V_q_grad.shape == (5, 2)
     assert discr.V_q_int.shape == (5, 2)
@@ -65,6 +66,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     discr = SIADiscr(cfg)
 
     w_computed = discr.w.numpy()
+    zeta_computed = discr.zeta.numpy()
     V_q_computed = discr.V_q.numpy()
     V_q_grad_computed = discr.V_q_grad.numpy()
     V_q_int_computed = discr.V_q_int.numpy()
@@ -77,6 +79,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     w = w_quad.numpy()
 
     w_expected = w
+    zeta_expected = z
     V_q_expected = np.stack([1.0 - z, z], axis=1)
     V_q_grad_expected = np.tile(np.array([-1.0, 1.0]), (len(z), 1))
     V_q_int_expected = np.stack([z - 0.5 * z**2, 0.5 * z**2], axis=1)
@@ -88,6 +91,7 @@ def test_matrices_example(cfg: DictConfig) -> None:
     atol = 1e-7
 
     np.testing.assert_allclose(w_computed, w_expected, rtol, atol)
+    np.testing.assert_allclose(zeta_computed, zeta_expected, rtol, atol)
     np.testing.assert_allclose(V_q_computed, V_q_expected, rtol, atol)
     np.testing.assert_allclose(V_q_grad_computed, V_q_grad_expected, rtol, atol)
     np.testing.assert_allclose(V_q_int_computed, V_q_int_expected, rtol, atol)

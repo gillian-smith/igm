@@ -37,6 +37,7 @@ def test_matrices_shapes(cfg: DictConfig, Nz: int) -> None:
     discr = LegendreDiscr(cfg)
 
     assert discr.w.shape == (Nz,)
+    assert discr.zeta.shape == (Nz,)
     assert discr.V_q.shape == (Nz, Nz)
     assert discr.V_q_grad.shape == (Nz, Nz)
     assert discr.V_q_int.shape == (Nz, Nz)
@@ -112,19 +113,8 @@ def test_bar(cfg: DictConfig, Nz: int) -> None:
 def test_matrices_example(cfg: DictConfig) -> None:
     discr = LegendreDiscr(cfg)
 
-    a = 1.0 / np.sqrt(3.0)
-    z1 = (1.0 - a) * 0.5
-    z2 = (1.0 + a) * 0.5
-
-    w_expected = np.array([0.5, 0.5])
-    V_q_expected = np.array([[1.0, -a], [1.0, a]])
-    V_q_grad_expected = np.array([[0.0, 2.0], [0.0, 2.0]])
-    V_q_int_expected = np.array([[z1, -1.0 / 6.0], [z2, -1.0 / 6.0]])
-    V_b_expected = np.array([1.0, -1.0])
-    V_s_expected = np.array([1.0, 1.0])
-    V_bar_expected = np.array([1.0, 0.0])
-
     w_computed = discr.w.numpy()
+    zeta_computed = discr.zeta.numpy()
     V_q_computed = discr.V_q.numpy()
     V_q_grad_computed = discr.V_q_grad.numpy()
     V_q_int_computed = discr.V_q_int.numpy()
@@ -132,7 +122,21 @@ def test_matrices_example(cfg: DictConfig) -> None:
     V_s_computed = discr.V_s.numpy()
     V_bar_computed = discr.V_bar.numpy()
 
+    a = 1.0 / np.sqrt(3.0)
+    z1 = (1.0 - a) * 0.5
+    z2 = (1.0 + a) * 0.5
+
+    w_expected = np.array([0.5, 0.5])
+    zeta_expected = np.array([z1, z2])
+    V_q_expected = np.array([[1.0, -a], [1.0, a]])
+    V_q_grad_expected = np.array([[0.0, 2.0], [0.0, 2.0]])
+    V_q_int_expected = np.array([[z1, -1.0 / 6.0], [z2, -1.0 / 6.0]])
+    V_b_expected = np.array([1.0, -1.0])
+    V_s_expected = np.array([1.0, 1.0])
+    V_bar_expected = np.array([1.0, 0.0])
+
     np.testing.assert_allclose(w_computed, w_expected)
+    np.testing.assert_allclose(zeta_computed, zeta_expected)
     np.testing.assert_allclose(V_q_computed, V_q_expected)
     np.testing.assert_allclose(V_q_grad_computed, V_q_grad_expected)
     np.testing.assert_allclose(V_q_int_computed, V_q_int_expected)

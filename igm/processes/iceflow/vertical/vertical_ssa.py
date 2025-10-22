@@ -21,6 +21,7 @@ class SSADiscr(VerticalDiscr):
             raise ValueError("❌ SSA vertical basis only supports Nz=1.")
 
         self.w = tf.constant([1.0], dtype=self.dtype)
+        self.zeta = tf.constant([0.5], dtype=self.dtype)
         self.V_q = tf.constant([[1.0]], dtype=self.dtype)
         self.V_q_grad = tf.constant([[0.0]], dtype=self.dtype)
         self.V_q_int = tf.constant([[0.5]], dtype=self.dtype)

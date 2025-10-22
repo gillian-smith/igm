@@ -55,6 +55,7 @@ class SIADiscr(VerticalDiscr):
         )
 
         self.w = tf.cast(w_quad, self.dtype)
+        self.zeta = tf.cast(x_quad, self.dtype)
         self.V_q = tf.cast(V_q, self.dtype)
         self.V_q_grad = tf.cast(V_q_grad, self.dtype)
         self.V_q_int = tf.cast(V_q_int, self.dtype)
