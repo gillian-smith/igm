@@ -73,6 +73,7 @@ def cost_viscosity(
     V_q = vert_disc.V_q
     V_q_grad = vert_disc.V_q_grad
     w = vert_disc.w
+    zeta = vert_disc.zeta
 
     dtype = U.dtype
     n = tf.cast(viscosity_params.n, dtype)
@@ -96,6 +97,7 @@ def cost_viscosity(
         V_q,
         V_q_grad,
         w,
+        zeta,
         staggered_grid,
     )
 
@@ -196,25 +198,46 @@ def dampen_eps_dot_z_floating(
 
 @tf.function()
 def correct_for_change_of_coordinate(
-    dUdx: tf.Tensor,
-    dVdx: tf.Tensor,
-    dUdy: tf.Tensor,
-    dVdy: tf.Tensor,
-    dUdz: tf.Tensor,
-    dVdz: tf.Tensor,
+    dudx_q: tf.Tensor,
+    dudy_q: tf.Tensor,
+    dvdx_q: tf.Tensor,
+    dvdy_q: tf.Tensor,
+    dudz_q: tf.Tensor,
+    dvdz_q: tf.Tensor,
     dldx: tf.Tensor,
     dldy: tf.Tensor,
+    dsdx: tf.Tensor,
+    dsdy: tf.Tensor,
+    h: tf.Tensor,
+    h_min: tf.Tensor,
+    zeta: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     """Correct derivatives for terrain-following coordinate transformation."""
 
-    # This correct for the change of coordinate z -> z - l
+    dtype = dudx_q.dtype
+    one = tf.constant(1.0, dtype=dtype)
 
-    dUdx = dUdx - dUdz * dldx[:, None, :, :]
-    dUdy = dUdy - dUdz * dldy[:, None, :, :]
-    dVdx = dVdx - dVdz * dldx[:, None, :, :]
-    dVdy = dVdy - dVdz * dldy[:, None, :, :]
+    # Evaluate at quadrature points
+    zeta_q = zeta[None, :, None, None]
+    dldx_q = dldx[:, None, :, :]
+    dldy_q = dldy[:, None, :, :]
+    dsdx_q = dsdx[:, None, :, :]
+    dsdy_q = dsdy[:, None, :, :]
 
-    return dUdx, dVdx, dUdy, dVdy
+    # ∇ζ = - [(1 - ζ) * ∇b + ζ * ∇s] / h
+    dzetadx_q = (one - zeta_q) * dldx_q + zeta_q * dsdx_q
+    dzetady_q = (one - zeta_q) * dldy_q + zeta_q * dsdy_q
+
+    dzetadx_q = -dzetadx_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
+    dzetady_q = -dzetady_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
+
+    # ∇_z = ∇_ζ + (∂/∂ζ) * ∇ζ
+    dudx_q = dudx_q + dudz_q * dzetadx_q
+    dudy_q = dudy_q + dudz_q * dzetady_q
+    dvdx_q = dvdx_q + dvdz_q * dzetadx_q
+    dvdy_q = dvdy_q + dvdz_q * dzetady_q
+
+    return dudx_q, dudy_q, dvdx_q, dvdy_q
 
 
 @tf.function()
@@ -233,6 +256,7 @@ def _cost(
     V_q: tf.Tensor,
     V_q_grad: tf.Tensor,
     w: tf.Tensor,
+    zeta: tf.Tensor,
     staggered_grid: bool,
 ) -> tf.Tensor:
     """
@@ -272,6 +296,8 @@ def _cost(
         Gradient quadrature matrix: dofs -> grad at quads
     w : tf.Tensor
         Weights for vertical integration
+    zeta: tf.Tensor
+        Position for vertical integration
     staggered_grid : bool
         Additional staggering of (U, V, h, B)
 
@@ -297,9 +323,10 @@ def _cost(
         U, V, dx[0, 0, 0], staggered_grid
     )
 
-    # TODO: dldx, dldy must be the elevaion of layers! not the bedrock, little effects?
+    # Compute upper and lower surface gradients ∇l, ∇s
     l = s - h
     dldx, dldy = compute_gradient(l, dx, dx, staggered_grid)
+    dsdx, dsdy = compute_gradient(s, dx, dx, staggered_grid)
 
     # Optional additional staggering
     if staggered_grid:
@@ -329,7 +356,19 @@ def _cost(
 
     # Correct for terrain-following coordinates
     dudx_q, dvdx_q, dudy_q, dvdy_q = correct_for_change_of_coordinate(
-        dudx_q, dvdx_q, dudy_q, dvdy_q, dudz_q, dvdz_q, dldx, dldy
+        dudx_q,
+        dudy_q,
+        dvdx_q,
+        dvdy_q,
+        dudz_q,
+        dvdz_q,
+        dldx,
+        dldy,
+        dsdx,
+        dsdy,
+        h,
+        h_min,
+        zeta,
     )
 
     # Compute strain rate
