@@ -1,5 +1,6 @@
 import tensorflow as tf
 from typing import Any, Dict, Tuple
+import math
 
 from .augmentations.rotation import RotationAugmentation, RotationParams
 from .augmentations.flip import FlipAugmentation, FlipParams
@@ -24,6 +25,24 @@ class PreparationParams(tf.experimental.ExtensionType):
     noise_channels: Tuple[str, ...]  # names of input fields to apply noise
     skip_preparation: bool  # true if not training an emulator (identity mapping with unified method)
 
+def get_input_params_args(cfg) -> Dict[str, Any]:
+
+    cfg_data_preparation = cfg.processes.iceflow.unified.data_preparation
+
+    return {
+        "overlap": cfg_data_preparation.overlap,
+        "batch_size": cfg_data_preparation.batch_size,
+        "patch_size": cfg_data_preparation.patch_size,
+        "rotation_probability": cfg_data_preparation.rotation_probability,
+        "flip_probability": cfg_data_preparation.flip_probability,
+        "noise_type": cfg_data_preparation.noise_type,
+        "noise_scale": cfg_data_preparation.noise_scale,
+        "target_samples": cfg_data_preparation.target_samples,
+        "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
+        "precision": cfg.processes.iceflow.numerics.precision,
+        "noise_channels": _determine_noise_channels(cfg),
+        "skip_preparation": _should_skip_preparation(cfg),
+    }
 
 def _determine_noise_channels(cfg) -> Tuple[str, ...]:
     """
@@ -47,72 +66,14 @@ def _determine_noise_channels(cfg) -> Tuple[str, ...]:
         # Default noise channels
         return ("thk", "usurf")
 
-
 def _should_skip_preparation(cfg) -> bool:
     """
     Determine if data preparation should be skipped.
-    
-    Skip preparation when using unified method with identity mapping 
-    (i.e., not training an emulator).
-    
-    Args:
-        cfg: Configuration object
-        
-    Returns:
-        bool: True if preparation should be skipped
     """
     return (
         cfg.processes.iceflow.method == "unified" and 
         cfg.processes.iceflow.unified.mapping == "identity"
     )
-
-
-def get_input_params_args(cfg) -> Dict[str, Any]:
-
-    cfg_data_preparation = cfg.processes.iceflow.unified.data_preparation
-
-    return {
-        "overlap": cfg_data_preparation.overlap,
-        "batch_size": cfg_data_preparation.batch_size,
-        "patch_size": cfg_data_preparation.patch_size,
-        "rotation_probability": cfg_data_preparation.rotation_probability,
-        "flip_probability": cfg_data_preparation.flip_probability,
-        "noise_type": cfg_data_preparation.noise_type,
-        "noise_scale": cfg_data_preparation.noise_scale,
-        "target_samples": cfg_data_preparation.target_samples,
-        "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
-        "precision": cfg.processes.iceflow.numerics.precision,
-        "noise_channels": _determine_noise_channels(cfg),
-        "skip_preparation": _should_skip_preparation(cfg),
-    }
-
-
-def _handle_small_input_case(
-    input_height: int,
-    input_width: int,
-    patch_size: int,
-    batch_size: int,
-    target_samples: int,
-) -> tuple:
-    """
-    Handle the case where input is smaller than patch size.
-
-    Args:
-        input_height: Height of input tensor
-        input_width: Width of input tensor
-        patch_size: Size of patches
-        batch_size: Batch size
-        target_samples: Target number of samples
-
-    Returns:
-        tuple: (input_height, input_width, effective_batch_size)
-    """
-    return (
-        input_height,
-        input_width,
-        min(batch_size, max(target_samples, 1)),
-    )
-
 
 def scale_inputs(cfg, X: tf.Tensor) -> tf.Tensor:
     """
@@ -141,24 +102,30 @@ def scale_inputs(cfg, X: tf.Tensor) -> tf.Tensor:
 
     return scaled_X
 
-
-def _calculate_patch_counts(
-    input_height: int, input_width: int, patch_size: int, overlap: float
+def calculate_expected_dimensions(
+    input_height: int,
+    input_width: int,
+    preparation_params: PreparationParams,
 ) -> tuple:
     """
-    Calculate number of patches in each direction.
-
-    Args:
-        input_height: Height of input tensor
-        input_width: Width of input tensor
-        patch_size: Size of patches
-        overlap: Overlap fraction
-
-    Returns:
-        tuple: (n_patches_y, n_patches_x, total_patches)
+    Calculate the expected Ny, Nx, num_patches, and effective_batch_size for given input dimensions.
     """
-    import math
 
+    patch_size = preparation_params.patch_size
+    overlap = preparation_params.overlap
+    batch_size = preparation_params.batch_size
+    target_samples = preparation_params.target_samples
+
+    if patch_size > input_width or patch_size > input_height:
+        return (
+            input_height,  # Ny = original height
+            input_width,   # Nx = original width
+            1,             # num_patches = 1
+            min(batch_size, max(target_samples, 1)),  # effective_batch_size
+            max(target_samples, 1),  # adjusted_target_samples
+        )
+
+    # Calculate patch counts
     height_f = float(input_height)
     width_f = float(input_width)
     patch_size_f = float(patch_size)
@@ -174,25 +141,9 @@ def _calculate_patch_counts(
         1, int(math.ceil((width_f - patch_size_f) / float(min_stride))) + 1
     )
 
-    total_patches = n_patches_y * n_patches_x
-    return n_patches_y, n_patches_x, total_patches
+    num_patches = n_patches_y * n_patches_x
 
-
-def _calculate_final_dimensions(
-    patch_size: int, num_patches: int, batch_size: int, target_samples: int
-) -> tuple:
-    """
-    Calculate final dimensions and batch size.
-
-    Args:
-        patch_size: Size of patches
-        num_patches: Total number of patches
-        batch_size: Requested batch size
-        target_samples: Target number of samples
-
-    Returns:
-        tuple: (Ny, Nx, effective_batch_size)
-    """
+    # Calculate final dimensions and batch size
     # Patch dimensions are always patch_size x patch_size
     Ny = patch_size
     Nx = patch_size
@@ -203,50 +154,7 @@ def _calculate_final_dimensions(
     # Calculate effective batch size (min of batch_size and adjusted_target_samples)
     effective_batch_size = min(batch_size, adjusted_target_samples)
 
-    return Ny, Nx, effective_batch_size
-
-
-def calculate_expected_dimensions(
-    input_height: int,
-    input_width: int,
-    preparation_params: PreparationParams,
-) -> tuple:
-    """
-    Calculate the expected Ny, Nx, num_patches, and effective_batch_size for given input dimensions.
-    This function precisely matches the behavior of the data preprocessing pipeline.
-
-    Args:
-        input_height (int): Height of the input tensor in pixels.
-        input_width (int): Width of the input tensor in pixels.
-        preparation_params (PreparationParams): Parameters containing patch_size, overlap, batch_size, target_samples.
-
-    Returns:
-        tuple: (Ny, Nx, num_patches, effective_batch_size, adjusted_target_samples)
-            - Ny: Patch height (same as patch_size)
-            - Nx: Patch width (same as patch_size)
-            - num_patches: Total number of patches extracted from input
-            - effective_batch_size: Actual batch size used (min of batch_size and adjusted_target_samples)
-            - adjusted_target_samples: Target samples after adjustment (max of target_samples and num_patches)
-    """
-    patch_size = preparation_params.patch_size
-    overlap = preparation_params.overlap
-    batch_size = preparation_params.batch_size
-    target_samples = preparation_params.target_samples
-
-    # Handle case where input is smaller than patch size
-    if patch_size > input_width and patch_size > input_height:
-        return _handle_small_input_case(
-            input_height, input_width, patch_size, batch_size, target_samples
-        )
-
-    # Calculate patch counts and final dimensions
-    n_patches_y, n_patches_x, num_patches = _calculate_patch_counts(
-        input_height, input_width, patch_size, overlap
-    )
-
-    return _calculate_final_dimensions(
-        patch_size, num_patches, batch_size, target_samples
-    )
+    return Ny, Nx, num_patches, effective_batch_size, adjusted_target_samples
 
 
 def _convert_fieldin_to_tensor(cfg, fieldin) -> tf.Tensor:
