@@ -10,8 +10,7 @@ from .augmentations import (
 )
 
 __all__ = [
-    "data_preprocessing",
-    "create_dataset",
+    "input_tensor_preparation",
     "PreparationParams",
     "Augmentation",
     "RotationAugmentation",

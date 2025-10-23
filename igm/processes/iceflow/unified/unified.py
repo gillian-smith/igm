@@ -4,6 +4,8 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 from omegaconf import DictConfig
+import numpy as np
+import tensorflow as tf
 
 from igm.common.core import State
 from .mappings import Mappings, InterfaceMappings
@@ -12,12 +14,13 @@ from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_icef
 from .solver import solve_iceflow
 from .utils import get_cost_fn
 
-from igm.processes.iceflow.data_preparation.data_preprocessing import (
+from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
     PreparationParams,
     get_input_params_args,
 )
 
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+from igm.processes.data_assimilation.temp.thick_guess import initial_thickness
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:

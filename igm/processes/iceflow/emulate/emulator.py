@@ -17,12 +17,12 @@ from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
 )
-from igm.processes.iceflow.data_preparation.data_preprocessing import (
+from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
     PreparationParams,
     calculate_expected_dimensions,
     get_input_params_args,
 )
-from igm.processes.iceflow.data_preparation.data_preprocessing_tensor import (
+from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
     create_input_tensor_from_fieldin,
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
