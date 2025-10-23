@@ -53,7 +53,7 @@ def initialize_iceflow_solver(cfg: DictConfig, state: State) -> None:
     input_height = state.thk.shape[0]
     input_width = state.thk.shape[1]
 
-    Ny, Nx, batch_size = prep.calculate_expected_dimensions(
+    Ny, Nx, _, batch_size, _ = prep.calculate_expected_dimensions(
         input_height, input_width, preparation_params
     )
 

@@ -18,9 +18,7 @@ from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
     PreparationParams,
     get_input_params_args,
 )
-
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
-from igm.processes.data_assimilation.temp.thick_guess import initial_thickness
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:

@@ -100,7 +100,7 @@ def update_iceflow_emulator(
         fieldin, state.iceflow.patching, state.iceflow.preparation_params
     )
 
-    _, _, batch_size = calculate_expected_dimensions(
+    _, _, _, batch_size, _ = calculate_expected_dimensions(
         state.thk.shape[0], state.thk.shape[1], state.iceflow.preparation_params
     )
 
@@ -214,7 +214,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     state.iceflow.preparation_params = preparation_params
 
-    Ny, Nx, _ = calculate_expected_dimensions(
+    Ny, Nx, _, _, _ = calculate_expected_dimensions(
         input_height, input_width, preparation_params
     )
 
