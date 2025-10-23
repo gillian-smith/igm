@@ -14,6 +14,7 @@ from .augmentations.flip import FlipAugmentation, FlipParams
 from .augmentations.noise import NoiseAugmentation, NoiseParams
 from rich.theme import Theme
 from rich.console import Console
+import warnings
 
 
 # -------------------------
@@ -38,6 +39,25 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
 
     cfg_data_preparation = cfg.processes.iceflow.unified.data_preparation
 
+    # Validate and clamp noise_scale to prevent negative values
+    noise_scale = cfg_data_preparation.noise_scale
+    if noise_scale > 1.0:
+        warnings.warn(
+            f"noise_scale={noise_scale:.3f} exceeds maximum safe value of 1.0. "
+            f"Values greater than 1.0 can produce negative results. "
+            f"Clamping to 1.0.",
+            UserWarning,
+            stacklevel=2
+        )
+        noise_scale = 1.0
+    elif noise_scale < 0.0:
+        warnings.warn(
+            f"noise_scale={noise_scale:.3f} is negative. Clamping to 0.0.",
+            UserWarning,
+            stacklevel=2
+        )
+        noise_scale = 0.0
+
     return {
         "overlap": cfg_data_preparation.overlap,
         "batch_size": cfg_data_preparation.batch_size,
@@ -45,7 +65,7 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
         "rotation_probability": cfg_data_preparation.rotation_probability,
         "flip_probability": cfg_data_preparation.flip_probability,
         "noise_type": cfg_data_preparation.noise_type,
-        "noise_scale": cfg_data_preparation.noise_scale,
+        "noise_scale": noise_scale,
         "target_samples": cfg_data_preparation.target_samples,
         "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
         "precision": cfg.processes.iceflow.numerics.precision,
@@ -367,8 +387,6 @@ def create_input_tensor_from_fieldin(
     num_patches_t = patch_shape[0]
     actual_patch_count = _to_py_int(num_patches_t)  # Python int
 
-    training_samples = patches
-
     # Decide whether to upsample 
     apply_augmentations_effective = _augs_effective(preparation_params)
     should_upsample = _should_upsample_tensor(
@@ -377,47 +395,59 @@ def create_input_tensor_from_fieldin(
         apply_augmentations=apply_augmentations_effective,
     )
 
-    # If we need more samples and we will augment, replicate first (no augmentation here)
+    # CRITICAL: Preserve original patches without augmentation
+    # If we need more samples and will augment, separate originals from copies
     if should_upsample:
-        training_samples, adjusted_target_samples = _upsample_tensor(
-            training_samples,
+        # Keep original patches untouched
+        original_samples = patches
+        
+        # Create additional copies for augmentation
+        extra_copies, adjusted_target_samples = _create_extra_copies(
+            patches,
             preparation_params.target_samples,
-            preparation_params,
+            actual_patch_count,
         )
+        
+        # Apply augmentations ONLY to the extra copies
+        if _augs_effective(preparation_params):
+            # Get pre-created singleton augmentation objects
+            has_rotation = _has_rotation(preparation_params)
+            has_flip = _has_flip(preparation_params)
+            has_noise = _has_noise(preparation_params)
+            
+            rotation_aug = _get_rotation_augmentation(preparation_params.rotation_probability) if has_rotation else None
+            flip_aug = _get_flip_augmentation(preparation_params.flip_probability) if has_flip else None
+            noise_aug = None
+            
+            if has_noise:
+                channel_mask = create_channel_mask(
+                    preparation_params.fieldin_names, preparation_params.noise_channels
+                )
+                noise_aug = _get_noise_augmentation(
+                    preparation_params.noise_type,
+                    preparation_params.noise_scale,
+                    channel_mask
+                )
+            
+            augmented_copies = _apply_augmentations_to_tensor(
+                extra_copies,
+                rotation_aug,
+                flip_aug,
+                noise_aug,
+                has_rotation,
+                has_flip,
+                has_noise,
+                dtype,
+            )
+        else:
+            augmented_copies = extra_copies
+        
+        # Combine originals (unaugmented) with augmented copies
+        training_samples = tf.concat([original_samples, augmented_copies], axis=0)
     else:
+        # No upsampling needed, use patches as-is
+        training_samples = patches
         adjusted_target_samples = actual_patch_count
-
-    # Apply exactly one augmentation pass if enabled (now over the full pool)
-    if _augs_effective(preparation_params):
-        # Get pre-created singleton augmentation objects
-        has_rotation = _has_rotation(preparation_params)
-        has_flip = _has_flip(preparation_params)
-        has_noise = _has_noise(preparation_params)
-        
-        rotation_aug = _get_rotation_augmentation(preparation_params.rotation_probability) if has_rotation else None
-        flip_aug = _get_flip_augmentation(preparation_params.flip_probability) if has_flip else None
-        noise_aug = None
-        
-        if has_noise:
-            channel_mask = create_channel_mask(
-                preparation_params.fieldin_names, preparation_params.noise_channels
-            )
-            noise_aug = _get_noise_augmentation(
-                preparation_params.noise_type,
-                preparation_params.noise_scale,
-                channel_mask
-            )
-        
-        training_samples = _apply_augmentations_to_tensor(
-            training_samples,
-            rotation_aug,
-            flip_aug,
-            noise_aug,
-            has_rotation,
-            has_flip,
-            has_noise,
-            dtype,
-        )
 
     # Enforce static inner shape to keep XLA happy
     if patches.shape.rank == 4 and all(d is not None for d in patches.shape[1:]):
@@ -606,38 +636,42 @@ def _apply_augmentations_to_tensor(
     return tf.vectorized_map(apply_to_sample, tensor)
 
 
-def _upsample_tensor(
+def _create_extra_copies(
     tensor: tf.Tensor,
     target_samples: int,
-    preparation_params: PreparationParams,
+    num_originals: int,
 ) -> Tuple[tf.Tensor, int]:
     """
-    Upsample tensor to reach target number of samples by generating replicated samples.
-    NOTE: No augmentation is performed here. Augmentation is applied exactly once
-    later to the whole pool if enabled.
+    Create additional copies of the tensor for augmentation.
+    This function is used when we need to upsample to reach target_samples.
+    The original samples are kept separate and will NOT be augmented.
+
+    Args:
+        tensor: Original patches tensor [num_originals, H, W, C]
+        target_samples: Desired total number of samples
+        num_originals: Number of original patches (Python int)
 
     Returns:
-        (final_tensor, adjusted_target_samples:int)
+        (extra_copies, adjusted_target_samples)
+        - extra_copies: Tensor with only the additional copies [extras_needed, H, W, C]
+        - adjusted_target_samples: Total samples including originals
     """
-    current_shape = tf.shape(tensor)
-    num_samples = _to_py_int(current_shape[0])
+    # Ensure target not below existing count
+    adjusted_target_samples = max(int(target_samples), num_originals)
 
-    # Ensure target not below existing count (pure Python)
-    adjusted_target_samples = max(int(target_samples), num_samples)
+    # Calculate how many extra copies we need (beyond the originals)
+    extras_needed = adjusted_target_samples - num_originals
 
-    # If we already have enough, truncate and return
-    if num_samples >= adjusted_target_samples:
-        return tensor[:adjusted_target_samples], adjusted_target_samples
+    if extras_needed <= 0:
+        # No extras needed, return empty tensor with correct shape
+        return tf.zeros([0, tf.shape(tensor)[1], tf.shape(tensor)[2], tf.shape(tensor)[3]], dtype=tensor.dtype), adjusted_target_samples
 
-    # Extras needed
-    extras_needed = adjusted_target_samples - num_samples
+    # Create extra copies by replicating and slicing
+    # Use random selection from originals for diversity
+    reps = math.ceil(extras_needed / num_originals)
+    replicated = tf.tile(tensor, [reps, 1, 1, 1])[:extras_needed]
 
-    # Replicate originals once to cover extras, slice exact count
-    reps = math.ceil(extras_needed / num_samples)
-    replicated = tf.tile(tensor, [reps + 1, 1, 1, 1])[:extras_needed]
-
-    final_tensor = tf.concat([tensor, replicated], axis=0)
-    return final_tensor, adjusted_target_samples
+    return replicated, adjusted_target_samples
 
 
 @tf.function
