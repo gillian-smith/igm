@@ -156,8 +156,10 @@ def generate_perlin_noise(shape, dtype, base_resolution=4, octaves=3, persistenc
     # Generate noise on a power-of-2 grid larger than the target size
     max_dim = tf.maximum(target_height, target_width)
     # Find next power of 2 that's >= max_dim
+    # Cast everything to float32 for the math operations to avoid dtype mismatches
+    max_dim_float = tf.cast(max_dim, tf.float32)
     power_of_2_size = tf.cast(
-        tf.pow(2.0, tf.math.ceil(tf.math.log(tf.cast(max_dim, dtype)) / tf.math.log(2.0))),
+        tf.pow(2.0, tf.math.ceil(tf.math.log(max_dim_float) / tf.math.log(2.0))),
         tf.int32
     )
     
