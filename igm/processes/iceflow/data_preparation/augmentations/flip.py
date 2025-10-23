@@ -12,20 +12,14 @@ class FlipAugmentation(Augmentation):
 
     def apply(self, x):
         # Each flip type is decided independently, allowing for both flips
-        # Use tf.cond for graph-compatible control flow
+        # Use tf.where for efficient conditional execution without lambda closures
         
         # Apply horizontal flip conditionally
-        x = tf.cond(
-            tf.random.uniform([]) < self.params.probability,
-            lambda: tf.image.flip_left_right(x),
-            lambda: x
-        )
+        do_h_flip = tf.random.uniform([]) < self.params.probability
+        x = tf.where(do_h_flip, tf.image.flip_left_right(x), x)
         
         # Apply vertical flip conditionally
-        x = tf.cond(
-            tf.random.uniform([]) < self.params.probability,
-            lambda: tf.image.flip_up_down(x),
-            lambda: x
-        )
+        do_v_flip = tf.random.uniform([]) < self.params.probability
+        x = tf.where(do_v_flip, tf.image.flip_up_down(x), x)
         
         return x

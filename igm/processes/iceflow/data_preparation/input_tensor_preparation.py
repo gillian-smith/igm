@@ -178,11 +178,20 @@ data_prep_theme = Theme(
     }
 )
 
+# Module-level flag to ensure print functions are only called once
+_print_already_done = False
+
 def _print_skip_message(training_tensor: tf.Tensor, reason: str = "Identity mapping"):
     """
     Print a minimal message when data preparation is skipped.
     Converts dynamic shapes to Python ints to avoid Tensor repr in logs.
+    Only prints on first call to avoid cluttering output during optimization.
     """
+    global _print_already_done
+    if _print_already_done:
+        return
+    _print_already_done = True
+
     console = Console(theme=data_prep_theme)
 
     shape = tf.shape(training_tensor)
@@ -213,14 +222,10 @@ def _print_tensor_dimensions(
     explain the transformation (patching vs augmentation).
     Only prints on first call to avoid cluttering output during optimization.
     """
-    # Track first call using function attribute
-    if not hasattr(_print_tensor_dimensions, "_first_call_done"):
-        _print_tensor_dimensions._first_call_done = False
-
-    if _print_tensor_dimensions._first_call_done:
-        return  # Skip on subsequent calls
-
-    _print_tensor_dimensions._first_call_done = True
+    global _print_already_done
+    if _print_already_done:
+        return
+    _print_already_done = True
 
     console = Console(theme=data_prep_theme)
 
@@ -384,8 +389,34 @@ def create_input_tensor_from_fieldin(
 
     # Apply exactly one augmentation pass if enabled (now over the full pool)
     if _augs_effective(preparation_params):
+        # Get pre-created singleton augmentation objects
+        has_rotation = _has_rotation(preparation_params)
+        has_flip = _has_flip(preparation_params)
+        has_noise = _has_noise(preparation_params)
+        
+        rotation_aug = _get_rotation_augmentation(preparation_params.rotation_probability) if has_rotation else None
+        flip_aug = _get_flip_augmentation(preparation_params.flip_probability) if has_flip else None
+        noise_aug = None
+        
+        if has_noise:
+            channel_mask = create_channel_mask(
+                preparation_params.fieldin_names, preparation_params.noise_channels
+            )
+            noise_aug = _get_noise_augmentation(
+                preparation_params.noise_type,
+                preparation_params.noise_scale,
+                channel_mask
+            )
+        
         training_samples = _apply_augmentations_to_tensor(
-            training_samples, preparation_params, dtype
+            training_samples,
+            rotation_aug,
+            flip_aug,
+            noise_aug,
+            has_rotation,
+            has_flip,
+            has_noise,
+            dtype,
         )
 
     # Enforce static inner shape to keep XLA happy
@@ -481,56 +512,98 @@ def _calculate_effective_batch_size(
     return min(preparation_params.batch_size, adjusted_target_samples)
 
 
-@tf.function
-def _apply_augmentations_to_tensor(
-    tensor: tf.Tensor, preparation_params: PreparationParams, dtype: tf.DType
-) -> tf.Tensor:
-    """
-    Apply augmentations to a tensor in a compiled graph.
-    Skip augmentation entirely if no augmentations are enabled.
-    """
-    # Check if any augmentations are actually enabled
-    has_rotation = _has_rotation(preparation_params)
-    has_flip = _has_flip(preparation_params)
-    has_noise = _has_noise(preparation_params)
+# Module-level singleton augmentation objects (created once, reused always)
+# This completely avoids object creation overhead and retracing issues
+_ROTATION_AUGMENTATIONS = {}  # Cache by probability
+_FLIP_AUGMENTATIONS = {}  # Cache by probability  
+_NOISE_AUGMENTATIONS = {}  # Cache by (type, scale, channel_mask_hash)
 
-    # If no augmentations are enabled, return tensor as-is
-    if not (has_rotation or has_flip or has_noise):
-        return tf.cast(tensor, dtype)
 
-    # Only create augmentation objects if they're needed
-    augmentations = []
-
-    if has_rotation:
-        rotation = RotationAugmentation(
-            RotationParams(probability=preparation_params.rotation_probability)
+def _get_rotation_augmentation(probability: float):
+    """Get or create rotation augmentation singleton."""
+    if probability not in _ROTATION_AUGMENTATIONS:
+        _ROTATION_AUGMENTATIONS[probability] = RotationAugmentation(
+            RotationParams(probability=probability)
         )
-        augmentations.append(rotation)
+    return _ROTATION_AUGMENTATIONS[probability]
 
-    if has_flip:
-        flip = FlipAugmentation(FlipParams(probability=preparation_params.flip_probability))
-        augmentations.append(flip)
 
-    if has_noise:
-        channel_mask = create_channel_mask(
-            preparation_params.fieldin_names, preparation_params.noise_channels
+def _get_flip_augmentation(probability: float):
+    """Get or create flip augmentation singleton."""
+    if probability not in _FLIP_AUGMENTATIONS:
+        _FLIP_AUGMENTATIONS[probability] = FlipAugmentation(
+            FlipParams(probability=probability)
         )
-        noise = NoiseAugmentation(
+    return _FLIP_AUGMENTATIONS[probability]
+
+
+def _get_noise_augmentation(noise_type: str, noise_scale: float, channel_mask: tf.Tensor):
+    """Get or create noise augmentation singleton."""
+    # Create hashable key from parameters
+    # Note: channel_mask should be stable for same fieldin_names + noise_channels
+    mask_hash = hash(tuple(channel_mask.numpy().tolist()))
+    cache_key = (noise_type, noise_scale, mask_hash)
+    
+    if cache_key not in _NOISE_AUGMENTATIONS:
+        _NOISE_AUGMENTATIONS[cache_key] = NoiseAugmentation(
             NoiseParams(
-                noise_type=preparation_params.noise_type,
-                noise_scale=preparation_params.noise_scale,
+                noise_type=noise_type,
+                noise_scale=noise_scale,
                 channel_mask=channel_mask,
             )
         )
-        augmentations.append(noise)
+    return _NOISE_AUGMENTATIONS[cache_key]
 
-    def apply_all(x):
-        for aug in augmentations:
-            x = aug.apply(x)
+
+@tf.function
+def _apply_augmentations_to_tensor(
+    tensor: tf.Tensor,
+    rotation_aug,
+    flip_aug,
+    noise_aug,
+    has_rotation: bool,
+    has_flip: bool,
+    has_noise: bool,
+    dtype: tf.DType,
+) -> tf.Tensor:
+    """
+    Apply augmentations to tensor using pre-created augmentation objects.
+    
+    Uses @tf.function for performance while avoiding object creation inside the graph.
+    Augmentation objects are created once at module level and reused.
+    
+    Args:
+        tensor: Input tensor of shape [num_samples, height, width, channels]
+        rotation_aug: Pre-created RotationAugmentation object (or None)
+        flip_aug: Pre-created FlipAugmentation object (or None)
+        noise_aug: Pre-created NoiseAugmentation object (or None)
+        has_rotation: Whether to apply rotation
+        has_flip: Whether to apply flip
+        has_noise: Whether to apply noise
+        dtype: Target dtype for output tensor
+        
+    Returns:
+        Augmented tensor with same shape as input
+    """
+    
+    def apply_to_sample(x):
+        """Apply all enabled augmentations sequentially to a single sample."""
+        # Apply rotation if enabled
+        if has_rotation:
+            x = rotation_aug.apply(x)
+        
+        # Apply flip if enabled
+        if has_flip:
+            x = flip_aug.apply(x)
+        
+        # Apply noise if enabled
+        if has_noise:
+            x = noise_aug.apply(x)
+        
         return tf.cast(x, dtype)
-
+    
     # Vectorize across the leading (sample) dimension
-    return tf.vectorized_map(apply_all, tensor)
+    return tf.vectorized_map(apply_to_sample, tensor)
 
 
 def _upsample_tensor(
