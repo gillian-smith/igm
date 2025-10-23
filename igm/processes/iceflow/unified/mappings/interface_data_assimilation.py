@@ -81,6 +81,8 @@ class InterfaceDataAssimilation(InterfaceMapping):
             )
 
         cost_fn = state.iceflow.optimizer.cost_fn
+        precision = cfg.processes.iceflow.numerics.precision
+        store_freq = cfg.processes.data_assimilation.store_freq
 
         return {
             "bcs": bcs,
@@ -90,4 +92,5 @@ class InterfaceDataAssimilation(InterfaceMapping):
             "output_scale": base_mapping.output_scale,
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
+            "precision": precision,
         }

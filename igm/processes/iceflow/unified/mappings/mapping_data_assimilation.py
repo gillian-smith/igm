@@ -25,7 +25,7 @@ class VariableSpec:
     """
 
     name: str                         # e.g. "thk", "slidingco"
-    transform: str                    # key in TRANSFORMS (e.g., "identity", "log10", ...)
+    transform: str = "identity"       # key in TRANSFORMS (e.g., "identity", "log10", ...) [default + case-insensitive]
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
     mask: Optional[str] = None        # dotted path on ``state`` resolving to a tensor mask
@@ -50,26 +50,38 @@ class MappingDataAssimilation(Mapping):
         state,
         variables: List[VariableSpec],
         eps: float = 1e-12,
+        field_to_channel: Optional[Dict[str, int]] = None,   
+        precision: str = "single",           
     ):
-        super().__init__(bcs)
+        super().__init__(bcs, precision)
         if not variables:
             raise ValueError("❌ DataAssimilation mapping requires at least one variable.")
 
         self.network = network
         self.Nz = Nz
-        self.output_scale = output_scale
+        self.output_scale = tf.cast(output_scale, self.precision)
         self.vars: List[VariableSpec] = variables
         self.eps = eps
         self.cost_fn = cost_fn
 
-        self.base_cost_reference = tf.Variable(float("nan"), trainable=False, name="base_cost_reference")
-        self._base_cost_tol = tf.constant(0.1, dtype=tf.float32)  # 10% threshold
-        self._base_cost_eps = tf.constant(1e-12, dtype=tf.float32)  # Small epsilon for division
+        for v in self.network.trainable_variables:
+            if v.dtype != self.precision:
+                raise TypeError(
+                    f"[DataAssimilation] Network variable dtype is {v.dtype.name}, "
+                    f"but requested precision is {self.precision.name}. "
+                    "Please build/load the network in the same precision."
+                )
+
+        self.field_to_channel: Dict[str, int] = field_to_channel or {
+            'thk': 0, 'usurf': 1, 'arrhenius': 2, 'slidingco': 3, 'dX': 4
+        }
+
+        self.base_cost_reference = tf.Variable(float("nan"), trainable=False, name="base_cost_reference", dtype=self.precision)
+        self._base_cost_tol = tf.constant(0.1, dtype=self.precision)  # 10% threshold
+        self._base_cost_eps = tf.constant(1e-12, dtype=self.precision)  # Small epsilon for division
 
         # Diagnostics used by the halt criterion
-        self.base_cost = tf.Variable(0.0, trainable=False, name="base_cost")
-        self.initial_cost = tf.Variable(0.0, trainable=False, name="initial_cost")
-        self.cost_initialized = tf.Variable(False, trainable=False, name="cost_initialized")
+        self.base_cost = tf.Variable(0.0, trainable=False, name="base_cost", dtype=self.precision)
 
         # Ensure state fields are tf.Variable and keep references (for initialization parity).
         self._field_refs: Dict[str, tf.Variable] = {}
@@ -86,16 +98,18 @@ class MappingDataAssimilation(Mapping):
         self.transforms: List[ParameterTransform] = []
         self._w: List[tf.Variable] = []
         self._shapes: List[tf.TensorShape] = []
-        self._sizes: List[tf.Tensor] = []
+        self._sizes: List[tf.Tensor] = []    
+        self._sizes_int: List[Optional[int]] = []   
         self._full_shapes: List[tf.TensorShape] = []
         self._mask_bool: List[Optional[tf.Tensor]] = []
         self._mask_indices: List[Optional[tf.Tensor]] = []
         self._mask_backgrounds: List[Optional[tf.Tensor]] = []
 
         for spec in self.vars:
-            if spec.transform not in TRANSFORMS:
+            tname = (spec.transform or "identity").lower()
+            if tname not in TRANSFORMS:
                 raise ValueError(f"❌ Unknown transform '{spec.transform}' for '{spec.name}'.")
-            tform = TRANSFORMS[spec.transform]()  # instance
+            tform = TRANSFORMS[tname]()  # instance
             self.transforms.append(tform)
 
             x0_var = self._field_refs[spec.name]
@@ -124,10 +138,12 @@ class MappingDataAssimilation(Mapping):
             else:
                 theta0 = theta0_full
 
-            theta = tf.Variable(theta0, trainable=True, name=f"theta_{spec.name}")
+            # Keep θ in compute precision
+            theta = tf.Variable(tf.cast(theta0, self.precision), trainable=True, name=f"theta_{spec.name}")
             self._w.append(theta)
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
+            self._sizes_int.append(theta.shape.num_elements() if theta.shape.num_elements() is not None else None)
             self._mask_bool.append(mask_bool)
             self._mask_indices.append(mask_indices)
             self._mask_backgrounds.append(mask_background)
@@ -170,33 +186,21 @@ class MappingDataAssimilation(Mapping):
         field.set_shape(full_shape)
         return field
 
-
     @tf.function(reduce_retracing=True)
-    def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
-        """
-        Patch BHWC inputs with current physical-space values for selected fields.
-        Channel mapping follows your existing convention.
-        """
-        updated = inputs
-        field_to_channel = {'thk': 0, 'usurf': 1, 'arrhenius': 2, 'slidingco': 3, 'dX': 4}
-        for idx, spec in enumerate(self.vars):
-            ch = field_to_channel.get(spec.name, None)
-            if ch is None:
-                continue
-            val = self._theta_to_field(idx)
-            val = tf.cast(val, updated.dtype)
-            val_bhwc1 = tf.expand_dims(tf.expand_dims(val, axis=0), axis=-1)
-            C = tf.shape(updated)[-1]
-            channel_mask = tf.one_hot(ch, C, dtype=updated.dtype)
-            channel_mask = tf.reshape(channel_mask, [1, 1, 1, -1])
-            one = tf.cast(1.0, updated.dtype)
-            updated = updated * (one - channel_mask) + val_bhwc1 * channel_mask
-        return updated
-
     def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         updated_inputs = self.apply_theta_to_inputs(inputs)
         return updated_inputs
 
+    @tf.function(jit_compile=True)
+    def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
+        processed_inputs = self.synchronize_inputs(inputs)
+        self.set_inputs(processed_inputs)
+        U, V = self.get_UV_impl()
+        for apply_bc in self.apply_bcs:
+            U, V = apply_bc(U, V)
+        return U, V
+
+    @tf.function(jit_compile=True, reduce_retracing=True)
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
@@ -249,10 +253,19 @@ class MappingDataAssimilation(Mapping):
         return tf.concat(flats, axis=0)
 
     def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
-        splits = tf.split(w_flat, self._sizes)
-        return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
+        if all(s is not None for s in self._sizes_int):
+            vals: List[tf.Tensor] = []
+            idx = 0
+            for s_int, shp in zip(self._sizes_int, self._shapes):
+                nxt = idx + int(s_int)  # type: ignore[arg-type]
+                vals.append(tf.reshape(w_flat[idx:nxt], shp))
+                idx = nxt
+            return vals
+        else:
+            splits = tf.split(w_flat, self._sizes)
+            return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
-    # ------- Halt criterion (same behavior as before) ------------------------
+    # ------- Halt criterion  ------------------------
 
     def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """
@@ -277,6 +290,34 @@ class MappingDataAssimilation(Mapping):
 
         return tf.cond(tf.math.is_nan(reference), _set_reference, _check_increase)
 
-    def on_minimize_start(self) -> None:
+
+    def on_minimize_start(self, iter_max: int) -> None:
+        """
+        Reset the base-cost reference used by the halt criterion.
+        Called eagerly at the start of each minimize call.
+        """
         reset_value = tf.constant(float("nan"), dtype=self.base_cost_reference.dtype)
         self.base_cost_reference.assign(reset_value)
+
+    # ------- Input channel patching --------------------------------
+
+    @tf.function(reduce_retracing=True)
+    def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
+        """
+        Patch BHWC inputs with current physical-space values for selected fields.
+        Channel mapping follows the configured mapping.
+        """
+        updated = inputs
+        B, H, W, C = tf.unstack(tf.shape(inputs))
+        for idx, spec in enumerate(self.vars):
+            ch = self.field_to_channel.get(spec.name, None)
+            if ch is None:
+                continue
+            val = self._theta_to_field(idx)
+            val = tf.cast(val, updated.dtype)
+            phys_b = tf.tile(tf.reshape(val, [1, H, W, 1]), [B, 1, 1, 1])
+
+            left = updated[:, :, :, :ch]
+            right = updated[:, :, :, ch + 1 :]
+            updated = tf.concat([left, phys_b, right], axis=-1)
+        return updated

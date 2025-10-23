@@ -7,7 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
 
-from ..mappings import Mapping
+from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from .optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
 
@@ -24,10 +24,15 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
 
+        if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
+            lr = cfg.processes.data_assimilation.optimization.learning_rate
+        else:
+            lr = cfg_unified.lr
+
         return {
             "cost_fn": cost_fn,
             "map": map,
-            "lr": cfg_unified.lr,
+            "lr": lr,
             "iter_max": cfg_unified.nbit,
             "print_cost": cfg_unified.print_cost,
             "print_cost_freq": cfg_unified.print_cost_freq,
