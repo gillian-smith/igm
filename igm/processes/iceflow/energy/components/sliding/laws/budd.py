@@ -6,11 +6,11 @@
 import tensorflow as tf
 from typing import Dict
 
-from ..sliding import SlidingComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
-from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.gradient.grad import grad_xy
 from igm.utils.stag.stag import stag4h
+from ..sliding import SlidingComponent
 
 
 class BuddParams(tf.experimental.ExtensionType):
@@ -104,7 +104,7 @@ def _cost(
     V_b : tf.Tensor
         Basal extraction vector: dofs -> basal
     staggered_grid : bool
-        Additional staggering of (U, V, C)
+        Staggering of (U, V, C)
 
     Returns
     -------
@@ -112,7 +112,7 @@ def _cost(
         Budd sliding cost in MPa m/year
     """
 
-    # Optional additional staggering
+    # Staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
@@ -124,7 +124,7 @@ def _cost(
 
     # Compute bed gradient ∇b
     b = s - h
-    dbdx, dbdy = compute_gradient(b, dx, dx, staggered_grid)
+    dbdx, dbdy = grad_xy(b, dx, dx, staggered_grid, "extrapolate")
 
     # Compute basal velocity magnitude (with norm M and regularization)
     u_corr_b = ux_b * dbdx + uy_b * dbdy

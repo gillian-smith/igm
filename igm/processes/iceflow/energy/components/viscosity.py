@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 
 from .energy import EnergyComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.gradient.grad import grad_xy
 from igm.utils.stag.stag import stag4h
 
 
@@ -100,38 +100,6 @@ def cost_viscosity(
         zeta,
         staggered_grid,
     )
-
-
-@tf.function()
-def compute_horizontal_derivatives(
-    U: tf.Tensor, V: tf.Tensor, dx: float, staggered_grid: bool
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-    """Compute horizontal velocity derivatives using finite differences."""
-
-    if staggered_grid:
-
-        dUdx = (U[..., :, :, 1:] - U[..., :, :, :-1]) / dx
-        dVdx = (V[..., :, :, 1:] - V[..., :, :, :-1]) / dx
-        dUdy = (U[..., :, 1:, :] - U[..., :, :-1, :]) / dx
-        dVdy = (V[..., :, 1:, :] - V[..., :, :-1, :]) / dx
-
-        dUdx = (dUdx[..., :, :-1, :] + dUdx[..., :, 1:, :]) / 2
-        dVdx = (dVdx[..., :, :-1, :] + dVdx[..., :, 1:, :]) / 2
-        dUdy = (dUdy[..., :, :, :-1] + dUdy[..., :, :, 1:]) / 2
-        dVdy = (dVdy[..., :, :, :-1] + dVdy[..., :, :, 1:]) / 2
-
-    else:
-
-        paddings = [[0, 0]] * (len(U.shape) - 2) + [[1, 1], [1, 1]]
-        U = tf.pad(U, paddings, mode="SYMMETRIC")
-        V = tf.pad(V, paddings, mode="SYMMETRIC")
-
-        dUdx = (U[..., :, 1:-1, 2:] - U[..., :, 1:-1, :-2]) / (2 * dx)
-        dVdx = (V[..., :, 1:-1, 2:] - V[..., :, 1:-1, :-2]) / (2 * dx)
-        dUdy = (U[..., :, 2:, 1:-1] - U[..., :, :-2, 1:-1]) / (2 * dx)
-        dVdy = (V[..., :, 2:, 1:-1] - V[..., :, :-2, 1:-1]) / (2 * dx)
-
-    return dUdx, dVdx, dUdy, dVdy
 
 
 @tf.function()
@@ -299,7 +267,7 @@ def _cost(
     zeta: tf.Tensor
         Position for vertical integration
     staggered_grid : bool
-        Additional staggering of (U, V, h, B)
+        Staggering of (U, V, h, B)
 
     Returns
     -------
@@ -319,16 +287,16 @@ def _cost(
     # Effective exponent
     p = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / n
 
-    dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(
-        U, V, dx[0, 0, 0], staggered_grid
-    )
+    # Velocity gradients
+    dUdx, dUdy = grad_xy(U, dx, dx, staggered_grid)
+    dVdx, dVdy = grad_xy(V, dx, dx, staggered_grid)
 
     # Compute upper and lower surface gradients ∇l, ∇s
     l = s - h
-    dldx, dldy = compute_gradient(l, dx, dx, staggered_grid)
-    dsdx, dsdy = compute_gradient(s, dx, dx, staggered_grid)
+    dldx, dldy = grad_xy(l, dx, dx, staggered_grid, "extrapolate")
+    dsdx, dsdy = grad_xy(s, dx, dx, staggered_grid, "extrapolate")
 
-    # Optional additional staggering
+    # Staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
-from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.gradient.grad import grad_xy
 
 
 def initialize(cfg, state):
@@ -15,7 +15,9 @@ def initialize(cfg, state):
 
 
 def update(cfg, state):
-    slopsurfx, slopsurfy = compute_gradient_tf(state.usurf, state.dx, state.dx)
+    slopsurfx, slopsurfy = grad_xy(
+        state.usurf, state.dx, state.dx, False, "extrapolate"
+    )
 
     slop = getmag(slopsurfx, slopsurfy)
 

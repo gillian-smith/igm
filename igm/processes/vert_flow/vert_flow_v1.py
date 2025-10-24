@@ -8,9 +8,8 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 import numpy as np
 import tensorflow as tf
 
-from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.gradient.grad import grad_xy
 from igm.utils.gradient.compute_divflux import compute_divflux
-
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,
@@ -32,7 +31,7 @@ def compute_vertical_velocity_kinematic_v1(cfg, state):
     temd = levels[1:] - levels[:-1]
     dz = tf.stack([state.thk * z for z in temd], axis=0)
 
-    sloptopgx, sloptopgy = compute_gradient_tf(state.topg, state.dx, state.dx)
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
 
     sloplayx = [sloptopgx]
     sloplayy = [sloptopgy]
@@ -42,7 +41,7 @@ def compute_vertical_velocity_kinematic_v1(cfg, state):
 
         cumdz = tf.reduce_sum(dz[:l], axis=0)
 
-        sx, sy = compute_gradient_tf(state.topg + cumdz, state.dx, state.dx)
+        sx, sy = grad_xy(state.topg + cumdz, state.dx, state.dx, False, "extrapolate")
 
         sloplayx.append(sx)
         sloplayy.append(sy)
@@ -84,7 +83,7 @@ def compute_vertical_velocity_incompressibility_v1(cfg, state):
     dVdz = -dUdx - dVdy
 
     # get the basal vertical velocities
-    sloptopgx, sloptopgy = compute_gradient_tf(state.topg, state.dx, state.dx)
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
     wvelbase = state.U[0] * sloptopgx + state.V[0] * sloptopgy
 
     # get the vertical thickness layers

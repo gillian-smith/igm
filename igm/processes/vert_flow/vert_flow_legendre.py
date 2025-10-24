@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
-"""
 # Copyright (C) 2021-2025 IGM authors
-Published under the GNU GPL (Version 3), check at the LICENSE file
-"""
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
 import tensorflow as tf
 
-from igm.processes.iceflow.energy.components.viscosity import (
-    compute_horizontal_derivatives,
-)
-from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.gradient.grad import grad_xy
 from igm.processes.iceflow.utils.velocities import get_velbase
 
 
@@ -17,17 +13,14 @@ def compute_vertical_velocity_legendre(cfg, state):
 
     vertical_discr = state.iceflow.vertical_discr
 
-    sloptopgx, sloptopgy = compute_gradient(
-        state.topg, state.dX, state.dX, staggered_grid=False
-    )
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
 
     uvelbase, vvelbase = get_velbase(state.U, state.V, vertical_discr.V_b)
 
     wvelbase = uvelbase * sloptopgx + vvelbase * sloptopgy  # Lagrange basis
 
-    dUdx, _, _, dVdy = compute_horizontal_derivatives(
-        state.U, state.V, state.dX[0, 0], staggered_grid=False
-    )  # Legendre basis
+    dUdx, _ = grad_xy(state.U, state.dX, state.dX, False)
+    _, dVdy = grad_xy(state.V, state.dX, state.dX, False)
 
     # Lagrange basis
     WLA = (

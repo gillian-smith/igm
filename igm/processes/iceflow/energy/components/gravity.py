@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 
 from .energy import EnergyComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.gradient.compute_gradient import compute_gradient
+from igm.utils.gradient.grad import grad_xy
 from igm.utils.stag.stag import stag4h
 
 
@@ -120,7 +120,7 @@ def _cost(
     w : tf.Tensor
         Weights for vertical integration
     staggered_grid : bool
-        Additional staggering of (U, V, h)
+        Staggering of (U, V, h)
 
     Returns
     -------
@@ -128,7 +128,7 @@ def _cost(
         Gravitational energy cost in MPa m/year
     """
 
-    # Optional additional staggering
+    # Staggering
     if staggered_grid:
         U = stag4h(U)
         V = stag4h(V)
@@ -139,7 +139,7 @@ def _cost(
     v_q = tf.einsum("ij,bjkl->bikl", V_q, V)
 
     # Compute upper surface gradient ∇s
-    dsdx, dsdy = compute_gradient(s, dx, dx, staggered_grid)
+    dsdx, dsdy = grad_xy(s, dx, dx, staggered_grid, "extrapolate")
     dsdx_q = dsdx[:, None, :, :]
     dsdy_q = dsdy[:, None, :, :]
 

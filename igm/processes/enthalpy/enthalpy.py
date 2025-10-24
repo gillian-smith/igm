@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.gradient.grad import grad_xy
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,
@@ -418,7 +418,7 @@ def compute_frictheat_tf(U, V, slidingco, topg, dx, exp_weertman):
     # input slidingo [m MPa^{-3} y^{-1} ]
     # return frictheat in [W m^{-2}]
 
-    sloptopgx, sloptopgy = compute_gradient_tf(topg, dx, dx)
+    sloptopgx, sloptopgy = grad_xy(topg, dx, dx, False, "extrapolate")
     wvelbase = U[0] * sloptopgx + V[0] * sloptopgy
     ub = (U[0, :, :] ** 2 + V[0, :, :] ** 2 + wvelbase**2) ** 0.5
 

@@ -8,7 +8,7 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 import numpy as np
 import tensorflow as tf
 
-from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.gradient.grad import grad_xy
 from igm.utils.gradient.compute_divflux import compute_divflux
 
 from igm.processes.iceflow.utils.vertical_discretization import (
@@ -56,7 +56,7 @@ def compute_vertical_velocity_incompressibility_v2(cfg, state):
 
     dz = tf.concat([tf.expand_dims(tf.zeros_like(state.thk), 0), dz], axis=0)
     Z = tf.cumsum(dz) + state.topg
-    sloptopgx, sloptopgy = compute_gradient_tf(state.topg, state.dX, state.dX)
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
 
     dudx = gradx_non_flat_layers_tf(state.U, state.dX, Z, state.vert_weight, state.thk)
     dvdy = grady_non_flat_layers_tf(state.V, state.dX, Z, state.vert_weight, state.thk)
@@ -230,9 +230,11 @@ def compute_divflux_d(u, v, h, dx, dy):
 
 def compute_vertical_velocity_twolayers(cfg, state):
 
-    sloptopgx, sloptopgy = compute_gradient_tf(state.topg, state.dx, state.dx)
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
 
-    slopusurfx, slopusurfy = compute_gradient_tf(state.usurf, state.dx, state.dx)
+    slopusurfx, slopusurfy = grad_xy(
+        state.usurf, state.dx, state.dx, False, "extrapolate"
+    )
 
     div = compute_divflux_d(state.ubar, state.vbar, state.thk, state.dx, state.dx)
 
