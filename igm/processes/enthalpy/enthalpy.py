@@ -1,37 +1,48 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf 
+import tensorflow as tf
 
 from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
-from igm.processes.iceflow.utils.vertical_discretization import compute_levels, compute_dz, compute_depth
+from igm.processes.iceflow.utils.vertical_discretization import (
+    compute_levels,
+    compute_dz,
+    compute_depth,
+)
+
 
 def initialize(cfg, state):
-    
+
     if "iceflow" not in cfg.processes:
         raise ValueError("The 'iceflow' module is required for the 'enthalpy' module.")
-    
+
     Ny, Nx = state.thk.shape
 
     state.basalMeltRate = tf.Variable(tf.zeros_like(state.thk), trainable=False)
     state.T = tf.Variable(
-        tf.ones((cfg.processes.iceflow.numerics.Nz, Ny, Nx)) * cfg.processes.enthalpy.melt_temp, trainable=False
+        tf.ones((cfg.processes.iceflow.numerics.Nz, Ny, Nx))
+        * cfg.processes.enthalpy.melt_temp,
+        trainable=False,
     )
     state.omega = tf.Variable(tf.zeros_like(state.T), trainable=False)
     state.E = tf.Variable(
         tf.ones_like(state.T)
-        * (cfg.processes.enthalpy.ci * (cfg.processes.enthalpy.melt_temp - cfg.processes.enthalpy.ref_temp)),
+        * (
+            cfg.processes.enthalpy.ci
+            * (cfg.processes.enthalpy.melt_temp - cfg.processes.enthalpy.ref_temp)
+        ),
         trainable=False,
     )
     state.tillwat = 0.0 * tf.Variable(tf.ones_like(state.thk), trainable=False)
 
     if not hasattr(state, "bheatflx"):
         state.bheatflx = tf.Variable(
-            tf.ones_like(state.thk) * cfg.processes.enthalpy.default_bheatflx, trainable=False
+            tf.ones_like(state.thk) * cfg.processes.enthalpy.default_bheatflx,
+            trainable=False,
         )
 
     state.phi = compute_phi(cfg, state)
@@ -45,13 +56,14 @@ def initialize(cfg, state):
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
         cfg.processes.iceflow.physics.exp_weertman,
-        cfg.processes.enthalpy.uthreshold, 
+        cfg.processes.enthalpy.uthreshold,
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,
     )
 
-
     # arrhenius must be 3D for the Enthlapy to work
+
+
 #    assert cfg.processes.iceflow.physics.dim_arrhenius == 3
 
 
@@ -59,12 +71,12 @@ def update(cfg, state):
     if hasattr(state, "logger"):
         state.logger.info("Update ENTHALPY at time : " + str(state.t.numpy()))
 
-
     # compute the surface temperature taken the negative part of the mean air temperature
     surftemp = (
         tf.minimum(
             tf.math.reduce_mean(
-                state.air_temp + cfg.processes.enthalpy.temperature_offset_air_to_ice, axis=0
+                state.air_temp + cfg.processes.enthalpy.temperature_offset_air_to_ice,
+                axis=0,
             ),
             0,
         )
@@ -73,8 +85,8 @@ def update(cfg, state):
 
     # get the vertical discretization
     levels = compute_levels(
-               cfg.processes.iceflow.numerics.Nz, 
-               cfg.processes.iceflow.numerics.vert_spacing)
+        cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing
+    )
     dz = compute_dz(state.thk, levels)
     depth = compute_depth(dz)
 
@@ -113,14 +125,17 @@ def update(cfg, state):
 
     # get the arrhenius factor from temperature and and enthalpy
     if cfg.processes.iceflow.physics.dim_arrhenius == 2:
-      state.arrhenius = tf.reduce_sum( arrhenius_from_temp_tf(state.Tpa, state.omega) 
-                                   * cfg.processes.iceflow.physics.enhancement_factor
-                                   * state.vert_weight, 
-                                   axis=0)
+        state.arrhenius = tf.reduce_sum(
+            arrhenius_from_temp_tf(state.Tpa, state.omega)
+            * cfg.processes.iceflow.physics.enhancement_factor
+            * state.vert_weight,
+            axis=0,
+        )
     else:
-      state.arrhenius = (
-          arrhenius_from_temp_tf(state.Tpa, state.omega) * cfg.processes.iceflow.physics.enhancement_factor
-      )
+        state.arrhenius = (
+            arrhenius_from_temp_tf(state.Tpa, state.omega)
+            * cfg.processes.iceflow.physics.enhancement_factor
+        )
 
     if hasattr(state, "W"):
         # correct vertical velocity corrected (therefore Wc) from melting rate
@@ -138,7 +153,7 @@ def update(cfg, state):
         dz,
         cfg.processes.iceflow.physics.exp_glen,
         cfg.processes.iceflow.physics.thr_ice_thk,
-        cfg.processes.iceflow.physics.dim_arrhenius
+        cfg.processes.iceflow.physics.dim_arrhenius,
     )
 
     # compute the frictheat is in [W m-2]
@@ -148,12 +163,15 @@ def update(cfg, state):
         state.slidingco,
         state.topg,
         state.dx,
-        cfg.processes.iceflow.physics.exp_weertman, 
+        cfg.processes.iceflow.physics.exp_weertman,
     )
 
     # compute the surface enthalpy
     surfenth = surf_enthalpy_from_temperature_tf(
-        surftemp, cfg.processes.enthalpy.melt_temp, cfg.processes.enthalpy.ci, cfg.processes.enthalpy.ref_temp
+        surftemp,
+        cfg.processes.enthalpy.melt_temp,
+        cfg.processes.enthalpy.ci,
+        cfg.processes.enthalpy.ref_temp,
     )
 
     # one explicit step for the horizonal advection
@@ -191,7 +209,9 @@ def update(cfg, state):
     state.tillwat = state.tillwat + state.dt * (
         state.basalMeltRate - cfg.processes.enthalpy.drain_rate
     )
-    state.tillwat = tf.clip_by_value(state.tillwat, 0.0, cfg.processes.enthalpy.till_wat_max)
+    state.tillwat = tf.clip_by_value(
+        state.tillwat, 0.0, cfg.processes.enthalpy.till_wat_max
+    )
     state.tillwat = tf.where(state.thk > 0, state.tillwat, 0.0)
 
     state.phi = compute_phi(cfg, state)
@@ -205,19 +225,20 @@ def update(cfg, state):
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
         cfg.processes.iceflow.physics.exp_weertman,
-        cfg.processes.enthalpy.uthreshold, 
+        cfg.processes.enthalpy.uthreshold,
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,
     )
 
-
     if cfg.processes.iceflow.physics.dim_arrhenius == 2:
-        state.hardav = ( state.arrhenius ** (-1 / 3) * 1e6 * (365.25 * 24 * 3600) ** (1 / 3) )  # unit is Pa s**(1/3)
+        state.hardav = (
+            state.arrhenius ** (-1 / 3) * 1e6 * (365.25 * 24 * 3600) ** (1 / 3)
+        )  # unit is Pa s**(1/3)
     else:
         state.hardav = (
-          tf.reduce_sum(state.arrhenius ** (-1 / 3) * state.vert_weight, axis=0)
-          * 1e6
-          * (365.25 * 24 * 3600) ** (1 / 3)
+            tf.reduce_sum(state.arrhenius ** (-1 / 3) * state.vert_weight, axis=0)
+            * 1e6
+            * (365.25 * 24 * 3600) ** (1 / 3)
         )  # unit is Pa s**(1/3)
         state.arrheniusav = tf.reduce_sum(state.arrhenius * state.vert_weight, axis=0)
 
@@ -239,8 +260,6 @@ def finalize(cfg, state):
 # frictheat in [W m-2]
 # tillwat in [m]
 # strainheat in [W m-3]
-
-
 
 
 @tf.function()
@@ -280,7 +299,7 @@ def compute_slidingco_tf(
     tillwatmax,
     phi,
     exp_weertman,
-    uthreshold, 
+    uthreshold,
     tauc_min,
     tauc_max,
 ):
@@ -304,8 +323,10 @@ def compute_slidingco_tf(
     tauc = tf.where(thk > 0, tauc, 10**6)  # high value if ice-fre
 
     tauc = tf.clip_by_value(tauc, tauc_min, tauc_max)
- 
-    slidingco = (tauc * 10 ** (-6)) * uthreshold ** (-1.0 / exp_weertman)  # Mpa m^(-1/3) y^(1/3) 
+
+    slidingco = (tauc * 10 ** (-6)) * uthreshold ** (
+        -1.0 / exp_weertman
+    )  # Mpa m^(-1/3) y^(1/3)
 
     return tauc, slidingco
 
@@ -382,12 +403,13 @@ def compute_strainheat_tf(U, V, arrhenius, dx, dz, exp_glen, thr, dim_arrhenius)
     # [Pa y^1/3 y^(-4/3)] = [Pa s^{-1}] = [W m^{-3}]
 
     if dim_arrhenius == 2:
-       return (tf.expand_dims(arrhenius, axis=0) / ((10**18) * 31556926)) ** (-1.0 / exp_glen) \
-           * strainrate ** (1.0 + 1.0 / exp_glen)
+        return (tf.expand_dims(arrhenius, axis=0) / ((10**18) * 31556926)) ** (
+            -1.0 / exp_glen
+        ) * strainrate ** (1.0 + 1.0 / exp_glen)
     else:
-       return (arrhenius / ((10**18) * 31556926)) ** (-1.0 / exp_glen) * (
-          strainrate ** (1.0 + 1.0 / exp_glen)
-       )
+        return (arrhenius / ((10**18) * 31556926)) ** (-1.0 / exp_glen) * (
+            strainrate ** (1.0 + 1.0 / exp_glen)
+        )
 
 
 @tf.function()
@@ -407,7 +429,8 @@ def compute_frictheat_tf(U, V, slidingco, topg, dx, exp_weertman):
         * (31556926) ** (1.0 / exp_weertman)
         * ub ** ((1.0 / exp_weertman) + 1)
     )
- 
+
+
 @tf.function()
 def TpmpEpmp_from_depth_tf(
     depth, gravity_cst, ice_density, claus_clape_cst, melt_temp, ci, ref_temp
