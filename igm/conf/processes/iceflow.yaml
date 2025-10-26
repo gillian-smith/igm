@@ -45,6 +45,9 @@ iceflow:
     - arrhenius
     - slidingco
     - dX
+  diagnostic:
+    save_freq: 1
+    filename_metrics: diagnostic_metrics.txt
   unified:
     mapping: network
     optimizer: adam
