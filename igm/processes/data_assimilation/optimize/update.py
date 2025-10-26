@@ -6,7 +6,7 @@
 import tensorflow as tf
  
 #from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
-from igm.utils.gradient.compute_divflux import compute_divflux
+from igm.utils.grad.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 

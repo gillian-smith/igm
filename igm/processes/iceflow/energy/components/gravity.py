@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 
 from .energy import EnergyComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.gradient.grad import grad_xy
+from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
 
 

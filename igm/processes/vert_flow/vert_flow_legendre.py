@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 
-from igm.utils.gradient.grad import grad_xy
+from igm.utils.grad.grad import grad_xy
 from igm.processes.iceflow.utils.velocities import get_velbase
 
 

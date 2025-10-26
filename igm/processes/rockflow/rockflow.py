@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
-from igm.utils.gradient.grad import grad_xy
+from igm.utils.grad.grad import grad_xy
 
 
 def initialize(cfg, state):

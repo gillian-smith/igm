@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-from igm.utils.gradient.grad import grad_xy
+from igm.utils.grad.grad import grad_xy
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,

@@ -8,8 +8,8 @@ Published under the GNU GPL (Version 3), check at the LICENSE file
 import numpy as np
 import tensorflow as tf
 
-from igm.utils.gradient.grad import grad_xy
-from igm.utils.gradient.compute_divflux import compute_divflux
+from igm.utils.grad.grad import grad_xy
+from igm.utils.grad.compute_divflux import compute_divflux
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,

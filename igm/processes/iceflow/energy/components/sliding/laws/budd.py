@@ -8,7 +8,7 @@ from typing import Dict
 
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
-from igm.utils.gradient.grad import grad_xy
+from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
 from ..sliding import SlidingComponent
 
