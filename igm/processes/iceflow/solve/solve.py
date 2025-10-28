@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 import tensorflow as tf
 
 from igm.common.core import State
-from igm.processes.iceflow.data_preparation import input_tensor_preparation as prep
+from igm.processes.iceflow.data_preparation import preparation_params as prep
 from igm.processes.iceflow.energy.utils import get_energy_components
 
 from .evaluator import evaluate_iceflow, EvaluatorParams, get_evaluator_params_args

@@ -14,7 +14,7 @@ from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_icef
 from .solver import solve_iceflow
 from .utils import get_cost_fn
 
-from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
+from igm.processes.iceflow.data_preparation.preparation_params import (
     PreparationParams,
     get_input_params_args,
 )

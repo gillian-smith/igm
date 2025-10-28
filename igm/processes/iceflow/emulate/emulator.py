@@ -17,7 +17,7 @@ from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
 )
-from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
+from igm.processes.iceflow.data_preparation.preparation_params import (
     PreparationParams,
     calculate_expected_dimensions,
     get_input_params_args,

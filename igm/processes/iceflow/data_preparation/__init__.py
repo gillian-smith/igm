@@ -9,8 +9,17 @@ from .augmentations import (
     NoiseParams,
 )
 
+# Import patching classes
+from .patching import (
+    Patching,
+    OverlapPatching,
+    GridPatching,
+)
+
 __all__ = [
     "input_tensor_preparation",
+    "preparation_ops",
+    "preparation_params",
     "PreparationParams",
     "Augmentation",
     "RotationAugmentation",
@@ -19,4 +28,7 @@ __all__ = [
     "FlipParams",
     "NoiseAugmentation",
     "NoiseParams",
+    "Patching",
+    "OverlapPatching",
+    "GridPatching",
 ]
