@@ -17,15 +17,11 @@ from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
 )
-from igm.processes.iceflow.data_preparation.preparation_params import (
-    PreparationParams,
-    calculate_expected_dimensions,
-    get_input_params_args,
+
+from igm.processes.iceflow.utils.data_preprocessing import (
+    prepare_X,
 )
-from igm.processes.iceflow.data_preparation.input_tensor_preparation import (
-    create_input_tensor_from_fieldin,
-)
-from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+
 from igm.processes.iceflow.utils.data_preprocessing import get_fieldin, compute_PAD
 from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
@@ -96,13 +92,9 @@ def update_iceflow_emulator(
     lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
 
     fieldin = get_fieldin(cfg, state)
-    X = create_input_tensor_from_fieldin(
-        fieldin, state.iceflow.patching, state.iceflow.preparation_params
-    )
+    X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
 
-    _, _, _, batch_size, _ = calculate_expected_dimensions(
-        state.thk.shape[0], state.thk.shape[1], state.iceflow.preparation_params
-    )
+    batch_size = X.shape[1]
 
     bag = get_emulator_bag(state, nbit, lr, batch_size)
     state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
@@ -199,27 +191,18 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
 
-    input_height = state.thk.shape[0]
-    input_width = state.thk.shape[1]
+    # need to do this dummy call to prepare_X to get the dimensions right
+    fieldin = get_fieldin(cfg, state)
+    X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+
+    Nx = X.shape[-2]
+    Ny = X.shape[-3]
 
     # padding is necessary when using U-net emulator
     state.PAD = compute_PAD(
         cfg_emulator.network.multiple_window_size,
-        input_height,
-        input_height,
-    )
-
-    preparation_params_args = get_input_params_args(cfg)
-    preparation_params = PreparationParams(**preparation_params_args)
-
-    state.iceflow.preparation_params = preparation_params
-
-    Ny, Nx, _, _, _ = calculate_expected_dimensions(
-        input_height, input_width, preparation_params
-    )
-
-    state.iceflow.patching = OverlapPatching(
-        patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
+        Nx,
+        Ny,
     )
 
     # Retraining option
