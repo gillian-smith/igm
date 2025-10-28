@@ -507,22 +507,14 @@ class TestGridPatching:
         
         patches = patcher.patch_tensor(image)
         
-        # Calculate grid parameters
-        height, width = 128, 128
-        n_patches_y, n_patches_x, patch_height, patch_width = (
-            patcher._calculate_grid_parameters(
-                tf.constant(height), tf.constant(width)
-            )
-        )
+        # For grid patching with no overlap, verify using pixel IDs
+        # Each unique pixel ID should appear exactly once across all patches
+        patch_ids = patches.numpy()[:, :, :, 0].flatten()
+        unique_ids, counts = np.unique(patch_ids, return_counts=True)
         
-        # For grid patching, pixels should not overlap
-        # Total pixels in patches should approximately equal original
-        total_patch_pixels = patches.shape[0] * patch_height.numpy() * patch_width.numpy()
-        original_pixels = height * width
-        
-        # Should be equal or close (accounting for grid division rounding)
-        assert abs(total_patch_pixels - original_pixels) / original_pixels < 0.1, (
-            "Grid patches should cover approximately all pixels without much overlap"
+        # All pixels should appear exactly once (no overlap)
+        assert np.all(counts == 1), (
+            "Grid patches should not overlap - each pixel should appear exactly once"
         )
     
     def test_channels_preserved(self):
@@ -547,17 +539,15 @@ class TestGridPatching:
         
         assert patches.shape[0] > 1, "Should create multiple patches"
         
-        # Calculate grid parameters
-        height, width = 256, 256
-        n_patches_y, n_patches_x, patch_height, patch_width = (
-            patcher._calculate_grid_parameters(
-                tf.constant(height), tf.constant(width)
-            )
-        )
+        # For square images with grid patching, verify symmetry by checking
+        # that we can arrange patches into a square grid
+        num_patches = patches.shape[0]
         
-        # Square image should have same number of patches in each dimension
-        assert n_patches_y.numpy() == n_patches_x.numpy(), (
-            "Square image should have symmetric grid"
+        # Should be a perfect square number of patches for square images
+        sqrt_patches = int(np.sqrt(num_patches))
+        assert sqrt_patches * sqrt_patches == num_patches, (
+            f"Square image should produce square grid of patches, "
+            f"but got {num_patches} patches (sqrt={sqrt_patches})"
         )
     
     def test_non_square_image(self):
