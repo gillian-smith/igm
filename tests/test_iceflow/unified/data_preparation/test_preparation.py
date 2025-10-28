@@ -322,7 +322,8 @@ def test_upsample_noise_respects_channel_mask() -> None:
 
 def test_batch_trimming_drops_remainder() -> None:
     """
-    Number of used samples is floor(adjusted_target / batch_size) * batch_size.
+    Samples are rounded UP to next batch_size multiple to avoid dropping any data.
+    Previously this test checked trimming behavior, now it verifies rounding up.
     """
     tf.random.set_seed(7)
     H, W, C, ps = 12, 12, 1, 6
@@ -348,14 +349,18 @@ def test_batch_trimming_drops_remainder() -> None:
     out = create_input_tensor_from_fieldin(fieldin, patching, prep)
     nb = out.shape[0]
     used = nb * batch_size
-    assert used <= adjusted_target
-    assert used == (adjusted_target // batch_size) * batch_size
+    
+    # NEW BEHAVIOR: Rounds up to next multiple of batch_size to preserve all samples
+    import math
+    expected_used = math.ceil(adjusted_target / batch_size) * batch_size
+    assert used >= adjusted_target, "Should never drop samples"
+    assert used == expected_used, f"Should round up to next batch_size multiple"
 
 
 def test_large_batch_size_clamped_to_samples() -> None:
     """
-    If batch_size > adjusted_target, effective batch size is clamped to adjusted_target,
-    resulting in 1 batch of P samples (not 0 batches).
+    If batch_size > sample count, creates a single batch with actual sample count.
+    No padding is added when there's only one batch.
     """
     tf.random.set_seed(8)
     H, W, C, ps = 8, 8, 2, 4
@@ -369,14 +374,15 @@ def test_large_batch_size_clamped_to_samples() -> None:
         overlap=0.0,
         patch_size=ps,
         batch_size=batch_size,
-        target_samples=P,       # no upsample
+        target_samples=P,       # no upsample requested
         precision="single",
     )
 
     out = create_input_tensor_from_fieldin(fieldin, patching, prep)
-    # Effective batch size is clamped to P, so we get 1 batch of P samples
-    assert out.shape[0] == 1
-    assert out.shape[1] == P  # effective_batch_size = min(batch_size, P) = P
+    
+    # Single batch case: batch size adapts to actual sample count
+    assert out.shape[0] == 1, "Should create 1 batch"
+    assert out.shape[1] == P, f"Single batch should contain actual sample count, not padded"
     assert out.shape[2:] == (ps, ps, C)
 
 

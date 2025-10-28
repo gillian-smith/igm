@@ -104,12 +104,15 @@ def _print_tensor_dimensions(fieldin, training_tensor, effective_batch_size, pre
     was_patched = not (ih == oh and iw == ow)
     addl = max(0, total - int(actual_patch_count))
     has_augs = _augs_effective(prep)
+    
     console.print(); console.print("📊 [label]DATA PREPARATION SUMMARY[/]", justify="center")
     console.print(f"[label]Input:[/] [value.dimensions]{ih} × {iw} × {ic}[/] [label]→[/] [value.dimensions]{nb}[/] [value.brackets](batches)[/] × [value.dimensions]{bs}[/] [value.brackets](samples)[/] × [value.dimensions]{oh}[/] [value.brackets](height)[/] × [value.dimensions]{ow}[/] [value.brackets](width)[/] × [value.dimensions]{oc}[/] [value.brackets](inputs)[/]")
+    
     if was_patched:
         console.print(f"[label]Patching:[/] [value.dimensions]{ih}×{iw} → {oh}×{ow}[/] [label]•[/] [value.samples]{actual_patch_count} patches[/]")
     else:
         console.print(f"[label]Patching:[/] None (dimensions preserved) [label]•[/] [value.samples]{actual_patch_count} samples[/]")
+    
     if addl > 0:
         method_icon = "🔄" if has_augs else "📋"
         method_text = "Upsampling + Augmentation" if has_augs else "Upsampling only"
@@ -122,5 +125,21 @@ def _print_tensor_dimensions(fieldin, training_tensor, effective_batch_size, pre
             if parts: console.print(f"[label]Augmentations:[/] [value.augmentation]{' [label]•[/] '.join(parts)}[/]")
     else:
         console.print(f"[label]Generation:[/] None (using patches only)")
-    console.print(f"[label]Total Samples:[/] [value.samples]{total}[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/]")
-    console.print(f"[label]Target:[/] [value.samples]{prep.target_samples}[/]"); console.print()
+    
+    # Combined summary line with reason if different
+    if total == prep.target_samples:
+        console.print(f"[label]Samples:[/] [value.samples]{total}[/] [label](matches target)[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/]")
+    else:
+        # Determine reason for mismatch
+        if total > prep.target_samples:
+            # Could be from patching or from rounding up to batch_size multiple
+            if not was_patched or actual_patch_count <= prep.target_samples:
+                reason = "rounded up to batch_size multiple"
+            else:
+                reason = "patching created more than target"
+        else:  # total < prep.target_samples (should be rare/impossible with new logic)
+            reason = "no augmentations to upsample"
+        
+        console.print(f"[label]Samples:[/] [value.samples]{total}[/] [label]vs target[/] [value.samples]{prep.target_samples}[/] [value.brackets]({reason})[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/]")
+    
+    console.print()

@@ -6,13 +6,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-import math
 import tensorflow as tf
 
 from .preparation_params import ( 
     PreparationParams, _single_full_image_patch, _augs_effective,
     _has_rotation, _has_flip, _has_noise, _calculate_effective_batch_size, 
-    _to_py_int, _should_upsample_tensor
+    _to_py_int, _should_upsample_tensor, _calculate_adjusted_target
 )
 
 from .preparation_ops import (
@@ -85,6 +84,13 @@ def create_input_tensor_from_fieldin(
         apply_augs=apply_augmentations_effective,
     )
 
+    # Calculate adjusted target to avoid trimming during batching
+    adjusted_target = _calculate_adjusted_target(
+        preparation_params,
+        actual_patch_count,
+        should_upsample,
+    )
+
     # CRITICAL: Preserve original patches without augmentation
     # If we need more samples and will augment, separate originals from copies
     if should_upsample:
@@ -94,7 +100,7 @@ def create_input_tensor_from_fieldin(
         # Create additional copies for augmentation
         extra_copies, adjusted_target_samples = _create_extra_copies(
             patches,
-            preparation_params.target_samples,
+            adjusted_target,
             actual_patch_count,
         )
         
@@ -133,9 +139,19 @@ def create_input_tensor_from_fieldin(
         # Combine originals (unaugmented) with augmented copies
         training_samples = tf.concat([original_samples, augmented_copies], axis=0)
     else:
-        # No upsampling needed, use patches as-is
-        training_samples = patches
-        adjusted_target_samples = actual_patch_count
+        # No upsampling needed, but may need to pad to avoid trimming
+        if adjusted_target > actual_patch_count:
+            # Need to add copies to fill the batch
+            extra_copies, adjusted_target_samples = _create_extra_copies(
+                patches,
+                adjusted_target,
+                actual_patch_count,
+            )
+            training_samples = tf.concat([patches, extra_copies], axis=0)
+        else:
+            # Use patches as-is
+            training_samples = patches
+            adjusted_target_samples = actual_patch_count
 
     # Enforce static inner shape to keep XLA happy
     if patches.shape.rank == 4 and all(d is not None for d in patches.shape[1:]):

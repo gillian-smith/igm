@@ -197,3 +197,49 @@ def _should_upsample_tensor(prep: PreparationParams, num_patches: int, apply_aug
     if prep.target_samples <= num_patches: return False
     if not apply_augs: return False
     return True
+
+def _calculate_adjusted_target(
+    prep: PreparationParams,
+    actual_patch_count: int,
+    should_upsample: bool,
+) -> int:
+    """
+    Calculate adjusted target sample count to avoid trimming during batching.
+    
+    Strategy:
+    - If samples > batch_size (multiple batches): round up to next batch_size multiple
+    - If samples <= batch_size (single batch): keep original count
+    
+    This ensures:
+    1. No samples are lost to trimming in multi-batch scenarios
+    2. No unnecessary padding in single-batch scenarios
+    
+    Args:
+        prep: Preparation parameters
+        actual_patch_count: Number of patches extracted from input
+        should_upsample: Whether upsampling will occur
+        
+    Returns:
+        Adjusted target sample count
+    """
+    import math
+    
+    batch_size = prep.batch_size
+    
+    if should_upsample:
+        target_samples = prep.target_samples
+        # Only round up if target would create multiple batches
+        if target_samples > batch_size:
+            # Multiple batches: round up to avoid trimming remainder
+            return math.ceil(target_samples / batch_size) * batch_size
+        else:
+            # Single batch: keep target as-is
+            return target_samples
+    else:
+        # No upsampling: check if patches would create multiple batches
+        if actual_patch_count > batch_size:
+            # Multiple batches: round up to avoid trimming
+            return math.ceil(actual_patch_count / batch_size) * batch_size
+        else:
+            # Single batch: keep actual count
+            return actual_patch_count
