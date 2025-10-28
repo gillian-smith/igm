@@ -52,8 +52,8 @@ def grad_stag(
     dy: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Compute spatial gradient on staggered grid: (..., Ny, Nx) -> (..., Ny-1, Nx-1)."""
-    dXdx = (X[..., :, 1:] - X[..., :, :-1]) / dx[..., :, 1:]
-    dXdy = (X[..., 1:, :] - X[..., :-1, :]) / dy[..., 1:, :]
+    dXdx = (X[..., :, 1:] - X[..., :, :-1]) / dx[0, :, 1:]
+    dXdy = (X[..., 1:, :] - X[..., :-1, :]) / dy[0, 1:, :]
 
     dXdx = stag2y(dXdx)
     dXdy = stag2x(dXdy)
@@ -74,10 +74,10 @@ def grad_unstag(
     dY_pad = pad_xy(dy, mode)
 
     dXdx = (X_pad[..., 1:-1, 2:] - X_pad[..., 1:-1, :-2]) / (
-        dX_pad[..., 1:-1, 1:-1] + dX_pad[..., 1:-1, 2:]
+        dX_pad[0, 1:-1, 1:-1] + dX_pad[0, 1:-1, 2:]
     )
     dXdy = (X_pad[..., 2:, 1:-1] - X_pad[..., :-2, 1:-1]) / (
-        dY_pad[..., 1:-1, 1:-1] + dY_pad[..., 2:, 1:-1]
+        dY_pad[0, 1:-1, 1:-1] + dY_pad[0, 2:, 1:-1]
     )
 
     return dXdx, dXdy
