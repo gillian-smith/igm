@@ -1,5 +1,4 @@
 import tensorflow as tf
-from typeguard import typechecked
 from .base import Patching  # or from .patching import Patching if colocated
 
 class GridPatching(Patching):
@@ -20,7 +19,6 @@ class GridPatching(Patching):
         paddings = [[0, padding_h], [0, padding_w], [0, 0]]
         return tf.cond(needs_padding, lambda: tf.pad(X, paddings, mode="SYMMETRIC"), lambda: X)
 
-    @typechecked
     @tf.function(reduce_retracing=True)
     def patch_tensor(self, X: tf.Tensor) -> tf.Tensor:
         """
