@@ -7,7 +7,6 @@ from omegaconf import DictConfig
 import tensorflow as tf
 
 from igm.common.core import State
-from igm.processes.iceflow.data_preparation import preparation_params as prep
 from igm.processes.iceflow.energy.utils import get_energy_components
 
 from .evaluator import evaluate_iceflow, EvaluatorParams, get_evaluator_params_args
@@ -46,18 +45,10 @@ def initialize_iceflow_solver(cfg: DictConfig, state: State) -> None:
     evaluator_params = EvaluatorParams(**evaluator_params_args)
     state.iceflow.evaluator_params = evaluator_params
 
-    # Solver params
-    preparation_params_args = prep.get_input_params_args(cfg)
-    preparation_params = prep.PreparationParams(**preparation_params_args)
+    Ny = state.thk.shape[0]
+    Nx = state.thk.shape[1]
 
-    input_height = state.thk.shape[0]
-    input_width = state.thk.shape[1]
-
-    Ny, Nx, _, batch_size, _ = prep.calculate_expected_dimensions(
-        input_height, input_width, preparation_params
-    )
-
-    solver_params_args = get_solver_params_args(cfg, Nx, Ny, batch_size)
+    solver_params_args = get_solver_params_args(cfg, Nx, Ny, 1)
     solver_params = SolverParams(**solver_params_args)
     state.iceflow.solver_params = solver_params
 
