@@ -4,7 +4,7 @@ import tensorflow as tf
 import pytest
 
 from igm.processes.iceflow.unified.optimizers.optimizer_lbfgs import OptimizerLBFGS
-from optimizers.vector_mapping import VectorMappingForLBFGS, BoundedVectorMappingForLBFGS
+from .vector_mapping import VectorMapping, BoundedVectorMapping
 
 # Mark the whole module as slow
 pytestmark = pytest.mark.slow
@@ -27,7 +27,7 @@ def _dummy_inputs_5d(dtype=tf.float32):
 @pytest.mark.parametrize("alpha_min", [0.0, 1e-6], ids=id_alpha)
 @pytest.mark.parametrize("ls_method", ["hager-zhang", "armijo", "wolfe"], ids=id_ls)
 def test_rosenbrock_unconstrained_converges_parametric(n, memory, alpha_min, ls_method):
-    mapping = VectorMappingForLBFGS(n=n, dtype=tf.float32)
+    mapping = VectorMapping(n=n, dtype=tf.float32)
 
     # Difficult start: (-1.2, 1.0, -1.2, 1.0, ...)
     full = np.tile(np.array([-1.2, 1.0], dtype=np.float32), n)[:n]
@@ -58,7 +58,7 @@ def test_rosenbrock_unconstrained_converges_parametric(n, memory, alpha_min, ls_
 def test_rosenbrock_float64_support():
     """Covers your 64-bit reduction path with a 64-bit parameter vector."""
     n = 20
-    mapping = VectorMappingForLBFGS(n=n, dtype=tf.float64)
+    mapping = VectorMapping(n=n, dtype=tf.float64)
     init = np.tile(np.array([-1.2, 1.0], dtype=np.float64), n)[:n]
     mapping.theta.assign(init)
 
@@ -101,7 +101,7 @@ def _quadratic_grad(x, d_vec, b_vec):
 
 @pytest.mark.parametrize("n", [8, 32], ids=id_n)
 def test_quadratic_unconstrained_matches_closed_form(n):
-    mapping = VectorMappingForLBFGS(n=n, dtype=tf.float64)
+    mapping = VectorMapping(n=n, dtype=tf.float64)
 
     # Ill-conditioned diagonal (spans 1..1e3) to exercise H0 scaling/τ tempering
     d = np.geomspace(1.0, 1e3, num=n).astype(np.float64)
@@ -135,7 +135,7 @@ def test_quadratic_unconstrained_matches_closed_form(n):
 def test_quadratic_box_interior_solution(n):
     """Optimum is strictly inside bounds; should match unconstrained solution."""
     L, U = -5.0, 5.0
-    mapping = BoundedVectorMappingForLBFGS(n=n, L=L, U=U, dtype=tf.float64)
+    mapping = BoundedVectorMapping(n=n, L=L, U=U, dtype=tf.float64)
 
     d = np.linspace(1.0, 10.0, num=n).astype(np.float64)
     b = np.linspace(0.5, 5.0, num=n).astype(np.float64)  # x* = b/d ∈ (0.05..5) → interior
@@ -171,7 +171,7 @@ def test_quadratic_box_boundary_active_set_and_KKT():
     """
     n = 50
     L, U = -0.5, 0.5
-    mapping = BoundedVectorMappingForLBFGS(n=n, L=L, U=U, dtype=tf.float64)
+    mapping = BoundedVectorMapping(n=n, L=L, U=U, dtype=tf.float64)
 
     d = np.ones(n, dtype=np.float64) * 2.0
     b = np.ones(n, dtype=np.float64) * 2.0  # unconstrained x* = b/d = 1.0 → hits U=0.5

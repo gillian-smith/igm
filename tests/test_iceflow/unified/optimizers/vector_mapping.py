@@ -1,11 +1,11 @@
-# tests/optimizers/_vector_mapping.py
+# tests/test_iceflow/unified/optimizers/vector_mapping.py
 
 #!/usr/bin/env python3
 import tensorflow as tf
 from typing import List, Tuple
 from igm.processes.iceflow.unified.mappings.mapping import Mapping
 
-class VectorMappingForLBFGS(Mapping):
+class VectorMapping(Mapping):
     """
     Minimal Mapping for optimizer tests.
     - Parameters: a single trainable vector theta ∈ R^n
@@ -54,10 +54,10 @@ class VectorMappingForLBFGS(Mapping):
 
 # --- Bounded mapping for box-constraint tests --------------------------------
 
-class BoundedVectorMappingForLBFGS(VectorMappingForLBFGS):
+class BoundedVectorMapping(VectorMapping):
     """
     Extends the simple vector mapping with θ-space box bounds to activate
-    the projected path line-search and free-mask logic in OptimizerLBFGS.
+    the projected path line-search and free-mask logic in optimizers.
     """
     def __init__(self, n: int, L: float, U: float, dtype=tf.float64):
         super().__init__(n=n, dtype=dtype)
