@@ -6,7 +6,8 @@
 import tensorflow as tf
 from abc import ABC, abstractmethod
 
-from ..metrics.metric import Metric, StepState
+from ..metrics import Metric
+from ..step_state import StepState
 
 
 class Criterion(ABC):

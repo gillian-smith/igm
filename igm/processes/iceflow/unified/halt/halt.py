@@ -8,13 +8,14 @@ from typing import List, Optional
 from enum import Enum, auto
 
 from .criteria import Criterion
-from .metrics.metric import StepState
+from .step_state import StepState
 
 
 class HaltStatus(Enum):
     CONTINUE = auto()
     SUCCESS = auto()
     FAILURE = auto()
+    COMPLETED = auto()
 
 
 class Halt:

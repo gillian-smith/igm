@@ -5,17 +5,9 @@
 
 import tensorflow as tf
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Callable, Optional
 
-
-@dataclass
-class StepState:
-    u: tf.Tensor
-    w: tf.Tensor
-    cost: tf.Tensor
-    grad_u: tf.Tensor
-    grad_w: tf.Tensor
+from ..step_state import StepState
 
 
 class Metric(ABC):
@@ -39,7 +31,7 @@ class Metric(ABC):
         metric_value = self.compute_impl(step_state)
 
         if self.normalize_function is not None:
-            return self.normalize_function(step_state)
+            return metric_value / self.normalize_function(step_state)
         elif self.normalize_factor is not None:
             return metric_value / self.normalize_factor
         else:

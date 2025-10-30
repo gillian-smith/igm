@@ -4,9 +4,11 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+
 from .criterion import Criterion
-from ..metrics.metric import Metric, StepState
-from igm.igm.utils.math.norms import compute_norm
+from ..metrics import Metric
+from ..step_state import StepState
+from igm.utils.math.norms import compute_norm
 
 
 class CriterionRelTol(Criterion):
