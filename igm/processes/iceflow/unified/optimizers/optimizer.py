@@ -72,13 +72,11 @@ class Optimizer(ABC):
 
     def _get_grad_norm(self, grad_w: list[tf.Tensor]) -> tf.Tensor:
         grad_flat = self.map.flatten_w(grad_w)
-                        
+
         return tf.norm(grad_flat)
 
     @tf.function
-    def _get_grad(
-        self, inputs: tf.Tensor
-    ) -> Tuple[tf.Tensor, list[tf.Tensor]]:
+    def _get_grad(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
         w = self.map.get_w()
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             for wi in w:
@@ -125,7 +123,9 @@ class Optimizer(ABC):
 
         self.progress.start()
 
-    def _progress_update(self, iter: tf.Tensor, cost: tf.Tensor, grad_norm: tf.Tensor) -> tf.Tensor:
+    def _progress_update(
+        self, iter: tf.Tensor, cost: tf.Tensor, grad_norm: tf.Tensor
+    ) -> tf.Tensor:
 
         do_update = tf.logical_and(
             tf.constant(self.print_cost, dtype=tf.bool),
@@ -153,37 +153,53 @@ class Optimizer(ABC):
 
         # Check stopping criteria
         should_check = tf.greater(iter, 0)
-        
+
         # Get halt criterion result (boolean and message)
         halt, halt_message = self.map.check_halt_criterion(iter, cost)
-        
+
         converged = tf.logical_and(should_check, grad_norm < self.convergence_tolerance)
-        max_iter_reached = tf.greater_equal(iter + 1, self.iter_max)  # Check if next iter would exceed max
-        
+        max_iter_reached = tf.greater_equal(
+            iter + 1, self.iter_max
+        )  # Check if next iter would exceed max
+
         should_stop = tf.logical_or(tf.logical_or(halt, converged), max_iter_reached)
-        
+
         # Finalize progress and show exit message when stopping
-        def finalize_with_reason(halt_val: tf.Tensor, converged_val: tf.Tensor, halt_msg: tf.Tensor) -> int:
+        def finalize_with_reason(
+            halt_val: tf.Tensor, converged_val: tf.Tensor, halt_msg: tf.Tensor
+        ) -> int:
             if self.print_cost:
                 self.progress.stop()
-                
+
                 # Use the passed boolean values (now accessible via .numpy())
                 if halt_val.numpy():
-                    msg = halt_msg.numpy().decode('utf-8') if halt_msg.numpy() else "Halt criterion met."
-                    self.console.print(f"🛑 [bold yellow]Optimization halted![/bold yellow] {msg}")
+                    msg = (
+                        halt_msg.numpy().decode("utf-8")
+                        if halt_msg.numpy()
+                        else "Halt criterion met."
+                    )
+                    self.console.print(
+                        f"🛑 [bold yellow]Optimization halted![/bold yellow] {msg}"
+                    )
                 elif converged_val.numpy():
-                    self.console.print("✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold.")
+                    self.console.print(
+                        "✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold."
+                    )
                 else:  # max_iter_reached
-                    self.console.print("🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached.")
-                
+                    self.console.print(
+                        "🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached."
+                    )
+
                 self.console.print()  # Add spacing
             return 0
 
         # Call finalize when stopping - pass the boolean tensors and halt message as arguments
         tf.cond(
             should_stop,
-            lambda: tf.py_function(finalize_with_reason, [halt, converged, halt_message], tf.int32),
-            lambda: tf.constant(0)
+            lambda: tf.py_function(
+                finalize_with_reason, [halt, converged, halt_message], tf.int32
+            ),
+            lambda: tf.constant(0),
         )
-        
+
         return should_stop

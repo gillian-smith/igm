@@ -1,7 +1,8 @@
 from . import (
-	getmag,
+    getmag,
     getmag3d,
     interp1d_tf,
     interpolate_bilinear_tf,
-    gaussian_filter_tf
+    gaussian_filter_tf,
+    norms,
 )
