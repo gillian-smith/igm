@@ -48,9 +48,7 @@ def optimize_update(cfg, state, cost, i):
             else:
                 vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
 
-        fieldin = get_fieldin(cfg, state)
-
-        update_iceflow_emulated(cfg, state, fieldin)
+        update_iceflow_emulated(cfg, state)
         
         if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
             compute_flow_direction_for_anisotropic_smoothing(state)
