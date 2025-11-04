@@ -13,8 +13,8 @@ from ..step_state import StepState
 
 class CriterionNaN(Criterion):
 
-    def __init__(self, metric: Metric):
-        super().__init__(metric)
+    def __init__(self, metric: Metric, dtype: str):
+        super().__init__(metric, dtype)
         self.name = "nan"
 
     def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:

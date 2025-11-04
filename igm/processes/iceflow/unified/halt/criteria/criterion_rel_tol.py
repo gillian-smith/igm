@@ -15,29 +15,38 @@ from igm.utils.math.norms import compute_norm
 
 class CriterionRelTol(Criterion):
 
-    def __init__(self, metric: Metric, tol: float, ord: str):
-        super().__init__(metric)
+    def __init__(self, metric: Metric, dtype: str, tol: float, ord: str):
+        super().__init__(metric, dtype)
         self.tol = tol
         self.ord = ord
+        self.init = tf.Variable(False, dtype=tf.bool, trainable=False)
+        self.metric_value_prev = tf.Variable(
+            initial_value=tf.zeros([], dtype=self.dtype),
+            dtype=self.dtype,
+            trainable=False,
+            validate_shape=False,
+            shape=tf.TensorShape(None),
+        )
         self.name = "rel_tol"
 
     def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
         metric_value = self.metric.compute(step_state)
 
-        def first_iteration():
-            self.metric.save_metric(metric_value)
+        def init():
+            self.metric_value_prev.assign(metric_value)
+            self.init.assign(True)
             return tf.constant(False), tf.constant(np.nan)
 
-        def compute_relative_change():
-            metric_prev = self.metric.get_metric_prev()
-            num = compute_norm(metric_value - metric_prev, ord=self.ord)
-            denom = compute_norm(metric_prev, ord=self.ord) + 1e-12
+        def compute():
+            num = compute_norm(metric_value - self.metric_value_prev, ord=self.ord)
+            denom = compute_norm(self.metric_value_prev, ord=self.ord) + 1e-12
             relative_change = num / denom
 
             is_satisfied = tf.less(relative_change, self.tol)
-            self.metric.save_metric(metric_value)
+            self.metric_value_prev.assign(metric_value)
             return is_satisfied, relative_change
 
-        return tf.cond(
-            self.metric.has_metric_prev(), compute_relative_change, first_iteration
-        )
+        return tf.cond(self.init, compute, init)
+
+    def reset(self) -> None:
+        self.init = self.init.assign(False)

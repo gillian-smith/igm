@@ -13,8 +13,13 @@ from ..step_state import StepState
 
 class CriterionThreshold(Criterion):
 
-    def __init__(self, metric: Metric, threshold: float):
-        super().__init__(metric)
+    def __init__(
+        self,
+        metric: Metric,
+        dtype: str,
+        threshold: float,
+    ):
+        super().__init__(metric, dtype)
         self.threshold = threshold
         self.name = "threshold"
 

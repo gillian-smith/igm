@@ -9,12 +9,18 @@ from typing import Tuple
 
 from ..metrics import Metric
 from ..step_state import StepState
+from igm.utils.math.precision import _normalize_precision
 
 
 class Criterion(ABC):
 
-    def __init__(self, metric: Metric):
+    def __init__(
+        self,
+        metric: Metric,
+        dtype: str = "float32",
+    ):
         self.metric = metric
+        self.dtype = _normalize_precision(dtype)
         self.name = "crit"
 
     @abstractmethod
@@ -22,3 +28,6 @@ class Criterion(ABC):
         raise NotImplementedError(
             "❌ The check method is not implemented in this class."
         )
+
+    def reset(self) -> None:
+        pass

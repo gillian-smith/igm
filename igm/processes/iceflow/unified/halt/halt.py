@@ -77,9 +77,9 @@ class Halt:
             # Determine status
             if failure:
                 for crit in self.crit_success:
-                    crit.metric.reset_metric_prev()
+                    crit.reset()
                 for crit in self.crit_failure:
-                    crit.metric.reset_metric_prev()
+                    crit.reset()
                 return (
                     tf.constant(HaltStatus.FAILURE.value),
                     success_values,
@@ -88,9 +88,9 @@ class Halt:
 
             if success:
                 for crit in self.crit_success:
-                    crit.metric.reset_metric_prev()
+                    crit.reset()
                 for crit in self.crit_failure:
-                    crit.metric.reset_metric_prev()
+                    crit.reset()
                 return (
                     tf.constant(HaltStatus.SUCCESS.value),
                     success_values,

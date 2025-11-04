@@ -116,6 +116,8 @@ iceflow:
         abs_tol:
           tol: 1e-3
           ord: l2_weighted
+        patience: 
+          patience: 100
         inf: {}
         nan: {}
       metrics: 

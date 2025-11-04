@@ -56,7 +56,6 @@ class InterfaceHalt:
                 default_cfg=cfg_halt.metrics,
                 override_cfg=crit_cfg,
             )
-            metric_args = {"dtype": cfg_numerics.precision, **metric_args}
             metric_class = Metrics[metric_name]
             metric = metric_class(**metric_args)
 
@@ -70,7 +69,7 @@ class InterfaceHalt:
                 override_cfg=crit_cfg,
             )
             crit_class = Criteria[crit_name]
-            crit = crit_class(metric=metric, **crit_args)
+            crit = crit_class(metric=metric, dtype=cfg_numerics.precision, **crit_args)
             crit_list.append(crit)
 
         return crit_list

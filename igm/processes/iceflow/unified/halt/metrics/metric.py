@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Union
 
 from ..step_state import StepState
-from igm.utils.math.precision import _normalize_precision
 
 
 TypeMetric = Union[tf.Tensor, Tuple[tf.Tensor, ...]]
@@ -16,20 +15,7 @@ TypeMetric = Union[tf.Tensor, Tuple[tf.Tensor, ...]]
 
 class Metric(ABC):
 
-    def __init__(
-        self,
-        dtype: str = "float32",
-        normalize_factor: Optional[float] = None,
-    ):
-        dtype = _normalize_precision(dtype)
-        self.metric_prev = tf.Variable(
-            initial_value=tf.zeros([], dtype=dtype),
-            dtype=dtype,
-            trainable=False,
-            validate_shape=False,
-            shape=tf.TensorShape(None),
-        )
-        self.metric_prev_init = tf.Variable(False, dtype=tf.bool, trainable=False)
+    def __init__(self, normalize_factor: Optional[float] = None):
         self.normalize_factor = normalize_factor
 
     @abstractmethod
@@ -44,19 +30,4 @@ class Metric(ABC):
         if self.normalize_factor is None:
             return metric_value
 
-        return tf.nest.map_structure(
-            lambda m: m / tf.cast(self.normalize_factor, m.dtype), metric_value
-        )
-
-    def save_metric(self, metric: TypeMetric) -> None:
-        self.metric_prev.assign(metric)
-        self.metric_prev_init.assign(True)
-
-    def get_metric_prev(self) -> TypeMetric:
-        return self.metric_prev
-
-    def has_metric_prev(self) -> TypeMetric:
-        return self.metric_prev_init
-
-    def reset_metric_prev(self) -> None:
-        self.metric_prev_init.assign(False)
+        return tf.nest.map_structure(lambda m: m / self.normalize_factor, metric_value)
