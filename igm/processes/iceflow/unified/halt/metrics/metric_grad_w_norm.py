@@ -6,14 +6,9 @@
 import tensorflow as tf
 
 from .metric import Metric, StepState
-from igm.utils.math.norms import compute_norm
 
 
-class MetricGradW(Metric):
-
-    def __init__(self, ord: str = "l2"):
-        super().__init__()
-        self.ord = ord
+class MetricGradWNorm(Metric):
 
     def compute_impl(self, step_state: StepState) -> tf.Tensor:
-        return compute_norm(step_state.grad_w, ord=self.ord)
+        return step_state.grad_w_norm

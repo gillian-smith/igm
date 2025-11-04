@@ -14,5 +14,5 @@ class StepState:
     u: Tuple[tf.Tensor, tf.Tensor]
     w: tf.Tensor
     cost: tf.Tensor
-    grad_u: tf.Tensor
-    grad_w: tf.Tensor
+    grad_u_norm: tf.Tensor
+    grad_w_norm: tf.Tensor

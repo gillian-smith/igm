@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 from abc import ABC, abstractmethod
+from typing import Tuple
 
 from ..metrics import Metric
 from ..step_state import StepState
@@ -14,9 +15,10 @@ class Criterion(ABC):
 
     def __init__(self, metric: Metric):
         self.metric = metric
+        self.name = "crit"
 
     @abstractmethod
-    def check(self, step_state: StepState) -> tf.Tensor:
+    def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
         raise NotImplementedError(
             "❌ The check method is not implemented in this class."
         )

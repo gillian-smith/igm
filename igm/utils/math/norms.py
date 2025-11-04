@@ -16,9 +16,14 @@ def compute_norm(tensor: tf.Tensor, ord: str = "l2") -> tf.Tensor:
     elif ord == "l2_weighted":
         n = tf.cast(tf.size(tensor), tensor.dtype)
         norm_value = tf.norm(tensor, ord=2) / tf.sqrt(n)
-    else:
-        raise ValueError(
-            f"Unknown norm type: {ord}. Use 'l2', 'linf', or 'l2_weighted'"
+    elif ord == "id":
+        tf.debugging.assert_rank(
+            tensor,
+            0,
+            message="❌ The identity can only be used as a pseudo-norm for a scalar quantity.",
         )
+        norm_value = tf.identity(tensor)
+    else:
+        raise ValueError(f"❌ Unknown norm type <{ord}>.")
 
     return norm_value

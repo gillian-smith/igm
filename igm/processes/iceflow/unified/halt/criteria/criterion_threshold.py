@@ -4,6 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+from typing import Tuple
 
 from .criterion import Criterion
 from ..metrics import Metric
@@ -15,7 +16,11 @@ class CriterionThreshold(Criterion):
     def __init__(self, metric: Metric, threshold: float):
         super().__init__(metric)
         self.threshold = threshold
+        self.name = "threshold"
 
-    def check(self, step_state: StepState) -> tf.Tensor:
+    def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
         metric_value = self.metric.compute(step_state)
-        return tf.reduce_any(tf.abs(metric_value) > self.threshold)
+        metric_max = tf.reduce_max(tf.math.abs(metric_value))
+        is_satisfied = tf.greater(metric_max, self.threshold)
+
+        return is_satisfied, metric_max
