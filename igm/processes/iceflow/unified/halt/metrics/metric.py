@@ -5,51 +5,29 @@
 
 import tensorflow as tf
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional, Tuple, Union
+
+from ..step_state import StepState
 
 
-@dataclass
-class StepState:
-    u: tf.Tensor
-    w: tf.Tensor
-    cost: tf.Tensor
-    grad_u: tf.Tensor
-    grad_w: tf.Tensor
+TypeMetric = Union[tf.Tensor, Tuple[tf.Tensor, ...]]
 
 
 class Metric(ABC):
 
-    def __init__(
-        self,
-        normalize_factor: Optional[float] = None,
-        normalize_function: Optional[Callable[[StepState], tf.Tensor]] = None,
-    ):
-        self.metric_prev = None
+    def __init__(self, normalize_factor: Optional[float] = None):
         self.normalize_factor = normalize_factor
-        self.normalize_function = normalize_function
 
     @abstractmethod
-    def compute_impl(self, step_state: StepState) -> tf.Tensor:
+    def compute_impl(self, step_state: StepState) -> TypeMetric:
         raise NotImplementedError(
             "❌ The compute method is not implemented in this class."
         )
 
-    def compute(self, step_state: StepState) -> tf.Tensor:
+    def compute(self, step_state) -> TypeMetric:
         metric_value = self.compute_impl(step_state)
 
-        if self.normalize_function is not None:
-            return self.normalize_function(step_state)
-        elif self.normalize_factor is not None:
-            return metric_value / self.normalize_factor
-        else:
+        if self.normalize_factor is None:
             return metric_value
 
-    def save_metric(self, metric: tf.Tensor) -> None:
-        self.metric_prev = metric
-
-    def get_metric_prev(self) -> tf.Tensor:
-        return self.metric_prev
-
-    def reset_metric_prev(self) -> None:
-        self.metric_prev = None
+        return tf.nest.map_structure(lambda m: m / self.normalize_factor, metric_value)

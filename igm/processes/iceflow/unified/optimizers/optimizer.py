@@ -3,52 +3,41 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import numpy as np
 import tensorflow as tf
 from abc import ABC, abstractmethod
-from typing import Callable, Tuple
-from rich.theme import Theme
-from rich.console import Console
-from rich.progress import (
-    Progress,
-    BarColumn,
-    MofNCompleteColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    TextColumn,
-)
+from typing import Any, Callable, Optional, Tuple
 
+from .progress_optimizer import ProgressOptimizer
 from ..mappings import Mapping
+from ..halt import Halt, HaltStatus, HaltState, StepState
 from igm.utils.math.precision import _normalize_precision
-
-progress_theme = Theme(
-    {
-        "label": "bold #e5e7eb",
-        "value.cost": "#f59e0b",
-        "value.grad": "#06b6d4",
-        "value.delta": "#a78bfa",
-        "bar.incomplete": "grey35",
-        "bar.complete": "#22c55e",
-    }
-)
+from igm.utils.math.norms import compute_norm
 
 
 class Optimizer(ABC):
+
     def __init__(
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
+        halt: Optional[Halt] = None,
         print_cost: bool = True,
         print_cost_freq: int = 1,
         precision: str = "float32",
-        convergence_tolerance: float = 1e-6,
+        ord_grad_u: str = "l2_weighted",
+        ord_grad_w: str = "l2_weighted",
     ):
         self.name = ""
         self.cost_fn = cost_fn
         self.map = map
-        self.print_cost = print_cost
-        self.print_cost_freq = print_cost_freq
+        self.halt = halt
+        self.step_state = None
+        self.halt_state = None
+        self.display = ProgressOptimizer(enabled=print_cost, freq=print_cost_freq)
         self.precision = _normalize_precision(precision)
-        self.convergence_tolerance = convergence_tolerance
+        self.ord_grad_u = ord_grad_u
+        self.ord_grad_w = ord_grad_w
 
     @abstractmethod
     def update_parameters(self) -> None:
@@ -57,11 +46,10 @@ class Optimizer(ABC):
         )
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
-        if self.print_cost:
-            self._progress_setup()
+        criterion_names = self.halt.criterion_names if self.halt else []
+        self.display.start(int(self.iter_max), criterion_names)
         self.map.on_minimize_start(int(self.iter_max))
         costs = self.minimize_impl(inputs)
-
         return costs
 
     @abstractmethod
@@ -70,136 +58,134 @@ class Optimizer(ABC):
             "❌ The minimize_impl function is not implemented in this class."
         )
 
-    def _get_grad_norm(self, grad_w: list[tf.Tensor]) -> tf.Tensor:
-        grad_flat = self.map.flatten_w(grad_w)
-
-        return tf.norm(grad_flat)
+    def _get_grad_norm(
+        self, grad_u: list[tf.Tensor], grad_w: list[tf.Tensor]
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        # For w
+        grad_w_flat = self.map.flatten_w(grad_w)
+        grad_w_norm = compute_norm(grad_w_flat, ord=self.ord_grad_w)
+        # For (u,v)
+        grad_u_x, grad_u_y = grad_u
+        grad_u_flat = tf.sqrt(tf.square(grad_u_x) + tf.square(grad_u_y))
+        grad_u_norm = compute_norm(grad_u_flat, ord=self.ord_grad_u)
+        return grad_u_norm, grad_w_norm
 
     @tf.function
-    def _get_grad(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
+    def _get_grad(
+        self, inputs: tf.Tensor
+    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
         w = self.map.get_w()
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
+        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
             for wi in w:
                 tape.watch(wi)
             U, V = self.map.get_UV(inputs)
             cost = self.cost_fn(U, V, inputs)
-
+        grad_u = tape.gradient(cost, [U, V])
         grad_w = tape.gradient(cost, w)
         del tape
-        return cost, grad_w
+        return cost, grad_u, grad_w
 
-    def _progress_setup(self) -> None:
-        if not self.print_cost:
-            return
+    def _init_step_state(
+        self,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        w: Any,
+    ) -> None:
+        self.step_state = StepState(
+            iter=tf.constant(-1, dtype=self.precision),
+            u=[U, V],
+            w=w,
+            cost=tf.constant(np.nan, dtype=self.precision),
+            grad_u_norm=tf.constant(np.nan, dtype=self.precision),
+            grad_w_norm=tf.constant(np.nan, dtype=self.precision),
+        )
 
-        self.console = Console(theme=progress_theme)
+    def _update_step_state(
+        self,
+        iter: tf.Tensor,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        w: Any,
+        cost: tf.Tensor,
+        grad_u_norm: tf.Tensor,
+        grad_w_norm: tf.Tensor,
+    ) -> None:
+        self.step_state = StepState(iter, [U, V], w, cost, grad_u_norm, grad_w_norm)
 
-        self.progress = Progress(
-            "🎯",
-            BarColumn(
-                bar_width=None, style="bar.incomplete", complete_style="bar.complete"
+    def _check_stopping(self) -> tf.Tensor:
+        """Check stopping criteria, update halt_state, and return status"""
+        if self.halt is None:
+            self.halt_state = HaltState.empty()
+        else:
+            status, values, satisfied = self.halt.check(
+                self.step_state.iter, self.step_state
+            )
+            self.halt_state = HaltState(status, values, satisfied)
+
+        # Check max iterations
+        max_iter_reached = tf.greater_equal(self.step_state.iter + 1, self.iter_max)
+
+        self.halt_state.status = tf.cond(
+            tf.not_equal(self.halt_state.status, HaltStatus.CONTINUE.value),
+            lambda: self.halt_state.status,
+            lambda: tf.cond(
+                max_iter_reached,
+                lambda: tf.constant(HaltStatus.COMPLETED.value),
+                lambda: tf.constant(HaltStatus.CONTINUE.value),
             ),
-            MofNCompleteColumn(),
-            "[label]•[/]",
-            TextColumn("[label]Cost:[/] [value.cost]{task.fields[cost]}"),
-            "[label]•[/]",
-            TextColumn("[label]Grad:[/] [value.grad]{task.fields[grad_norm]}"),
-            "[label]•[/]",
-            TextColumn("[label]Time:[/]"),
-            TimeElapsedColumn(),
-            "[label]•[/]",
-            TextColumn("[label]ETA:[/]"),
-            TimeRemainingColumn(),
-            console=self.console,
-            expand=True,
         )
 
-        self.task = self.progress.add_task(
-            "progress",
-            total=int(self.iter_max.numpy()),
-            cost="N/A",
-            grad_norm="N/A",
-        )
+        return self.halt_state.status
 
-        self.progress.start()
+    def _update_display(self) -> None:
+        """Update display using halt_state"""
 
-    def _progress_update(
-        self, iter: tf.Tensor, cost: tf.Tensor, grad_norm: tf.Tensor
-    ) -> tf.Tensor:
+        def update_display(iter_val, cost_val, *crit_data):
+            if crit_data:
+                n = len(crit_data) // 2
+                values = [float(crit_data[i].numpy()) for i in range(n)]
+                satisfied = [bool(crit_data[n + i].numpy()) for i in range(n)]
+            else:
+                values = None
+                satisfied = None
 
-        do_update = tf.logical_and(
-            tf.constant(self.print_cost, dtype=tf.bool),
-            tf.equal(tf.math.mod(iter, self.print_cost_freq), 0),
-        )
-
-        def update(iter: tf.Tensor, cost: tf.Tensor, grad_norm: tf.Tensor) -> float:
-            self.progress.update(
-                self.task,
-                completed=int(iter.numpy()) + 1,
-                cost=f"{float(cost.numpy()):.4e}",
-                grad_norm=f"{float(grad_norm.numpy()):.4e}",
+            self.display.update(
+                int(iter_val.numpy()),
+                float(cost_val.numpy()),
+                values,
+                satisfied,
             )
             return 1.0
 
+        should_update = self.display.should_update(self.step_state.iter)
+
+        # Build args from halt_state
+        py_func_args = [self.step_state.iter, self.step_state.cost]
+        if self.halt_state.criterion_values and self.halt_state.criterion_satisfied:
+            py_func_args.extend(self.halt_state.criterion_values)
+            py_func_args.extend(self.halt_state.criterion_satisfied)
+
         tf.cond(
-            do_update,
-            lambda: tf.py_function(
-                update,
-                [iter, cost, grad_norm],
-                cost.dtype,
-            ),
-            lambda: tf.constant(0.0, dtype=cost.dtype),
+            should_update,
+            lambda: tf.py_function(update_display, py_func_args, tf.float32),
+            lambda: tf.constant(0.0, dtype=tf.float32),
         )
 
-        # Check stopping criteria
-        should_check = tf.greater(iter, 0)
+    def _finalize_display(self, halt_status: tf.Tensor) -> None:
+        """Finalize display using provided halt_status"""
+        if not self.display.enabled:
+            return
 
-        # Get halt criterion result (boolean and message)
-        halt, halt_message = self.map.check_halt_criterion(iter, cost)
+        should_stop = tf.not_equal(halt_status, HaltStatus.CONTINUE.value)
 
-        converged = tf.logical_and(should_check, grad_norm < self.convergence_tolerance)
-        max_iter_reached = tf.greater_equal(
-            iter + 1, self.iter_max
-        )  # Check if next iter would exceed max
-
-        should_stop = tf.logical_or(tf.logical_or(halt, converged), max_iter_reached)
-
-        # Finalize progress and show exit message when stopping
-        def finalize_with_reason(
-            halt_val: tf.Tensor, converged_val: tf.Tensor, halt_msg: tf.Tensor
-        ) -> int:
-            if self.print_cost:
-                self.progress.stop()
-
-                # Use the passed boolean values (now accessible via .numpy())
-                if halt_val.numpy():
-                    msg = (
-                        halt_msg.numpy().decode("utf-8")
-                        if halt_msg.numpy()
-                        else "Halt criterion met."
-                    )
-                    self.console.print(
-                        f"🛑 [bold yellow]Optimization halted![/bold yellow] {msg}"
-                    )
-                elif converged_val.numpy():
-                    self.console.print(
-                        "✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold."
-                    )
-                else:  # max_iter_reached
-                    self.console.print(
-                        "🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached."
-                    )
-
-                self.console.print()  # Add spacing
+        def finalize(status: tf.Tensor) -> int:
+            status_val = int(status.numpy())
+            halt_status_enum = HaltStatus(status_val)
+            self.display.stop(halt_status_enum)
             return 0
 
-        # Call finalize when stopping - pass the boolean tensors and halt message as arguments
         tf.cond(
             should_stop,
-            lambda: tf.py_function(
-                finalize_with_reason, [halt, converged, halt_message], tf.int32
-            ),
+            lambda: tf.py_function(finalize, [halt_status], tf.int32),
             lambda: tf.constant(0),
         )
-
-        return should_stop

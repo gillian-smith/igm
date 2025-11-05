@@ -3,18 +3,36 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import numpy as np
 import tensorflow as tf
 from typing import List, Optional
 from enum import Enum, auto
+from dataclasses import dataclass
 
 from .criteria import Criterion
-from .metrics.metric import StepState
+from .step_state import StepState
 
 
 class HaltStatus(Enum):
     CONTINUE = auto()
     SUCCESS = auto()
     FAILURE = auto()
+    COMPLETED = auto()
+
+
+@dataclass
+class HaltState:
+    status: tf.Tensor
+    criterion_values: List[tf.Tensor]
+    criterion_satisfied: List[tf.Tensor]
+
+    @staticmethod
+    def empty():
+        return HaltState(
+            status=tf.constant(HaltStatus.CONTINUE.value),
+            criterion_values=[],
+            criterion_satisfied=[],
+        )
 
 
 class Halt:
@@ -27,50 +45,70 @@ class Halt:
         self.crit_success = crit_success or []
         self.crit_failure = crit_failure or []
         self.freq = freq
+        self.criterion_names = self._build_criterion_names()
 
-    @tf.function
-    def check(self, iter: tf.Tensor, step_state: StepState) -> tf.Tensor:
+    def _build_criterion_names(self) -> List[str]:
+        names = []
+        for crit in self.crit_success:
+            names.append(crit.name)
+        return names
 
+    def check(self, iter: tf.Tensor, step_state: StepState):
         do_check = tf.equal(tf.math.mod(iter, self.freq), 0)
 
         def check_criteria():
+            success_values = []
+            success_satisfied = []
+
+            # Failure criteria (checked but not returned for display)
             failure = tf.constant(False)
-
             for crit in self.crit_failure:
-                crit_met = tf.logical_and(
-                    tf.logical_not(failure), crit.check(step_state)
-                )
-                failure = tf.logical_or(failure, crit_met)
+                is_sat, val = crit.check(step_state)
+                failure = tf.logical_or(failure, is_sat)
 
-            def check_failure():
+            # Success criteria (checked and returned for display)
+            success = tf.constant(False)
+            for crit in self.crit_success:
+                is_sat, val = crit.check(step_state)
+                success_values.append(val)
+                success_satisfied.append(is_sat)
+                success = tf.logical_or(success, is_sat)
+
+            # Determine status
+            if failure:
                 for crit in self.crit_success:
-                    crit.metric.reset_metric_prev()
-
-                return tf.constant(HaltStatus.FAILURE.value)
-
-            def check_success():
-                success = tf.constant(False)
-
-                for crit in self.crit_success:
-                    crit_met = tf.logical_and(
-                        tf.logical_not(success), crit.check(step_state)
-                    )
-                    success = tf.logical_or(success, crit_met)
-
-                if success:
-                    for crit in self.crit_success:
-                        crit.metric.reset_metric_prev()
-
-                return tf.cond(
-                    success,
-                    lambda: tf.constant(HaltStatus.SUCCESS.value),
-                    lambda: tf.constant(HaltStatus.CONTINUE.value),
+                    crit.reset()
+                for crit in self.crit_failure:
+                    crit.reset()
+                return (
+                    tf.constant(HaltStatus.FAILURE.value),
+                    success_values,
+                    success_satisfied,
                 )
 
-            return tf.cond(failure, check_failure, check_success)
+            if success:
+                for crit in self.crit_success:
+                    crit.reset()
+                for crit in self.crit_failure:
+                    crit.reset()
+                return (
+                    tf.constant(HaltStatus.SUCCESS.value),
+                    success_values,
+                    success_satisfied,
+                )
 
-        return tf.cond(
-            do_check,
-            check_criteria,
-            lambda: tf.constant(HaltStatus.CONTINUE.value),
-        )
+            return (
+                tf.constant(HaltStatus.CONTINUE.value),
+                success_values,
+                success_satisfied,
+            )
+
+        def no_check():
+            n_success_crit = len(self.crit_success)
+            return (
+                tf.constant(HaltStatus.CONTINUE.value),
+                [tf.constant(np.nan)] * n_success_crit,
+                [tf.constant(False)] * n_success_crit,
+            )
+
+        return tf.cond(do_check, check_criteria, no_check)

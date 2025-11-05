@@ -30,6 +30,8 @@ iceflow:
     cf_eswn: []
   numerics:
     precision: single
+    ord_grad_u: l2_weighted
+    ord_grad_w: l2_weighted
     Nz: 10
     vert_spacing: 4.0
     staggered_grid: 1
@@ -99,6 +101,27 @@ iceflow:
     - arrhenius
     - slidingco
     - dX
+    halt:
+      freq: 1
+      success: []
+      failure: []
+      criteria: 
+        rel_tol:
+          tol: 1e-3
+          ord: l2
+        abs_tol:
+          tol: 1e-3
+          ord: l2_weighted
+        patience: 
+          patience: 100
+        inf: {}
+        nan: {}
+      metrics: 
+        w: {}
+        u: {}
+        cost: {}
+        grad_u_norm: {}
+        grad_w_norm: {}
   emulator:
     fieldin:
     - thk

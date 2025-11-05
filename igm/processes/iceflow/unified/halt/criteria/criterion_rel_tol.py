@@ -3,38 +3,50 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import numpy as np
 import tensorflow as tf
+from typing import Tuple
+
 from .criterion import Criterion
-from ..metrics.metric import Metric, StepState
-from igm.igm.utils.math.norms import compute_norm
+from ..metrics import Metric
+from ..step_state import StepState
+from igm.utils.math.norms import compute_norm
 
 
 class CriterionRelTol(Criterion):
 
-    def __init__(
-        self,
-        metric: Metric,
-        tol: float,
-        ord: str = "l2",
-        eps: float = 1e-10,
-    ):
-        super().__init__(metric)
+    def __init__(self, metric: Metric, dtype: str, tol: float, ord: str):
+        super().__init__(metric, dtype)
         self.tol = tol
         self.ord = ord
-        self.eps = eps
+        self.init = tf.Variable(False, dtype=tf.bool, trainable=False)
+        self.metric_value_prev = tf.Variable(
+            initial_value=tf.zeros([], dtype=self.dtype),
+            dtype=self.dtype,
+            trainable=False,
+            validate_shape=False,
+            shape=tf.TensorShape(None),
+        )
+        self.name = "rel_tol"
 
-    def check(self, step_state: StepState) -> tf.Tensor:
+    def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
         metric_value = self.metric.compute(step_state)
-        prev_value = self.metric.get_metric_prev()
 
-        if prev_value is None:
-            return tf.constant(False)
+        def init():
+            self.metric_value_prev.assign(metric_value)
+            self.init.assign(True)
+            return tf.constant(False), tf.constant(np.nan)
 
-        diff = metric_value - prev_value
-        diff_norm = compute_norm(diff, ord=self.ord)
-        metric_norm = compute_norm(metric_value, ord=self.ord)
-        rel_change = diff_norm / (metric_norm + self.eps)
+        def compute():
+            num = compute_norm(metric_value - self.metric_value_prev, ord=self.ord)
+            denom = compute_norm(self.metric_value_prev, ord=self.ord) + 1e-12
+            relative_change = num / denom
 
-        self.metric.save_metric(metric_value)
+            is_satisfied = tf.less(relative_change, self.tol)
+            self.metric_value_prev.assign(metric_value)
+            return is_satisfied, relative_change
 
-        return tf.greater(self.tol, rel_change)
+        return tf.cond(self.init, compute, init)
+
+    def reset(self) -> None:
+        self.init = self.init.assign(False)

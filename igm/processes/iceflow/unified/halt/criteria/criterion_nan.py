@@ -4,15 +4,20 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+from typing import Tuple
+
 from .criterion import Criterion
-from ..metrics.metric import Metric, StepState
+from ..metrics import Metric
+from ..step_state import StepState
 
 
 class CriterionNaN(Criterion):
 
-    def __init__(self, metric: Metric):
-        super().__init__(metric)
+    def __init__(self, metric: Metric, dtype: str):
+        super().__init__(metric, dtype)
+        self.name = "nan"
 
-    def check(self, step_state: StepState) -> tf.Tensor:
+    def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
         metric_value = self.metric.compute(step_state)
-        return tf.reduce_any(tf.math.is_nan(metric_value))
+        is_satisfied = tf.reduce_any(tf.math.is_nan(metric_value))
+        return is_satisfied, is_satisfied
