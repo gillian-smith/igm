@@ -6,8 +6,8 @@
 import tensorflow as tf
 from typing import Callable, Optional
 
-from ..mappings import Mapping
 from .optimizer import Optimizer
+from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 
 tf.config.optimizer.set_jit(True)

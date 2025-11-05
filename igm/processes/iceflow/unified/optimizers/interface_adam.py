@@ -7,9 +7,9 @@ import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
 
-from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from .optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
+from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from ..halt import Halt, InterfaceHalt
 
 

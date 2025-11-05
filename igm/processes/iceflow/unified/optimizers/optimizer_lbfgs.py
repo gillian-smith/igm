@@ -3,11 +3,12 @@
 # GNU GPL v3
 
 import tensorflow as tf
-from typing import Callable
+from typing import Callable, Optional
 
-from ..mappings import Mapping
 from .optimizer import Optimizer
 from .line_search import LineSearches, ValueAndGradient
+from ..mappings import Mapping
+from ..halt import Halt, HaltStatus
 
 tf.config.optimizer.set_jit(True)
 
@@ -17,15 +18,27 @@ class OptimizerLBFGS(Optimizer):
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
-        print_cost: bool,
-        print_cost_freq: int,
-        precision: str,
-        line_search_method: str,
+        halt: Optional[Halt] = None,
+        print_cost: bool = True,
+        print_cost_freq: int = 1,
+        precision: str = "float32",
+        ord_grad_u: str = "l2_weighted",
+        ord_grad_w: str = "l2_weighted",
+        line_search_method: str = "armijo",
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
     ):
-        super().__init__(cost_fn, map, print_cost, print_cost_freq, precision)
+        super().__init__(
+            cost_fn,
+            map,
+            halt,
+            print_cost,
+            print_cost_freq,
+            precision,
+            ord_grad_u,
+            ord_grad_w,
+        )
         self.name = "lbfgs"
 
         self.line_search = LineSearches[line_search_method]()
@@ -196,7 +209,7 @@ class OptimizerLBFGS(Optimizer):
             w_alpha = self.map.unflatten_w(w_alpha)
 
             self.map.set_w(w_alpha)
-            f, grad = self._get_grad(input)
+            f, _, grad = self._get_grad(input)
             grad_flat = self.map.flatten_w(grad)
             df = tf.cast(self._dot64(grad_flat, p_flat), grad_flat.dtype)
 
@@ -224,7 +237,7 @@ class OptimizerLBFGS(Optimizer):
             w_alpha_unflat = self.map.unflatten_w(w_alpha)
 
             self.map.set_w(w_alpha_unflat)
-            f, grad = self._get_grad(input)
+            f, _, grad = self._get_grad(input)
             grad_flat = self.map.flatten_w(grad)
 
             # Directional derivative along projected path: df = g^T (J ⊙ p)
@@ -327,7 +340,7 @@ class OptimizerLBFGS(Optimizer):
             U_flat = tf.zeros_like(w_flat)
 
         # Evaluate at initial point
-        cost, grad_w = self._get_grad(input)
+        cost, grad_u, grad_w = self._get_grad(input)
         grad_w_flat = self.map.flatten_w(grad_w)
         tf.debugging.assert_type(
             grad_w_flat,
@@ -341,18 +354,24 @@ class OptimizerLBFGS(Optimizer):
         s_flat_mem = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
         y_flat_mem = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
 
-        costs = tf.TensorArray(dtype=w_flat.dtype, size=self.iter_max)
+        U, V = self.map.get_UV(inputs[0, :, :, :])
+
+        costs = tf.TensorArray(dtype=self.precision, size=int(self.iter_max))
+        halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
+        last_iter = tf.constant(-1, dtype=tf.int32)
 
         # define a default mask so Autograph sees it before the loop
         free_mask_all_true = tf.ones_like(w_flat, dtype=tf.bool)
 
-        for it in tf.range(self.iter_max, dtype=tf.int32):
+        self._init_step_state(U, V, w_flat)
+
+        for iter in tf.range(self.iter_max, dtype=tf.int32):
             w_prev = w_flat
             g_prev = grad_w_flat
 
             # H0 tempering: tau in (0,1]
             tau = tf.constant(1.0, w_flat.dtype) - tf.exp(
-                -tf.cast(it, w_flat.dtype) / tf.constant(5.0, w_flat.dtype)
+                -tf.cast(iter, w_flat.dtype) / tf.constant(5.0, w_flat.dtype)
             )
 
             # Direction
@@ -400,7 +419,7 @@ class OptimizerLBFGS(Optimizer):
             self.map.set_w(self.map.unflatten_w(w_flat))
 
             # New value/grad
-            cost, grad_w = self._get_grad(input)
+            cost, grad_u, grad_w = self._get_grad(input)
             grad_w_flat = self.map.flatten_w(grad_w)
             tf.debugging.assert_type(
                 grad_w_flat,
@@ -428,13 +447,22 @@ class OptimizerLBFGS(Optimizer):
             )
 
             # Bookkeeping / stop
-            costs = costs.write(it, cost)
-            grad_norm = self._get_grad_norm(grad_w)
+            costs = costs.write(iter, cost)
+            grad_u_norm, grad_w_norm = self._get_grad_norm(grad_u, grad_w)
 
-            self.map.on_step_end(it)
+            # TODO: check if this is necessary
+            self.map.on_step_end(iter)
 
-            should_stop = self._progress_update(it, cost, grad_norm)
-            if should_stop:
+            U, V = self.map.get_UV(input)
+            self._update_step_state(iter, U, V, w_flat, cost, grad_u_norm, grad_w_norm)
+            halt_status = self._check_stopping()
+            self._update_display()
+
+            last_iter = iter
+
+            if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
                 break
 
-        return costs.stack()
+        self._finalize_display(halt_status)
+
+        return costs.stack()[: last_iter + 1]
