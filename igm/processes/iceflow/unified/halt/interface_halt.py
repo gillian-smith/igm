@@ -3,7 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from typing import List, Dict, Any
 
 from .criteria import Criteria, Criterion
@@ -32,42 +32,42 @@ class InterfaceHalt:
 
     @staticmethod
     def _create_crit_list(
-        crit_cfg: DictConfig, cfg_halt: DictConfig, cfg_numerics: DictConfig
+        list_crit: ListConfig, cfg_halt: DictConfig, cfg_numerics: DictConfig
     ) -> List[Criterion]:
-        crit_names = crit_cfg.criteria
-        metric_names = crit_cfg.metrics
-
-        if len(crit_names) != len(metric_names):
-            raise ValueError(
-                f"❌ Number of criteria ({len(crit_names)}) must match "
-                f"number of metrics ({len(metric_names)})."
-            )
 
         crit_list = []
-        for i, (crit_name, metric_name) in enumerate(zip(crit_names, metric_names)):
-            metric_name_override = (
-                f"{metric_name}_{i+1}"
-                if metric_names.count(metric_name) > 1
-                else metric_name
+
+        for item in list_crit:
+            if "criterion" not in item or "metric" not in item:
+                raise ValueError("❌ Each rule must contain 'criterion' and 'metric'.")
+
+            crit_name = item["criterion"]
+            metric_name = item["metric"]
+
+            default_metric_args = (
+                dict(cfg_halt.metrics[metric_name].items())
+                if metric_name in cfg_halt.metrics
+                else {}
             )
-            metric_args = InterfaceHalt._get_metric_args(
-                default_name=metric_name,
-                override_name=metric_name_override,
-                default_cfg=cfg_halt.metrics,
-                override_cfg=crit_cfg,
+            default_crit_args = (
+                dict(cfg_halt.criteria[crit_name].items())
+                if crit_name in cfg_halt.criteria
+                else {}
             )
+
+            override_metric_args = (
+                dict(item[metric_name].items()) if metric_name in item else {}
+            )
+            override_crit_args = (
+                dict(item[crit_name].items()) if crit_name in item else {}
+            )
+
+            metric_args = {**default_metric_args, **override_metric_args}
+            crit_args = {**default_crit_args, **override_crit_args}
+
             metric_class = Metrics[metric_name]
             metric = metric_class(**metric_args)
 
-            crit_name_override = (
-                f"{crit_name}_{i+1}" if crit_names.count(crit_name) > 1 else crit_name
-            )
-            crit_args = InterfaceHalt._get_crit_args(
-                default_name=crit_name,
-                override_name=crit_name_override,
-                default_cfg=cfg_halt.criteria,
-                override_cfg=crit_cfg,
-            )
             crit_class = Criteria[crit_name]
             crit = crit_class(metric=metric, dtype=cfg_numerics.precision, **crit_args)
             crit_list.append(crit)

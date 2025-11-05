@@ -103,12 +103,8 @@ iceflow:
     - dX
     halt:
       freq: 1
-      success:
-        criteria: []
-        metrics: []
-      failure:
-        criteria: []
-        metrics: []
+      success: []
+      failure: []
       criteria: 
         rel_tol:
           tol: 1e-3
