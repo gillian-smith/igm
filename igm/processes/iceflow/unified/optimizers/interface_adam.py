@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict
 from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from .optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
+from ..halt import Halt, InterfaceHalt
 
 
 class InterfaceAdam(InterfaceOptimizer):
@@ -22,21 +23,29 @@ class InterfaceAdam(InterfaceOptimizer):
     ) -> Dict[str, Any]:
 
         cfg_unified = cfg.processes.iceflow.unified
-        precision = cfg.processes.iceflow.numerics.precision
+        cfg_numerics = cfg.processes.iceflow.numerics
 
-        if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
+        if isinstance(map, MappingDataAssimilation) or isinstance(
+            map, MappingCombinedDataAssimilation
+        ):
             lr = cfg.processes.data_assimilation.optimization.learning_rate
         else:
             lr = cfg_unified.lr
 
+        halt_args = InterfaceHalt.get_halt_args(cfg)
+        halt = Halt(**halt_args)
+
         return {
             "cost_fn": cost_fn,
             "map": map,
+            "halt": halt,
             "lr": lr,
             "iter_max": cfg_unified.nbit,
             "print_cost": cfg_unified.print_cost,
             "print_cost_freq": cfg_unified.print_cost_freq,
-            "precision": precision,
+            "precision": cfg_numerics.precision,
+            "ord_grad_u": cfg_numerics.ord_grad_u,
+            "ord_grad_w": cfg_numerics.ord_grad_w,
         }
 
     @staticmethod

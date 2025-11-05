@@ -4,30 +4,43 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Callable
+from typing import Callable, Optional
 
 from ..mappings import Mapping
 from .optimizer import Optimizer
+from ..halt import Halt, HaltStatus
 
 tf.config.optimizer.set_jit(True)
 
 
 class OptimizerAdam(Optimizer):
+
     def __init__(
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         map: Mapping,
-        print_cost: bool,
-        print_cost_freq: int,
-        precision: str,
+        halt: Optional[Halt] = None,
+        print_cost: bool = True,
+        print_cost_freq: int = 1,
+        precision: str = "float32",
+        ord_grad_u: str = "l2_weighted",
+        ord_grad_w: str = "l2_weighted",
         lr: float = 1e-3,
         iter_max: int = int(1e5),
         lr_decay: float = 0.0,
         lr_decay_steps: int = 1000,
     ):
-        super().__init__(cost_fn, map, print_cost, print_cost_freq, precision)
+        super().__init__(
+            cost_fn,
+            map,
+            halt,
+            print_cost,
+            print_cost_freq,
+            precision,
+            ord_grad_u,
+            ord_grad_w,
+        )
         self.name = "adam"
-        self.print_cost = print_cost
 
         version_tf = int(tf.__version__.split(".")[1])
         if (version_tf <= 10) | (version_tf >= 16):
@@ -57,53 +70,56 @@ class OptimizerAdam(Optimizer):
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
 
-        # Initial state
         w = self.map.get_w()
         U, V = self.map.get_UV(inputs[0, :, :, :])
         n_batches = inputs.shape[0]
 
         costs = tf.TensorArray(dtype=self.precision, size=int(self.iter_max))
+        halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
+        last_iter = tf.constant(-1, dtype=tf.int32)
+
+        self._init_step_state(U, V, w)
 
         for iter in tf.range(self.iter_max):
 
-            batch_costs = tf.TensorArray(dtype=self.precision, size=n_batches)
+            cost_sum = tf.constant(0.0, dtype=self.precision)
+            grad_u_norm_sum = tf.constant(0.0, dtype=self.precision)
+            grad_w_norm_sum = tf.constant(0.0, dtype=self.precision)
 
-            batch_grad_norms = tf.TensorArray(dtype=self.precision, size=n_batches)
+            for b in tf.range(n_batches):
+                input = inputs[b, :, :, :, :]
 
-            for i in tf.range(n_batches):
-                input = inputs[i, :, :, :, :]
-
-                # Save previous solution
-                U_prev = tf.identity(U)
-                V_prev = tf.identity(V)
-
-                # Compute cost and grad
-                cost, grad_w = self._get_grad(input)
-                
-                # Compute and store gradient norm for this batch
-                grad_norm = self._get_grad_norm(grad_w)
-                batch_grad_norms = batch_grad_norms.write(i, grad_norm)
-
-                # Apply Adam descent
+                cost, grad_u, grad_w = self._get_grad(input)
                 self.optim_adam.apply_gradients(zip(grad_w, w))
 
-                # Post-process
-                U, V = self.map.get_UV(input)
+                grad_u_norm, grad_w_norm = self._get_grad_norm(grad_u, grad_w)
 
-                # Store cost for this batch
-                batch_costs = batch_costs.write(i, cost)
+                cost_sum = cost_sum + cost
+                grad_u_norm_sum = grad_u_norm_sum + grad_u_norm
+                grad_w_norm_sum = grad_w_norm_sum + grad_w_norm
 
-            iter_cost = tf.reduce_mean(batch_costs.stack())
-            avg_grad_norm = tf.reduce_mean(batch_grad_norms.stack())
+            U, V = self.map.get_UV(input)
 
-            costs = costs.write(iter, iter_cost)
+            cost_avg = cost_sum / n_batches
+            grad_u_norm_avg = grad_u_norm_sum / n_batches
+            grad_w_norm_avg = grad_w_norm_sum / n_batches
 
+            costs = costs.write(iter, cost_avg)
+
+            # TODO: check if this is necessary
             self.map.on_step_end(iter)
 
-            should_stop = self._progress_update(iter, iter_cost, avg_grad_norm)
+            self._update_step_state(
+                iter, U, V, w, cost_avg, grad_u_norm_avg, grad_w_norm_avg
+            )
+            halt_status = self._check_stopping()
+            self._update_display()
 
-            # Early stopping check
-            if should_stop:
+            last_iter = iter
+
+            if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
                 break
 
-        return costs.stack()
+        self._finalize_display(halt_status)
+
+        return costs.stack()[: last_iter + 1]
