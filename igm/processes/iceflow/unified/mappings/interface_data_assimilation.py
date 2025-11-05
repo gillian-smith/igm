@@ -29,7 +29,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
     @staticmethod
     def _parse_specs(cfg: DictConfig) -> List[VariableSpec]:
         specs = []
-        for item in cfg.processes.data_assimilation.variables:
+        for item in cfg.processes.SR_DA.variables:
             name = str(item["name"])
             transform = str(item.get("transform", "identity")).lower()
             if transform not in TRANSFORMS.keys():

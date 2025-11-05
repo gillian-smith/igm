@@ -2,10 +2,11 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
-from ..mappings import Mapping
+from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
 from .optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
 from .optimizer_cg import OptimizerCG
+
 
 class InterfaceCG(InterfaceOptimizer):
     @staticmethod
@@ -14,10 +15,15 @@ class InterfaceCG(InterfaceOptimizer):
                            map: Mapping) -> Dict[str, Any]:
         u = cfg.processes.iceflow.unified
         precision = cfg.processes.iceflow.numerics.precision
+
+        if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
+            nbit = cfg.processes.SR_DA.optimization.nbitmax
+        else:
+            nbit = u.nbit
         return {
             "cost_fn": cost_fn,
             "map": map,
-            "iter_max": u.nbit,
+            "iter_max": nbit,
             "alpha_min": u.lbfgs.alpha_min,   # reuse same key for simplicity
             "line_search_method": u.line_search,
             "print_cost": u.print_cost,
