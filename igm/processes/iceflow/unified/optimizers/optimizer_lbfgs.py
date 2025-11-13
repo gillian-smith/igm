@@ -32,7 +32,7 @@ class OptimizerLBFGS(Optimizer):
     ):
         super().__init__(
             cost_fn,
-            map,
+            map, 
             halt,
             print_cost,
             print_cost_freq,
@@ -187,9 +187,20 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-        if inputs.shape[0] > 1:
+        first_batch = self.sampler(inputs)  # [M, B, H, W, C]
+        n_batches = first_batch.shape[0]
+        if n_batches != 1:
             raise NotImplementedError("❌ L-BFGS requires a single batch.")
-        input = inputs[0]
+        
+        if getattr(self.sampler, "dynamic_augmentation", False):
+            static_batches = None
+            dynamic_augmentation = True
+        else:
+            # Sampler does not change data between calls → build once and reuse.
+            static_batches = first_batch
+            dynamic_augmentation = False
+
+        input = first_batch[0, :, :, :, :]  # Define before loop for AutoGraph
 
         # State variables
         w_flat = self.map.flatten_w(self.map.get_w())
@@ -210,6 +221,15 @@ class OptimizerLBFGS(Optimizer):
         costs = tf.TensorArray(dtype=cost.dtype, size=int(self.iter_max))
 
         for iter in tf.range(self.iter_max):
+
+            # Sample fresh augmented batch for this iteration
+            if dynamic_augmentation:
+                next_batch = self.sampler(inputs)  # [M, B, H, W, C]
+            else:
+                next_batch = static_batches       # [M, B, H, W, C]
+
+            input = next_batch[0, :, :, :, :]
+
             w_prev = w_flat
             grad_w_prev = grad_w_flat
 

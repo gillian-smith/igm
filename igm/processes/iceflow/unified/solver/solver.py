@@ -13,8 +13,6 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     get_fieldin,
 )
 
-from igm.processes.iceflow.data_preparation import input_tensor_preparation as prep
-
 
 def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 
@@ -35,13 +33,13 @@ def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 
 
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
-
+    """Returns [N, H, W, C] patches (sampler handles batching/augmentation)."""
     fieldin = get_fieldin(cfg, state)
-    X = prep.create_input_tensor_from_fieldin(
-        fieldin, state.iceflow.patching, state.iceflow.preparation_params
-    )
 
-    return X
+    # Create patches using the patching object
+    patches = state.iceflow.patching.generate_patches(fieldin)
+    
+    return patches
 
 
 def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:

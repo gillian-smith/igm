@@ -14,11 +14,13 @@ from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_icef
 from .solver import solve_iceflow
 from .utils import get_cost_fn
 
-from igm.processes.iceflow.data_preparation.preparation_params import (
+from igm.processes.iceflow.data_preparation.config import (
     PreparationParams,
     get_input_params_args,
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
+from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
+from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
@@ -28,10 +30,15 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     preparation_params = PreparationParams(**preparation_params_args)
 
     state.iceflow.preparation_params = preparation_params
+    fieldin = get_fieldin(cfg, state)
 
     state.iceflow.patching = OverlapPatching(
-        patch_size=preparation_params.patch_size, overlap=preparation_params.overlap
+        patch_size=preparation_params.patch_size,
+        overlap=preparation_params.overlap,
+        fieldin=fieldin
     )
+    num_patches = state.iceflow.patching.num_patches          # int
+    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape  # patch spatial dimensions
 
     # Initialize mapping
     mapping_name = cfg.processes.iceflow.unified.mapping
@@ -46,6 +53,14 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     )
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.iceflow.optimizer = optimizer
+    
+    sampler = TrainingBatchBuilder(
+        preparation_params=preparation_params,
+        fieldin_names=preparation_params.fieldin_names,
+        patch_shape=(patch_H, patch_W, patch_C),
+        num_patches=num_patches,
+    )
+    optimizer.sampler = sampler
 
     # Evaluator params
     evaluator_params_args = get_evaluator_params_args(cfg)

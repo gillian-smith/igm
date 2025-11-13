@@ -1,4 +1,21 @@
-# Import augmentations so they're available when importing this package
+# Configuration
+from .config import (
+    PreparationParams,
+    get_input_params_args,
+    create_channel_mask,
+)
+
+# Batch building
+from .batch_builder import TrainingBatchBuilder
+
+# Patching strategies
+from .patching import (
+    Patching,
+    OverlapPatching,
+    GridPatching,
+)
+
+# Augmentations (for advanced users)
 from .augmentations import (
     Augmentation,
     RotationAugmentation,
@@ -9,18 +26,18 @@ from .augmentations import (
     NoiseParams,
 )
 
-# Import patching classes
-from .patching import (
-    Patching,
-    OverlapPatching,
-    GridPatching,
-)
-
 __all__ = [
-    "input_tensor_preparation",
-    "preparation_ops",
-    "preparation_params",
+    # Config
     "PreparationParams",
+    "get_input_params_args",
+    "create_channel_mask",
+    # Batch building
+    "TrainingBatchBuilder",
+    # Patching
+    "Patching",
+    "OverlapPatching",
+    "GridPatching",
+    # Augmentations
     "Augmentation",
     "RotationAugmentation",
     "RotationParams",
@@ -28,7 +45,4 @@ __all__ = [
     "FlipParams",
     "NoiseAugmentation",
     "NoiseParams",
-    "Patching",
-    "OverlapPatching",
-    "GridPatching",
 ]

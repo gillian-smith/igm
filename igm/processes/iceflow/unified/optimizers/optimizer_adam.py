@@ -69,13 +69,29 @@ class OptimizerAdam(Optimizer):
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-
-        n_batches = inputs.shape[0]
-
+        """
+        Args:
+            inputs: [N, H, W, C] tensor of patches (sampler creates batches per iteration)
+        """
         # State variables
         w = self.map.get_w()
-        U, V = self.map.get_UV(inputs[0, :, :, :])
+        first_batch = self.sampler(inputs)  # [M, B, H, W, C]
+
+        if getattr(self.sampler, "dynamic_augmentation", False):
+            static_batches = None
+            dynamic_augmentation = True
+        else:
+            # Sampler does not change data between calls → build once and reuse.
+            static_batches = first_batch
+            dynamic_augmentation = False
+
+        n_batches = first_batch.shape[0]
+        input = first_batch[0, :, :, :, :]  # Define before loop for AutoGraph
+        
+        # Sample first batch to initialize
+        U, V = self.map.get_UV(input)
         self._init_step_state(U, V, w)
+
 
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
@@ -88,8 +104,14 @@ class OptimizerAdam(Optimizer):
             grad_u_norm_sum = tf.constant(0.0, dtype=self.precision)
             grad_w_norm_sum = tf.constant(0.0, dtype=self.precision)
 
+            # Sample fresh augmented batch for this iteration
+            if dynamic_augmentation:
+                batched_inputs = self.sampler(inputs)  # [M, B, H, W, C]
+            else:
+                batched_inputs = static_batches       # [M, B, H, W, C]
+
             for b in tf.range(n_batches):
-                input = inputs[b, :, :, :, :]
+                input = batched_inputs[b, :, :, :, :]
 
                 cost, grad_u, grad_w = self._get_grad(input)
                 self.optim_adam.apply_gradients(zip(grad_w, w))
@@ -99,7 +121,7 @@ class OptimizerAdam(Optimizer):
                 cost_sum = cost_sum + cost
                 grad_u_norm_sum = grad_u_norm_sum + grad_u_norm
                 grad_w_norm_sum = grad_w_norm_sum + grad_w_norm
-
+                
             cost_avg = cost_sum / n_batches
             grad_u_norm_avg = grad_u_norm_sum / n_batches
             grad_w_norm_avg = grad_w_norm_sum / n_batches
