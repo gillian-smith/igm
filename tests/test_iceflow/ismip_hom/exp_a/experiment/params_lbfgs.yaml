@@ -1,0 +1,52 @@
+# @package _global_
+
+hydra:
+  run:
+    dir: outputs
+
+defaults:
+  - /user/conf/inputs@inputs.init_state: init_state
+  - override /inputs: 
+    - init_state
+  - override /processes: 
+    - iceflow
+  - override /outputs: 
+    - write_ncdf
+
+processes:
+  iceflow:
+    method: unified
+    physics:
+      energy_components: [viscosity, gravity]
+    unified:
+      pretrained: False
+      nbit_init: 1000
+      print_cost: True
+      optimizer: lbfgs
+      line_search: armijo
+      bcs: [frozen_bed, periodic_ns, periodic_we]
+      halt:
+        freq: 1
+        success:
+          - criterion: rel_tol
+            metric: cost
+            rel_tol: 
+              tol: 1e-6
+          - criterion: rel_tol
+            metric: u
+            rel_tol: 
+              tol: 1e-6
+        failure:
+          - criterion: nan
+            metric: u
+          - criterion: inf
+            metric: u
+    numerics:
+      Nz: 10
+      vert_basis: Lagrange
+
+
+outputs:
+  write_ncdf:
+    output_file: results.nc
+    vars_to_save: [topg, usurf, thk, velbar_mag, velsurf_mag, velbase_mag, slidingco]

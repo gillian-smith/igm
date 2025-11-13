@@ -1,0 +1,2 @@
+find . -type f -iname '*.pdf' -exec rm -v {} \;
+find . -type d -name 'outputs' -exec rm -rfv {} \;
