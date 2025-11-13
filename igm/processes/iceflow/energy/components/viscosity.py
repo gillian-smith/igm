@@ -245,7 +245,7 @@ def _cost(
     s : tf.Tensor
         Upper-surface elevation (m)
     A : tf.Tensor
-        Arrhenius factor (Pa^-n year^-1)
+        Arrhenius factor (MPa^-n year^-1)
     dx : tf.Tensor
         Grid spacing (m)
     n : tf.Tensor
@@ -323,7 +323,7 @@ def _cost(
     # dudz_q, dvdz_q = dampen_eps_dot_z_floating(dudz_q, dvdz_q, C)
 
     # Correct for terrain-following coordinates
-    dudx_q, dvdx_q, dudy_q, dvdy_q = correct_for_change_of_coordinate(
+    dudx_q, dudy_q, dvdx_q, dvdy_q = correct_for_change_of_coordinate(
         dudx_q,
         dudy_q,
         dvdx_q,
