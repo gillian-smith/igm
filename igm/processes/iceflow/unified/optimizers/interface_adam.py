@@ -45,6 +45,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
             "ord_grad_w": cfg_numerics.ord_grad_w,
+            "clip_norm": cfg_unified.optimizer_clipnorm,
         }
 
     @staticmethod

@@ -25,6 +25,7 @@ class OptimizerAdam(Optimizer):
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
         ord_grad_w: str = "l2_weighted",
+        clip_norm: Optional[float] = None,
         lr: float = 1e-3,
         iter_max: int = int(1e5),
         lr_decay: float = 0.0,
@@ -54,10 +55,10 @@ class OptimizerAdam(Optimizer):
                 decay_steps=lr_decay_steps,
                 decay_rate=lr_decay,
             )
-            self.optim_adam = module_optimizer.Adam(learning_rate=schedule)
+            self.optim_adam = module_optimizer.Adam(learning_rate=schedule, beta_1=0.8, beta_2=0.9995, clipnorm=clip_norm)
         else:
             self.iter_max = tf.Variable(iter_max)
-            self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr))
+            self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr), beta_1=0.8, beta_2=0.9995, clipnorm=clip_norm)
 
     def update_parameters(
         self, iter_max: int, lr: float, lr_decay: float, lr_decay_steps: int
