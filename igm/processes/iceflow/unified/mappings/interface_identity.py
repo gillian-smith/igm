@@ -31,6 +31,7 @@ class InterfaceIdentity(InterfaceMapping):
 
         return {
             "bcs": bcs,
+            "vertical_discr": state.iceflow.vertical_discr,
             "U_guess": U_guess,
             "V_guess": V_guess,
             "precision": cfg_numerics.precision,

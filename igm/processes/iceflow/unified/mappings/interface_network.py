@@ -18,6 +18,7 @@ from .interface import InterfaceMapping
 from igm.processes.iceflow.emulate.utils.networks import cnn, unet, build_norm_layer
 from .utils import process_inputs_scales
 
+
 class InterfaceNetwork(InterfaceMapping):
 
     @staticmethod
@@ -39,7 +40,9 @@ class InterfaceNetwork(InterfaceMapping):
             nb_outputs = 2 * cfg_numerics.Nz
 
             # Convert inputs_scales to proper format
-            scales_array = process_inputs_scales(cfg_unified.inputs_scales, cfg_unified.inputs)
+            scales_array = process_inputs_scales(
+                cfg_unified.inputs_scales, cfg_unified.inputs
+            )
 
             if np.all(scales_array == 1):
                 norm = None
@@ -68,10 +71,9 @@ class InterfaceNetwork(InterfaceMapping):
 
         return {
             "bcs": cfg_unified.bcs,
+            "vertical_discr": state.iceflow.vertical_discr,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,
             "precision": cfg_numerics.precision,
         }
-
-    

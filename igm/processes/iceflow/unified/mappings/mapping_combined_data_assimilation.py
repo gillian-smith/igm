@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .mapping import Mapping
+from .transforms import TRANSFORMS
+from ...vertical import VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
-from .transforms import TRANSFORMS 
 
 TV = Union[tf.Tensor, tf.Variable]
 
@@ -26,6 +27,7 @@ class CombinedVariableSpec:
                  • Tensor/Variable -> directly used as the mask
                True/1 = optimized (free), False/0 = frozen (keeps background values).
     """
+
     name: str
     transform: str = "identity"
     lower_bound: Optional[float] = None
@@ -46,6 +48,7 @@ class MappingCombinedDataAssimilation(Mapping):
     def __init__(
         self,
         bcs: List[str],
+        vertical_discr: VerticalDiscr,
         network: tf.keras.Model,
         Nz: tf.Tensor,
         output_scale: tf.Tensor,
@@ -54,18 +57,20 @@ class MappingCombinedDataAssimilation(Mapping):
         field_to_channel: Optional[Dict[str, int]] = None,
         eps: float = 1e-12,
         *,
-        precision: str = "single",   # kept: precision support
+        precision: str = "single",  # kept: precision support
         store_freq: int = 0,
     ):
-        super().__init__(bcs, precision)
-        
+        super().__init__(bcs, vertical_discr, precision)
+
         self.store_freq = int(store_freq)
         self._num_vars = None
 
         # Snapshot state (allocated in on_minimize_start)
         self._snap_idx: tf.Variable | None = None
-        self._iter_var: tf.Variable | None = None      # shape [T_cap], int32
-        self._fields_var: tf.Variable | None = None    # shape [T_cap, V, H, W], dtype = physical
+        self._iter_var: tf.Variable | None = None  # shape [T_cap], int32
+        self._fields_var: tf.Variable | None = (
+            None  # shape [T_cap, V, H, W], dtype = physical
+        )
         self._t_cap: int = 0
 
         # ----- Core model pieces -----
@@ -83,7 +88,7 @@ class MappingCombinedDataAssimilation(Mapping):
                     "Please build/load the network in the same precision."
                 )
 
-        # Channel mapping 
+        # Channel mapping
         self.field_to_channel: Dict[str, int] = field_to_channel
 
         # ----- Network weights block (first in w) -----
@@ -112,8 +117,10 @@ class MappingCombinedDataAssimilation(Mapping):
         for spec in variables:
             tname = spec.transform.lower()
             if tname not in TRANSFORMS:
-                raise ValueError(f"❌ Unknown transform '{spec.transform}' for '{spec.name}'.")
-            T = TRANSFORMS[tname]()                # instance
+                raise ValueError(
+                    f"❌ Unknown transform '{spec.transform}' for '{spec.name}'."
+                )
+            T = TRANSFORMS[tname]()  # instance
             self._transform_objs.append(T)
 
             # Read physical value from state and cast to compute dtype
@@ -132,7 +139,9 @@ class MappingCombinedDataAssimilation(Mapping):
                         f"❌ Mask for '{spec.name}' has shape {mask_bool.shape}; expected {x_phys.shape}."
                     )
                 if not bool(tf.reduce_any(mask_bool)):
-                    raise ValueError(f"❌ Mask for '{spec.name}' has no active elements.")
+                    raise ValueError(
+                        f"❌ Mask for '{spec.name}' has no active elements."
+                    )
                 mask_indices = tf.where(mask_bool)
                 # Background in PHYSICAL space: keep original values where mask==False, zeros on True
                 mask_background = tf.where(mask_bool, tf.zeros_like(x_phys), x_phys)
@@ -147,7 +156,9 @@ class MappingCombinedDataAssimilation(Mapping):
             else:
                 theta0 = theta0_full
 
-            theta_var = tf.Variable(theta0, trainable=True, dtype=self.precision, name=f"theta_{spec.name}")
+            theta_var = tf.Variable(
+                theta0, trainable=True, dtype=self.precision, name=f"theta_{spec.name}"
+            )
             self._theta_vars.append(theta_var)
             self._theta_shapes.append(theta_var.shape)
             self._theta_sizes.append(int(theta_var.shape.num_elements()))
@@ -174,7 +185,9 @@ class MappingCombinedDataAssimilation(Mapping):
             obj = state
             for attr in mask.split("."):
                 if not hasattr(obj, attr):
-                    raise ValueError(f"❌ Mask path '{mask}' could not be resolved on state.")
+                    raise ValueError(
+                        f"❌ Mask path '{mask}' could not be resolved on state."
+                    )
                 obj = getattr(obj, attr)
             return tf.convert_to_tensor(obj)
         else:
@@ -192,9 +205,11 @@ class MappingCombinedDataAssimilation(Mapping):
             val.set_shape(full_shape)
             return val
 
-        updates = T.to_physical(theta)           # (N_active,)
+        updates = T.to_physical(theta)  # (N_active,)
         updates = tf.reshape(updates, [-1])
-        background = tf.cast(self._mask_backgrounds[idx], updates.dtype)  # PHYSICAL background
+        background = tf.cast(
+            self._mask_backgrounds[idx], updates.dtype
+        )  # PHYSICAL background
         indices = self._mask_indices[idx]
         field = tf.tensor_scatter_nd_update(background, indices, updates)
         field.set_shape(full_shape)
@@ -212,7 +227,6 @@ class MappingCombinedDataAssimilation(Mapping):
         for apply_bc in self.apply_bcs:
             U, V = apply_bc(U, V)
         return U, V
-
 
     @tf.function(reduce_retracing=True)
     def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -239,8 +253,8 @@ class MappingCombinedDataAssimilation(Mapping):
             ch = int(self.field_to_channel[spec.name])
 
             # Replace channel ch with phys_b using slice + concat (graph-safe)
-            left  = updated[:, :, :, :ch]
-            right = updated[:, :, :, ch+1:]
+            left = updated[:, :, :, :ch]
+            right = updated[:, :, :, ch + 1 :]
             updated = tf.concat([left, phys_b, right], axis=-1)
 
         return updated
@@ -249,14 +263,16 @@ class MappingCombinedDataAssimilation(Mapping):
     # w management
     # --------------------------------------------------------------------------
     def _split_blocks(self, w: List[TV]) -> Tuple[List[TV], List[TV]]:
-        return list(w[: len(self._net_vars)]), list(w[len(self._net_vars):])
+        return list(w[: len(self._net_vars)]), list(w[len(self._net_vars) :])
 
     def get_w(self) -> List[tf.Variable]:
         return self._net_vars + self._theta_vars
 
     def set_w(self, w: List[tf.Tensor]) -> None:
         net_vals, theta_vals = self._split_blocks(w)
-        if len(net_vals) != len(self._net_vars) or len(theta_vals) != len(self._theta_vars):
+        if len(net_vals) != len(self._net_vars) or len(theta_vals) != len(
+            self._theta_vars
+        ):
             raise ValueError("❌ set_w received a vector with unexpected block sizes.")
         for v, val in zip(self._net_vars, net_vals):
             v.assign(tf.cast(val, v.dtype))
@@ -278,13 +294,13 @@ class MappingCombinedDataAssimilation(Mapping):
         idx = 0
         net_vals: List[tf.Tensor] = []
         for s, shp, var in zip(self._net_sizes, self._net_shapes, self._net_vars):
-            split = tf.reshape(w_flat[idx: idx + s], shp)
+            split = tf.reshape(w_flat[idx : idx + s], shp)
             net_vals.append(tf.cast(split, var.dtype))
             idx += s
         # theta block
         theta_vals: List[tf.Tensor] = []
         for s, shp, var in zip(self._theta_sizes, self._theta_shapes, self._theta_vars):
-            split = tf.reshape(w_flat[idx: idx + s], shp)
+            split = tf.reshape(w_flat[idx : idx + s], shp)
             theta_vals.append(tf.cast(split, var.dtype))
             idx += s
         return net_vals + theta_vals
@@ -302,8 +318,12 @@ class MappingCombinedDataAssimilation(Mapping):
             net_L = net_U = tf.zeros([0], dtype=self.precision)
 
         if self._theta_vars:
-            L_th = tf.concat([tf.reshape(Li, [-1]) for Li in self._L_theta_list], axis=0)
-            U_th = tf.concat([tf.reshape(Ui, [-1]) for Ui in self._U_theta_list], axis=0)
+            L_th = tf.concat(
+                [tf.reshape(Li, [-1]) for Li in self._L_theta_list], axis=0
+            )
+            U_th = tf.concat(
+                [tf.reshape(Ui, [-1]) for Ui in self._U_theta_list], axis=0
+            )
             return (
                 tf.concat([net_L, tf.cast(L_th, self.precision)], 0),
                 tf.concat([net_U, tf.cast(U_th, self.precision)], 0),
@@ -325,7 +345,9 @@ class MappingCombinedDataAssimilation(Mapping):
     # --------------------------------------------------------------------------
     # Halt criterion
     # --------------------------------------------------------------------------
-    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def check_halt_criterion(
+        self, iteration: int, cost: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         return tf.constant(False, tf.bool), tf.constant("", tf.string)
 
     # --------------------------------------------------------------------------
@@ -337,10 +359,18 @@ class MappingCombinedDataAssimilation(Mapping):
         self._num_vars = len(self._specs)
 
         # Infer (H, W) and dtype from a sample physical field
-        sample = self._theta_to_full_physical(0)              # (H, W)
+        sample = self._theta_to_full_physical(0)  # (H, W)
         phys_dtype = sample.dtype
-        H = int(sample.shape[0]) if sample.shape[0] is not None else int(tf.shape(sample)[0])
-        W = int(sample.shape[1]) if sample.shape[1] is not None else int(tf.shape(sample)[1])
+        H = (
+            int(sample.shape[0])
+            if sample.shape[0] is not None
+            else int(tf.shape(sample)[0])
+        )
+        W = (
+            int(sample.shape[1])
+            if sample.shape[1] is not None
+            else int(tf.shape(sample)[1])
+        )
 
         # Compute capacity (no snapshots if disabled)
         if self.store_freq <= 0 or not iter_max or iter_max <= 0:
@@ -349,16 +379,20 @@ class MappingCombinedDataAssimilation(Mapping):
             self._t_cap = int(iter_max // self.store_freq + 2)
 
         # Allocate / reset Variables
-        self._snap_idx = tf.Variable(0, dtype=tf.int32, trainable=False, name="snap_idx")
+        self._snap_idx = tf.Variable(
+            0, dtype=tf.int32, trainable=False, name="snap_idx"
+        )
 
         if self._t_cap > 0:
             self._iter_var = tf.Variable(
                 tf.zeros([self._t_cap], dtype=tf.int32),
-                trainable=False, name="iter_snapshots"
+                trainable=False,
+                name="iter_snapshots",
             )
             self._fields_var = tf.Variable(
                 tf.zeros([self._t_cap, self._num_vars, H, W], dtype=phys_dtype),
-                trainable=False, name="field_snapshots"
+                trainable=False,
+                name="field_snapshots",
             )
         else:
             # Keep placeholders (won’t be used)
@@ -377,10 +411,12 @@ class MappingCombinedDataAssimilation(Mapping):
             stacked = tf.stack(phys_list, axis=0)  # (V, H, W)
 
             # Scatter into Variables at index idx
-            self._iter_var.scatter_nd_update(indices=tf.reshape(idx, [1, 1]),
-                                             updates=tf.reshape(iteration, [1]))
-            self._fields_var.scatter_nd_update(indices=tf.reshape(idx, [1, 1]),
-                                               updates=tf.expand_dims(stacked, axis=0))
+            self._iter_var.scatter_nd_update(
+                indices=tf.reshape(idx, [1, 1]), updates=tf.reshape(iteration, [1])
+            )
+            self._fields_var.scatter_nd_update(
+                indices=tf.reshape(idx, [1, 1]), updates=tf.expand_dims(stacked, axis=0)
+            )
             # Bump counter
             self._snap_idx.assign_add(1)
             return tf.constant(0, tf.int32)
@@ -389,7 +425,11 @@ class MappingCombinedDataAssimilation(Mapping):
         def _enabled_and_capacity():
             return tf.cond(
                 tf.greater(sf, 0),
-                lambda: tf.cond(tf.equal(tf.math.floormod(iteration, sf), 0), _append, lambda: tf.constant(0, tf.int32)),
+                lambda: tf.cond(
+                    tf.equal(tf.math.floormod(iteration, sf), 0),
+                    _append,
+                    lambda: tf.constant(0, tf.int32),
+                ),
                 lambda: tf.constant(0, tf.int32),
             )
 
@@ -400,14 +440,19 @@ class MappingCombinedDataAssimilation(Mapping):
 
     def get_progress(self) -> dict:
         # Eager: materialize after optimize()
-        if self._t_cap == 0 or self._snap_idx is None or self._iter_var is None or self._fields_var is None:
+        if (
+            self._t_cap == 0
+            or self._snap_idx is None
+            or self._iter_var is None
+            or self._fields_var is None
+        ):
             return {"iteration": [], "fields": {}}
 
         T = int(self._snap_idx.numpy())
         if T == 0:
             return {"iteration": [], "fields": {spec.name: [] for spec in self._specs}}
 
-        it = self._iter_var.numpy()[:T]                              # (T,)
-        F  = self._fields_var.numpy()[:T, :, :, :]                    # (T, V, H, W)
+        it = self._iter_var.numpy()[:T]  # (T,)
+        F = self._fields_var.numpy()[:T, :, :, :]  # (T, V, H, W)
         fields = {spec.name: F[:, k, :, :] for k, spec in enumerate(self._specs)}
         return {"iteration": it, "fields": fields}

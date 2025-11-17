@@ -7,15 +7,23 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from .mapping import Mapping
+from ...vertical import VerticalDiscr
 
 
 class MappingIdentity(Mapping):
-    def __init__(self, bcs: List[str], U_guess: tf.Tensor, V_guess: tf.Tensor, precision: str = "float32"):
+    def __init__(
+        self,
+        bcs: List[str],
+        vertical_discr: VerticalDiscr,
+        U_guess: tf.Tensor,
+        V_guess: tf.Tensor,
+        precision: str = "float32",
+    ):
 
         if U_guess.shape != V_guess.shape:
             raise ValueError("❌ U_guess and V_guess must have the same shape.")
 
-        super().__init__(bcs, precision)
+        super().__init__(bcs, vertical_discr, precision)
         self.shape = U_guess.shape
         self.type = U_guess.dtype
         self.U = tf.Variable(U_guess, trainable=True)
@@ -49,9 +57,10 @@ class MappingIdentity(Mapping):
         U = tf.reshape(u_flat, self.shape)
         V = tf.reshape(v_flat, self.shape)
         return [U, V]
-    
-    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+
+    def check_halt_criterion(
+        self, iteration: int, cost: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         halt = tf.constant(False, dtype=tf.bool)
         halt_message = tf.constant("", dtype=tf.string)
         return halt, halt_message
-

@@ -33,12 +33,16 @@ class InterfaceDataAssimilation(InterfaceMapping):
             name = str(item["name"])
             transform = str(item.get("transform", "identity")).lower()
             if transform not in TRANSFORMS.keys():
-                raise ValueError(f"❌ Unsupported transform '{transform}' for '{name}'.")
+                raise ValueError(
+                    f"❌ Unsupported transform '{transform}' for '{name}'."
+                )
             lb = item.get("lower_bound", None)
             ub = item.get("upper_bound", None)
             # Normalize "None"/"null" strings if they appear
-            if isinstance(lb, str) and lb.lower() in ("none", "null"): lb = None
-            if isinstance(ub, str) and ub.lower() in ("none", "null"): ub = None
+            if isinstance(lb, str) and lb.lower() in ("none", "null"):
+                lb = None
+            if isinstance(ub, str) and ub.lower() in ("none", "null"):
+                ub = None
             mask = item.get("mask", None)
             if isinstance(mask, str) and mask.lower() in ("none", "null", ""):
                 mask = None
@@ -53,27 +57,25 @@ class InterfaceDataAssimilation(InterfaceMapping):
             )
         return specs
 
-
-
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
         bcs = cfg.processes.iceflow.unified.bcs
         variables = InterfaceDataAssimilation._parse_specs(cfg)
-        
+
         # Get the existing mapping from state (should be set up before data assimilation)
-        if not hasattr(state.iceflow, 'mapping') or state.iceflow.mapping is None:
+        if not hasattr(state.iceflow, "mapping") or state.iceflow.mapping is None:
             raise ValueError(
                 "❌ No base mapping found in state.iceflow.mapping. "
                 "The main iceflow mapping must be initialized before data assimilation mapping."
             )
-        
+
         # Get the existing cost_fn from the iceflow optimizer (should also be set up)
-        if not hasattr(state.iceflow, 'optimizer') or state.iceflow.optimizer is None:
+        if not hasattr(state.iceflow, "optimizer") or state.iceflow.optimizer is None:
             raise ValueError(
                 "❌ No optimizer found in state.iceflow.optimizer. "
                 "The main iceflow optimizer must be initialized before data assimilation mapping."
             )
-        
+
         base_mapping = state.iceflow.mapping
         if not isinstance(base_mapping, MappingNetwork):
             raise TypeError(
@@ -85,6 +87,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
 
         return {
             "bcs": bcs,
+            "vertical_discr": state.iceflow.vertical_discr,
             "network": base_mapping.network,
             "Nz": base_mapping.Nz,
             "cost_fn": cost_fn,  # for halt diagnostics

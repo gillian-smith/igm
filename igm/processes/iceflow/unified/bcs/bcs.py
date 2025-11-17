@@ -11,6 +11,9 @@ TV = Union[tf.Tensor, tf.Variable]
 
 
 class BoundaryCondition(ABC):
+    def __init__(self, V_b: tf.Tensor):
+        self.V_b = V_b
+
     def __call__(self, U: TV, V: TV) -> Tuple[TV, TV]:
         return self.apply(U, V)
 
@@ -20,9 +23,22 @@ class BoundaryCondition(ABC):
 
 
 class FrozenBed(BoundaryCondition):
+    def __init__(self, V_b: tf.Tensor):
+        super().__init__(V_b)
+        if self.V_b[0] == 0:
+            raise ValueError(f"❌ The frozen bed BC requires V_b ≠ 0.")
+        self.weights = -self.V_b[1:] / self.V_b[0]
+
     def apply(self, U: TV, V: TV) -> Tuple[TV, TV]:
-        U = tf.concat([tf.zeros_like(U[:, :1, :, :]), U[:, 1:, :, :]], axis=1)
-        V = tf.concat([tf.zeros_like(V[:, :1, :, :]), V[:, 1:, :, :]], axis=1)
+        U0 = tf.einsum("i,bijk->bjk", self.weights, U[:, 1:, :, :])
+        V0 = tf.einsum("i,bijk->bjk", self.weights, V[:, 1:, :, :])
+
+        U0 = tf.expand_dims(U0, axis=1)
+        V0 = tf.expand_dims(V0, axis=1)
+
+        U = tf.concat([U0, U[:, 1:, :, :]], axis=1)
+        V = tf.concat([V0, V[:, 1:, :, :]], axis=1)
+
         return U, V
 
 

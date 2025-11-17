@@ -8,14 +8,17 @@ from abc import ABC, abstractmethod
 from typing import Any, Tuple, Union, List
 
 from ..bcs import BoundaryConditions
+from ...vertical import VerticalDiscr
 from igm.utils.math.precision import _normalize_precision
 
 TV = Union[tf.Tensor, tf.Variable]
 
 
 class Mapping(ABC):
-    def __init__(self, bcs: List[str] = [], precision: str = "float32") -> None:
-        self.apply_bcs = [BoundaryConditions[bc]() for bc in bcs]
+    def __init__(
+        self, bcs: List[str], vertical_discr: VerticalDiscr, precision: str = "float32"
+    ) -> None:
+        self.apply_bcs = [BoundaryConditions[bc](vertical_discr.V_b) for bc in bcs]
         self.precision = _normalize_precision(precision)
 
     def set_inputs(self, inputs: tf.Tensor) -> None:

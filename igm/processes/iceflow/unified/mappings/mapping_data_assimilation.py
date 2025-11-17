@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Tuple, Optional
 
 from .mapping import Mapping
 from .transforms import TRANSFORMS, ParameterTransform
+from ...vertical import VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
@@ -24,11 +25,13 @@ class VariableSpec:
     are exposed to the optimizer; the complement keeps its initial values.
     """
 
-    name: str                         # e.g. "thk", "slidingco"
-    transform: str = "identity"       # key in TRANSFORMS (e.g., "identity", "log10", ...) [default + case-insensitive]
+    name: str  # e.g. "thk", "slidingco"
+    transform: str = (
+        "identity"  # key in TRANSFORMS (e.g., "identity", "log10", ...) [default + case-insensitive]
+    )
     lower_bound: Optional[float] = None
     upper_bound: Optional[float] = None
-    mask: Optional[str] = None        # dotted path on ``state`` resolving to a tensor mask
+    mask: Optional[str] = None  # dotted path on ``state`` resolving to a tensor mask
 
 
 class MappingDataAssimilation(Mapping):
@@ -43,6 +46,7 @@ class MappingDataAssimilation(Mapping):
     def __init__(
         self,
         bcs: List[str],
+        vertical_discr: VerticalDiscr,
         network: tf.keras.Model,
         Nz: tf.Tensor,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
@@ -50,12 +54,14 @@ class MappingDataAssimilation(Mapping):
         state,
         variables: List[VariableSpec],
         eps: float = 1e-12,
-        field_to_channel: Optional[Dict[str, int]] = None,   
-        precision: str = "single",           
+        field_to_channel: Optional[Dict[str, int]] = None,
+        precision: str = "single",
     ):
-        super().__init__(bcs, precision)
+        super().__init__(bcs, vertical_discr, precision)
         if not variables:
-            raise ValueError("❌ DataAssimilation mapping requires at least one variable.")
+            raise ValueError(
+                "❌ DataAssimilation mapping requires at least one variable."
+            )
 
         self.network = network
         self.Nz = Nz
@@ -73,15 +79,28 @@ class MappingDataAssimilation(Mapping):
                 )
 
         self.field_to_channel: Dict[str, int] = field_to_channel or {
-            'thk': 0, 'usurf': 1, 'arrhenius': 2, 'slidingco': 3, 'dX': 4
+            "thk": 0,
+            "usurf": 1,
+            "arrhenius": 2,
+            "slidingco": 3,
+            "dX": 4,
         }
 
-        self.base_cost_reference = tf.Variable(float("nan"), trainable=False, name="base_cost_reference", dtype=self.precision)
+        self.base_cost_reference = tf.Variable(
+            float("nan"),
+            trainable=False,
+            name="base_cost_reference",
+            dtype=self.precision,
+        )
         self._base_cost_tol = tf.constant(0.1, dtype=self.precision)  # 10% threshold
-        self._base_cost_eps = tf.constant(1e-12, dtype=self.precision)  # Small epsilon for division
+        self._base_cost_eps = tf.constant(
+            1e-12, dtype=self.precision
+        )  # Small epsilon for division
 
         # Diagnostics used by the halt criterion
-        self.base_cost = tf.Variable(0.0, trainable=False, name="base_cost", dtype=self.precision)
+        self.base_cost = tf.Variable(
+            0.0, trainable=False, name="base_cost", dtype=self.precision
+        )
 
         # Ensure state fields are tf.Variable and keep references (for initialization parity).
         self._field_refs: Dict[str, tf.Variable] = {}
@@ -90,7 +109,9 @@ class MappingDataAssimilation(Mapping):
             if isinstance(field_val, tf.Variable):
                 self._field_refs[spec.name] = field_val
             else:
-                field_var = tf.Variable(field_val, trainable=False, name=f"ref_{spec.name}")
+                field_var = tf.Variable(
+                    field_val, trainable=False, name=f"ref_{spec.name}"
+                )
                 setattr(state, spec.name, field_var)
                 self._field_refs[spec.name] = field_var
 
@@ -98,8 +119,8 @@ class MappingDataAssimilation(Mapping):
         self.transforms: List[ParameterTransform] = []
         self._w: List[tf.Variable] = []
         self._shapes: List[tf.TensorShape] = []
-        self._sizes: List[tf.Tensor] = []    
-        self._sizes_int: List[Optional[int]] = []   
+        self._sizes: List[tf.Tensor] = []
+        self._sizes_int: List[Optional[int]] = []
         self._full_shapes: List[tf.TensorShape] = []
         self._mask_bool: List[Optional[tf.Tensor]] = []
         self._mask_indices: List[Optional[tf.Tensor]] = []
@@ -108,7 +129,9 @@ class MappingDataAssimilation(Mapping):
         for spec in self.vars:
             tname = (spec.transform or "identity").lower()
             if tname not in TRANSFORMS:
-                raise ValueError(f"❌ Unknown transform '{spec.transform}' for '{spec.name}'.")
+                raise ValueError(
+                    f"❌ Unknown transform '{spec.transform}' for '{spec.name}'."
+                )
             tform = TRANSFORMS[tname]()  # instance
             self.transforms.append(tform)
 
@@ -126,7 +149,9 @@ class MappingDataAssimilation(Mapping):
                         f"❌ Mask '{spec.mask}' shape {mask_bool.shape} does not match field '{spec.name}' shape {x0.shape}."
                     )
                 if not bool(tf.reduce_any(mask_bool)):
-                    raise ValueError(f"❌ Mask '{spec.mask}' for '{spec.name}' has no active elements.")
+                    raise ValueError(
+                        f"❌ Mask '{spec.mask}' for '{spec.name}' has no active elements."
+                    )
                 mask_indices = tf.where(mask_bool)
                 mask_background = tf.where(mask_bool, tf.zeros_like(x0), x0)
 
@@ -139,11 +164,19 @@ class MappingDataAssimilation(Mapping):
                 theta0 = theta0_full
 
             # Keep θ in compute precision
-            theta = tf.Variable(tf.cast(theta0, self.precision), trainable=True, name=f"theta_{spec.name}")
+            theta = tf.Variable(
+                tf.cast(theta0, self.precision),
+                trainable=True,
+                name=f"theta_{spec.name}",
+            )
             self._w.append(theta)
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
-            self._sizes_int.append(theta.shape.num_elements() if theta.shape.num_elements() is not None else None)
+            self._sizes_int.append(
+                theta.shape.num_elements()
+                if theta.shape.num_elements() is not None
+                else None
+            )
             self._mask_bool.append(mask_bool)
             self._mask_indices.append(mask_indices)
             self._mask_backgrounds.append(mask_background)
@@ -152,7 +185,9 @@ class MappingDataAssimilation(Mapping):
         self._L_list: List[tf.Tensor] = []
         self._U_list: List[tf.Tensor] = []
         for spec, theta, tform in zip(self.vars, self._w, self.transforms):
-            Ls, Us = tform.theta_bounds(spec.lower_bound, spec.upper_bound, dtype=theta.dtype, eps=self.eps)
+            Ls, Us = tform.theta_bounds(
+                spec.lower_bound, spec.upper_bound, dtype=theta.dtype, eps=self.eps
+            )
             self._L_list.append(tf.fill(theta.shape, Ls))
             self._U_list.append(tf.fill(theta.shape, Us))
 
@@ -161,9 +196,11 @@ class MappingDataAssimilation(Mapping):
     @staticmethod
     def _resolve_mask(state, path: str) -> tf.Tensor:
         obj = state
-        for attr in path.split('.'):
+        for attr in path.split("."):
             if not hasattr(obj, attr):
-                raise ValueError(f"❌ Mask path '{path}' could not be resolved on state.")
+                raise ValueError(
+                    f"❌ Mask path '{path}' could not be resolved on state."
+                )
             obj = getattr(obj, attr)
         return tf.convert_to_tensor(obj)
 
@@ -267,7 +304,9 @@ class MappingDataAssimilation(Mapping):
 
     # ------- Halt criterion  ------------------------
 
-    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def check_halt_criterion(
+        self, iteration: int, cost: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         """
         Halt if the base (forward) cost increased by >10% relative to its value at
         the start of the current minimize call. Returns (halt_bool, message).
@@ -279,17 +318,20 @@ class MappingDataAssimilation(Mapping):
             return tf.constant(False, dtype=tf.bool), tf.constant("", dtype=tf.string)
 
         def _check_increase() -> Tuple[tf.Tensor, tf.Tensor]:
-            rel_increase = (self.base_cost - reference) / (tf.abs(reference) + self._base_cost_eps)
+            rel_increase = (self.base_cost - reference) / (
+                tf.abs(reference) + self._base_cost_eps
+            )
             should_halt = tf.greater(rel_increase, self._base_cost_tol)
             message = tf.cond(
                 should_halt,
-                lambda: tf.constant("Base cost increased beyond threshold (10.0%)", dtype=tf.string),
+                lambda: tf.constant(
+                    "Base cost increased beyond threshold (10.0%)", dtype=tf.string
+                ),
                 lambda: tf.constant("", dtype=tf.string),
             )
             return should_halt, message
 
         return tf.cond(tf.math.is_nan(reference), _set_reference, _check_increase)
-
 
     def on_minimize_start(self, iter_max: int) -> None:
         """
