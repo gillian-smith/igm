@@ -20,7 +20,7 @@ processes:
       energy_components: [viscosity, gravity]
     unified:
       pretrained: False
-      nbit_init: 1000
+      nbit_init: 2000
       print_cost: True
       optimizer: lbfgs
       line_search: armijo

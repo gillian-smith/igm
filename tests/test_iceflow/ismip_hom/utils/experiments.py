@@ -47,7 +47,7 @@ class ExperimentA(Experiment):
         z_s = -X * np.tan(α_x)
         h = 1000.0 - 500.0 * np.sin(ω * X) * np.sin(ω * Y)
         z_b = z_s - h
-        C = 0.0 * np.ones_like(X)
+        C = 1.0 * np.ones_like(X)
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -79,7 +79,7 @@ class ExperimentB(Experiment):
         z_s = -X * np.tan(α_x)
         h = 1000.0 - 500.0 * np.sin(ω * X)
         z_b = z_s - h
-        C = 0.0 * np.ones_like(X)
+        C = 1.0 * np.ones_like(X)
         A = 100.0 * np.ones_like(X)
 
         return {
