@@ -176,8 +176,6 @@ def correct_for_change_of_coordinate(
     dldy: tf.Tensor,
     dsdx: tf.Tensor,
     dsdy: tf.Tensor,
-    h: tf.Tensor,
-    h_min: tf.Tensor,
     zeta: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     """Correct derivatives for terrain-following coordinate transformation."""
@@ -193,11 +191,10 @@ def correct_for_change_of_coordinate(
     dsdy_q = dsdy[:, None, :, :]
 
     # ∇ζ = - [(1 - ζ) * ∇b + ζ * ∇s] / h
-    dzetadx_q = (one - zeta_q) * dldx_q + zeta_q * dsdx_q
-    dzetady_q = (one - zeta_q) * dldy_q + zeta_q * dsdy_q
-
-    dzetadx_q = -dzetadx_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
-    dzetady_q = -dzetady_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
+    # We omit the division by h because dudz_q and dvdz_q are
+    # already physical vertical derivatives (∂u/∂z = ∂u/∂ζ / h)
+    dzetadx_q = -((one - zeta_q) * dldx_q + zeta_q * dsdx_q)
+    dzetady_q = -((one - zeta_q) * dldy_q + zeta_q * dsdy_q)
 
     # ∇_z = ∇_ζ + (∂/∂ζ) * ∇ζ
     dudx_q = dudx_q + dudz_q * dzetadx_q
@@ -334,8 +331,6 @@ def _cost(
         dldy,
         dsdx,
         dsdy,
-        h,
-        h_min,
         zeta,
     )
 
