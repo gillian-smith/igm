@@ -11,23 +11,22 @@ from tests.test_iceflow.ismip_hom.utils import run_igm_unified, plot_comparison
 
 
 @pytest.mark.parametrize(
-    "length,mapping,optimizer",
+    "mapping,optimizer",
     [
-        (length, mapping, optimizer)
-        for length in [5, 10, 20, 40, 80, 160]
+        (mapping, optimizer)
         for mapping in ["identity", "network"]
         for optimizer in ["adam", "lbfgs"]
     ],
 )
-def test_exp_b_unified(
-    monkeypatch: pytest.MonkeyPatch, length: int, mapping: str, optimizer: str
+def test_exp_e_1_unified(
+    monkeypatch: pytest.MonkeyPatch, mapping: str, optimizer: str
 ) -> None:
     # Run simulation
-    run_igm_unified(monkeypatch, mapping, optimizer, length)
+    run_igm_unified(monkeypatch, mapping, optimizer)
 
     # Simulation results
     path_results_igm = os.path.join(
-        "outputs", f"{length}km", "unified", mapping, optimizer, "results.nc"
+        "outputs", "unified", mapping, optimizer, "results.nc"
     )
 
     with xr.open_dataset(path_results_igm) as file:
@@ -36,7 +35,7 @@ def test_exp_b_unified(
         x_igm = np.linspace(0.0, 1.0, len(v_igm))
 
     # Reference results
-    path_file_ref = os.path.join("..", "data", "oga", f"oga1b{length:03d}.txt")
+    path_file_ref = os.path.join("..", "data", "oga", "oga1e000.txt")
     try:
         file_ref = np.loadtxt(path_file_ref)
     except FileNotFoundError:
@@ -48,6 +47,6 @@ def test_exp_b_unified(
     v_ref = file_ref[:, 1]
 
     # Plot
-    title = f"ISMIP-HOM | EXP-B | L={length}km | unified/{mapping}/{optimizer}"
-    filename = f"exp_b_unified_{length}km_{mapping}_{optimizer}.pdf"
+    title = f"ISMIP-HOM | EXP-E-1 | unified/{mapping}/{optimizer}"
+    filename = f"exp_e_1_unified_{mapping}_{optimizer}.pdf"
     plot_comparison(x_ref, v_ref, x_igm, v_igm, title, filename)

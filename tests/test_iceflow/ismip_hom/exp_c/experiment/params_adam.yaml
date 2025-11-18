@@ -1,0 +1,53 @@
+# @package _global_
+
+hydra:
+  run:
+    dir: outputs
+
+defaults:
+  - /user/conf/inputs@inputs.init_state: init_state
+  - override /inputs: 
+    - init_state
+  - override /processes: 
+    - iceflow
+  - override /outputs: 
+    - write_ncdf
+
+processes:
+  iceflow:
+    method: unified
+    physics:
+      energy_components: [viscosity, gravity, sliding]
+    unified:
+      pretrained: False
+      nbit_init: 10000
+      print_cost: True
+      optimizer: adam
+      bcs: [periodic_ns, periodic_we]
+      halt:
+        freq: 1
+        success:
+          - criterion: patience
+            metric: cost
+            patience:
+              patience: 100
+        failure:
+          - criterion: nan
+            metric: u
+          - criterion: inf
+            metric: u
+    numerics:
+      Nz: 10
+      vert_basis: Lagrange
+    emulator:
+      network:
+        nb_layers: 64
+        nb_blocks: 4
+        nb_out_filter: 32
+        conv_ker_size: 7
+        dropout_rate: 0
+
+outputs:
+  write_ncdf:
+    output_file: results.nc
+    vars_to_save: [topg, usurf, thk, velbar_mag, velsurf_mag, velbase_mag, slidingco]

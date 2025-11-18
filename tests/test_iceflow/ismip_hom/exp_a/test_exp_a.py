@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import os
 import pytest
 import numpy as np
 import xarray as xr
@@ -22,10 +23,12 @@ def test_exp_a_unified(
     monkeypatch: pytest.MonkeyPatch, length: int, mapping: str, optimizer: str
 ) -> None:
     # Run simulation
-    run_igm_unified(monkeypatch, length, mapping, optimizer)
+    run_igm_unified(monkeypatch, mapping, optimizer, length)
 
     # Simulation results
-    path_results_igm = f"outputs/{length}km/unified/{mapping}/{optimizer}/results.nc"
+    path_results_igm = os.path.join(
+        "outputs", f"{length}km", "unified", mapping, optimizer, "results.nc"
+    )
 
     with xr.open_dataset(path_results_igm) as file:
         values = file["velsurf_mag"].values
@@ -34,7 +37,15 @@ def test_exp_a_unified(
         x_igm = np.linspace(0.0, 1.0, len(v_igm))
 
     # Reference results
-    file_ref = np.loadtxt(f"../data/oga/oga1a{length:03d}.txt")
+    path_file_ref = os.path.join("..", "data", "oga", f"oga1a{length:03d}.txt")
+    try:
+        file_ref = np.loadtxt(path_file_ref)
+    except FileNotFoundError:
+        assert False, (
+            f"❌ The file <{path_file_ref}> is not available. "
+            + "Please run <igm/tests/get_data.sh> to download it."
+        )
+
     idx = file_ref[:, 1] == 0.25
     x_ref = file_ref[idx, 0]
     v_ref = np.hypot(file_ref[idx, 2], file_ref[idx, 3])
