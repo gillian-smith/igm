@@ -163,26 +163,57 @@ def unet(cfg, nb_inputs, nb_outputs):
         name="unet",
     )
 
+class FixedAffineNormalizer(tf.keras.layers.Layer):
+    """
+    Fixed, non-adapting per-channel affine transform.
 
-def build_norm_layer(cfg, nb_inputs, scales):
+    Applies, for each input channel c:
 
-    # check that scales has length nb_inputs
+        x_norm[..., c] = (x[..., c] - offsets[c]) / scales[c]
+
+    There is no `adapt` step and the layer is non-trainable.
+    """
+
+    def __init__(self, scales, offsets=None, dtype=tf.float32, **kwargs):
+        super().__init__(trainable=False, dtype=dtype, **kwargs)
+
+        # Convert to tensors; we let broadcasting handle dimensions.
+        self.scales = tf.constant(scales, dtype=dtype)
+        if offsets is None:
+            offsets = np.zeros_like(scales)
+        self.offsets = tf.constant(offsets, dtype=dtype)
+
+    def call(self, x):
+        # x has shape [N, H, W, C]; scales/offsets are [C].
+        return (x - self.offsets) / self.scales
+
+
+def build_norm_layer(cfg, nb_inputs, scales, offsets=None):
+
     if len(scales) != nb_inputs:
         raise ValueError(
-            f"Expected inputs scales of length {nb_inputs}, got {len(scales)}"
+            f"Expected input scales of length {nb_inputs}, got {len(scales)}"
         )
-    
+
     precision = cfg.processes.iceflow.numerics.precision
-    dtype = _normalize_precision(precision)
-    
-    norm = tf.keras.layers.Normalization(axis=-1, dtype=dtype)
-    norm.build((None, None, None, nb_inputs))  # N,H,W,C so variables exist
+    dtype = _normalize_precision(precision)  # e.g., tf.float32 or tf.float64
+    np_dtype = dtype.as_numpy_dtype
 
-    mu  = np.array(scales, dtype=dtype)
-    # TODO: make the variance an input parameter
-    var = np.array([1000.0, 1000.0, 1.0, 1.0, 1.0], dtype=dtype)
-    count = tf.Variable(1.0, dtype=dtype)  # Use tf.Variable with scalar value
+    scales = np.asarray(scales, dtype=np_dtype)
 
-    norm.set_weights([mu, var, count])  # Now provide all 3 weights
+    if np.any(scales == 0.0):
+        raise ValueError("All input scales must be non-zero.")
 
-    return norm
+    if offsets is not None:
+        offsets = np.asarray(offsets, dtype=np_dtype)
+        if offsets.shape != scales.shape:
+            raise ValueError(
+                f"Offsets and scales must have the same shape; "
+                f"got {offsets.shape} and {scales.shape}."
+            )
+    else:
+        offsets = np.zeros_like(scales)
+
+    # Just wrap the constants in a non-trainable layer.
+    return FixedAffineNormalizer(scales=scales, offsets=offsets, dtype=dtype)
+

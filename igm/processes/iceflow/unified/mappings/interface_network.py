@@ -43,11 +43,28 @@ class InterfaceNetwork(InterfaceMapping):
             scales_array = process_inputs_scales(
                 cfg_unified.inputs_scales, cfg_unified.inputs
             )
+            offsets_array = process_inputs_scales(
+                cfg_unified.inputs_offsets, cfg_unified.inputs
+            )
 
-            if np.all(scales_array == 1):
+            # Sanity checks
+            if len(scales_array) != nb_inputs:
+                raise ValueError(
+                    f"Number of input scales ({len(scales_array)}) does not match "
+                    f"number of network inputs ({nb_inputs})."
+                )
+
+            if len(offsets_array) != nb_inputs:
+                raise ValueError(
+                    f"Number of input offsets ({len(offsets_array)}) does not match "
+                    f"number of network inputs ({nb_inputs})."
+                )
+
+            # If scales are all 1 and offsets all 0, skip normalization entirely
+            if np.all(scales_array == 1.0) and np.all(offsets_array == 0.0):
                 norm = None
             else:
-                norm = build_norm_layer(cfg, nb_inputs, scales_array)
+                norm = build_norm_layer(cfg, nb_inputs, scales_array, offsets_array)
 
             # Get the architecture function dynamically
             architecture_name = cfg_unified.network.architecture

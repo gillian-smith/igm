@@ -65,6 +65,12 @@ iceflow:
       arrhenius: 1.0
       slidingco: 1.0
       dX: 1.0
+    inputs_offsets : 
+      thk: 0.0
+      usurf: 0.0
+      arrhenius: 0.0
+      slidingco: 0.0
+      dX: 0.0
     network:
       output_scale: 1.0
       architecture: cnn
