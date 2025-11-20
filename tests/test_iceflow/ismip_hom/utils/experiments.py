@@ -214,3 +214,88 @@ class ExperimentE2(Experiment):
             "slidingco": C,
             "arrhenius": A,
         }
+
+
+class ExperimentF1(Experiment):
+    def init_fields(
+        self, L: Optional[float] = None, n: Optional[int] = None
+    ) -> Dict[str, np.ndarray]:
+
+        H0 = 1000.0
+
+        L = 100.0 * H0
+        a0 = 0.1 * H0
+        σ = 10.0 * H0
+
+        nx, ny = n, n
+        x = np.linspace(-L / 2.0, L / 2.0, nx)
+        y = np.linspace(-L / 2.0, L / 2.0, ny)
+        dx = x[1] - x[0]
+        X, Y = np.meshgrid(x, y)
+        dX = dx * np.ones_like(X)
+
+        α_x = np.deg2rad(3.0)
+        z_s = -X * np.tan(α_x)
+        z_b = z_s - H0 + a0 * np.exp(-(X**2 + Y**2) / σ**2)
+        h = H0 * np.ones_like(X)
+
+        A = 2.140373e-1 * np.ones_like(X)
+        C = 1.0 * np.ones_like(X)
+
+        return {
+            "x": x,
+            "y": y,
+            "X": X,
+            "Y": Y,
+            "dx": dx,
+            "dX": dX,
+            "thk": h,
+            "topg": z_b,
+            "usurf": z_s,
+            "slidingco": C,
+            "arrhenius": A,
+        }
+
+
+class ExperimentF2(Experiment):
+    def init_fields(
+        self, L: Optional[float] = None, n: Optional[int] = None
+    ) -> Dict[str, np.ndarray]:
+
+        H0 = 1000.0
+
+        L = 100.0 * H0
+        a0 = 0.1 * H0
+        σ = 10.0 * H0
+
+        nx, ny = n, n
+        x = np.linspace(-L / 2.0, L / 2.0, nx)
+        y = np.linspace(-L / 2.0, L / 2.0, ny)
+        dx = x[1] - x[0]
+        X, Y = np.meshgrid(x, y)
+        dX = dx * np.ones_like(X)
+
+        α_x = np.deg2rad(3.0)
+        z_s = -X * np.tan(α_x)
+        z_b = z_s - H0 + a0 * np.exp(-(X**2 + Y**2) / σ**2)
+        h = H0 * np.ones_like(X)
+
+        A = 2.140373e-1
+        C = 1.0 / (1.0 * A * H0)
+
+        A = A * np.ones_like(X)
+        C = C * np.ones_like(X)
+
+        return {
+            "x": x,
+            "y": y,
+            "X": X,
+            "Y": Y,
+            "dx": dx,
+            "dX": dX,
+            "thk": h,
+            "topg": z_b,
+            "usurf": z_s,
+            "slidingco": C,
+            "arrhenius": A,
+        }
