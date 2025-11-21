@@ -31,3 +31,24 @@ def process_inputs_scales(inputs_scales, inputs_list):
             scales_array.append(1.0)
             warnings.warn(f"Scale not specified for field '{field_name}', using default value 1.0")
     return np.array(scales_array)
+
+def process_inputs_variances(inputs_variances, inputs_list):
+    """
+    Convert inputs_variances dictionary to a numpy array in the order of inputs_list.
+    
+    Args:
+        inputs_variances: Dict mapping field names to variances
+        inputs_list: List of input field names in order
+        
+    Returns:
+        numpy array of variances in the same order as inputs_list
+    """
+    variances_array = []
+    for field_name in inputs_list:
+        if field_name in inputs_variances:
+            variances_array.append(inputs_variances[field_name])
+        else:
+            # Default to 1.0 if not specified
+            variances_array.append(1.0)
+            warnings.warn(f"Scale not specified for field '{field_name}', using default value 1.0")
+    return np.array(variances_array)

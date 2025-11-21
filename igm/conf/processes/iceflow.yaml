@@ -59,12 +59,21 @@ iceflow:
       alpha_min: 0.0
     bcs: []
     inputs: [thk, usurf, arrhenius, slidingco, dX]
-    inputs_scales: 
-      thk: 1.0
-      usurf: 1.0
-      arrhenius: 1.0
-      slidingco: 1.0
-      dX: 1.0
+    scaling:
+      method: automatic
+      manual:
+        inputs_scales: 
+          thk: 1.0
+          usurf: 1.0
+          arrhenius: 1.0
+          slidingco: 1.0
+          dX: 1.0
+        inputs_variances: 
+          thk: 1.0
+          usurf: 1.0
+          arrhenius: 1.0
+          slidingco: 1.0
+          dX: 1.0
     network:
       output_scale: 1.0
       architecture: cnn

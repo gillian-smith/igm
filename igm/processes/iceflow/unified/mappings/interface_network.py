@@ -15,9 +15,10 @@ from igm.processes.iceflow.emulate.utils.misc import (
     load_model_from_path,
 )
 from .interface import InterfaceMapping
-from igm.processes.iceflow.emulate.utils.networks import cnn, unet, build_norm_layer
-from .utils import process_inputs_scales
+from igm.processes.iceflow.emulate.utils.networks import cnn, unet, StandardizationLayer, ManualNormalizationLayer
+from .utils import process_inputs_scales, process_inputs_variances
 
+import tensorflow as tf
 
 class InterfaceNetwork(InterfaceMapping):
 
@@ -38,28 +39,35 @@ class InterfaceNetwork(InterfaceMapping):
                 cfg_numerics.Nz - 1
             )
             nb_outputs = 2 * cfg_numerics.Nz
-
-            # Convert inputs_scales to proper format
-            scales_array = process_inputs_scales(
-                cfg_unified.inputs_scales, cfg_unified.inputs
-            )
-
-            if np.all(scales_array == 1):
-                norm = None
+            
+            if cfg_unified.scaling.method.lower() == "automatic":
+                norm = StandardizationLayer()
+            elif cfg_unified.scaling.method.lower() == "manual":
+                scales = process_inputs_scales(
+                    cfg_unified.scaling.manual.inputs_scales, cfg_unified.inputs
+                )
+                variances = process_inputs_variances(
+                    cfg_unified.scaling.manual.inputs_variances, cfg_unified.inputs
+                )
+                norm = ManualNormalizationLayer(
+                        scales=scales,
+                        variances=variances
+                    )
             else:
-                norm = build_norm_layer(cfg, nb_inputs, scales_array)
+                norm = None
 
-            # Get the architecture function dynamically
             architecture_name = cfg_unified.network.architecture
 
             # Get the function from the networks module
             if hasattr(igm.processes.iceflow.emulate.utils.networks, architecture_name):
-                architecture_fn = getattr(
+                architecture_class = getattr(
                     igm.processes.iceflow.emulate.utils.networks, architecture_name
                 )
-                iceflow_model = architecture_fn(
+
+                iceflow_model = architecture_class(
                     cfg, nb_inputs, nb_outputs, input_normalizer=norm
                 )
+
             else:
                 raise ValueError(
                     f"Unknown network architecture: {architecture_name}. "
@@ -67,7 +75,7 @@ class InterfaceNetwork(InterfaceMapping):
                 )
 
         state.iceflow_model = iceflow_model
-        state.iceflow_model.compile(jit_compile=True)
+        state.iceflow_model.compile(jit_compile=False) # not all architectures support jit_compile=True
 
         return {
             "bcs": cfg_unified.bcs,
