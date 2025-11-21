@@ -49,16 +49,23 @@ class OptimizerAdam(Optimizer):
         else:
             module_optimizer = tf.keras.optimizers.legacy
 
+        self.iter_max = tf.Variable(iter_max)
         if lr_decay > 0.0:
             schedule = tf.keras.optimizers.schedules.ExponentialDecay(
                 initial_learning_rate=lr,
                 decay_steps=lr_decay_steps,
                 decay_rate=lr_decay,
             )
-            self.optim_adam = module_optimizer.Adam(learning_rate=schedule, beta_1=0.8, beta_2=0.9995, clipnorm=clip_norm)
+            self.optim_adam = module_optimizer.Adam(
+                learning_rate=schedule, beta_1=0.8, beta_2=0.9995, clipnorm=clip_norm
+            )
         else:
-            self.iter_max = tf.Variable(iter_max)
-            self.optim_adam = module_optimizer.Adam(learning_rate=tf.Variable(lr), beta_1=0.8, beta_2=0.9995, clipnorm=clip_norm)
+            self.optim_adam = module_optimizer.Adam(
+                learning_rate=tf.Variable(lr),
+                beta_1=0.8,
+                beta_2=0.9995,
+                clipnorm=clip_norm,
+            )
 
     def update_parameters(
         self, iter_max: int, lr: float, lr_decay: float, lr_decay_steps: int
@@ -88,11 +95,10 @@ class OptimizerAdam(Optimizer):
 
         n_batches = first_batch.shape[0]
         input = first_batch[0, :, :, :, :]  # Define before loop for AutoGraph
-        
+
         # Sample first batch to initialize
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, w)
-
 
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
@@ -109,7 +115,7 @@ class OptimizerAdam(Optimizer):
             if dynamic_augmentation:
                 batched_inputs = self.sampler(inputs)  # [M, B, H, W, C]
             else:
-                batched_inputs = static_batches       # [M, B, H, W, C]
+                batched_inputs = static_batches  # [M, B, H, W, C]
 
             for b in tf.range(n_batches):
                 input = batched_inputs[b, :, :, :, :]
@@ -122,7 +128,7 @@ class OptimizerAdam(Optimizer):
                 cost_sum = cost_sum + cost
                 grad_u_norm_sum = grad_u_norm_sum + grad_u_norm
                 grad_w_norm_sum = grad_w_norm_sum + grad_w_norm
-                
+
             cost_avg = cost_sum / n_batches
             grad_u_norm_avg = grad_u_norm_sum / n_batches
             grad_w_norm_avg = grad_w_norm_sum / n_batches
