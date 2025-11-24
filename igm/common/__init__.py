@@ -13,4 +13,5 @@ from .utilities import (
     download_unzip_and_store,
     print_comp,
     print_gpu_info,
+    print_model_with_inputs,
 )

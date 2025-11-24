@@ -1,5 +1,5 @@
 from .misc import add_logger, download_unzip_and_store
-from .printers import print_comp, print_gpu_info, print_info
+from .printers import print_comp, print_gpu_info, print_info, print_model_with_inputs
 from .visualizers import (
     _plot_computational_pie,
     _plot_memory_pie,
