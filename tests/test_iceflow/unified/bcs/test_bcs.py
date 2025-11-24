@@ -56,7 +56,9 @@ def test_registry_names() -> None:
     ],
 )
 def test_frozen_bed(shape: Tuple[int, ...]) -> None:
-    bc = BoundaryConditions["frozen_bed"]()
+    Nz = shape[1]
+    V_b = tf.one_hot(0, Nz)
+    bc = BoundaryConditions["frozen_bed"](V_b)
     U_in, V_in = create_UV(shape)
     U_out, V_out = bc.apply(U_in, V_in)
 
@@ -77,7 +79,9 @@ def test_frozen_bed(shape: Tuple[int, ...]) -> None:
     ],
 )
 def test_periodic_NS(shape: Tuple[int, ...]) -> None:
-    bc = BoundaryConditions["periodic_ns"]()
+    Nz = shape[1]
+    V_b = tf.one_hot(0, Nz)
+    bc = BoundaryConditions["periodic_ns"](V_b)
     U_in, V_in = create_UV(shape)
     U_out, V_out = bc.apply(U_in, V_in)
 
@@ -95,7 +99,9 @@ def test_periodic_NS(shape: Tuple[int, ...]) -> None:
     ],
 )
 def test_periodic_WE(shape: Tuple[int, ...]) -> None:
-    bc = BoundaryConditions["periodic_we"]()
+    Nz = shape[1]
+    V_b = tf.one_hot(0, Nz)
+    bc = BoundaryConditions["periodic_we"](V_b)
     U_in, V_in = create_UV(shape)
     U_out, V_out = bc.apply(U_in, V_in)
 
