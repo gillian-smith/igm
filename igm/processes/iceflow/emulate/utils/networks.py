@@ -9,7 +9,7 @@ import tensorflow as tf
 from igm.utils.math.precision import _normalize_precision
 
 
-def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
+def cnn_og(cfg, nb_inputs, nb_outputs, input_normalizer=None):
     """
     Routine serve to build a convolutional neural network
     """
@@ -135,14 +135,86 @@ def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
 
     return tf.keras.models.Model(inputs=inputs, outputs=outputs)
 
-# tf.config.run_functions_eagerly(True)
-class CNN_mine(tf.keras.Model):
+class CNNSkip(tf.keras.Model):
+    """
+    Simple convolutional neural network with skip connection.
+    """
+
+    def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None):
+        super(CNNSkip, self).__init__()
+
+        precision = cfg.processes.iceflow.numerics.precision
+        self.dtype_model = _normalize_precision(precision)
+
+        self.input_normalizer = input_normalizer
+
+        # Build convolutional layers (unchanged)
+        self.conv_layers = []
+        self.activations = []
+        n_layers = int(cfg.processes.iceflow.emulator.network.nb_layers)
+        n_filters = cfg.processes.iceflow.emulator.network.nb_out_filter
+
+        for _ in range(n_layers):
+            layer = tf.keras.layers.Conv2D(
+                filters=n_filters,
+                kernel_size=(5, 5),
+                padding='same',
+                dtype=self.dtype_model,
+            )
+            activation = tf.keras.layers.Activation(
+                cfg.processes.iceflow.emulator.network.activation
+            )
+            self.conv_layers.append(layer)
+            self.activations.append(activation)
+
+        # Projection layer for skip connection (1×1 conv)
+        self.skip_proj = tf.keras.layers.Conv2D(
+            filters=n_filters,
+            kernel_size=(1, 1),
+            padding='same',
+            dtype=self.dtype_model,
+        )
+
+        # Output layer (unchanged)
+        self.output_layer = tf.keras.layers.Conv2D(
+            filters=nb_outputs,
+            kernel_size=(1, 1),
+            activation=None,
+            dtype=self.dtype_model,
+        )
+
+        self.build(input_shape=[None, None, None, nb_inputs])
+
+    def call(self, inputs):
+        x = inputs
+
+        if self.input_normalizer is not None:
+            x = self.input_normalizer(x)
+
+        # Store skip connection
+        skip = self.skip_proj(x)
+
+        # Main path
+        for conv, activation in zip(self.conv_layers, self.activations):
+            x = conv(x)
+            x = activation(x)
+
+        # Add skip connection
+        x = x + skip
+
+        # Output layer
+        outputs = self.output_layer(x)
+
+        return outputs
+
+
+class CNN(tf.keras.Model):
     """
     Simple convolutional neural network
     """
     
     def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None):
-        super(CNN_mine, self).__init__()
+        super(CNN, self).__init__()
         
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = _normalize_precision(precision)
@@ -179,11 +251,8 @@ class CNN_mine(tf.keras.Model):
     def call(self, inputs):
         x = inputs
         
-        # get min and max of each channel (0 dimension)
-        # print("scales", tf.reduce_min(x, axis=[0,1,2]).numpy(), tf.reduce_max(x, axis=[0,1,2]).numpy())
         if self.input_normalizer is not None:
             x = self.input_normalizer(x)
-        # print("scales after", tf.reduce_min(x, axis=[0,1,2]), tf.reduce_max(x, axis=[0,1,2]))
         
         # Pass through convolutional layers
         for conv, activation in zip(self.conv_layers, self.activations):
@@ -245,13 +314,13 @@ class MLP(tf.keras.Model):
     # def __repr__(self):
         # return f"mlp(num_layers={len(self.hidden_layers)}, dtype={self.dtype_model})"
 
-class DRM(tf.keras.Model):
+class FourierMLP(tf.keras.Model):
     """
     MLP with proper coordinate handling for spatial problems
     """
     
     def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None):
-        super(DRM, self).__init__()
+        super(FourierMLP, self).__init__()
         
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype_model = _normalize_precision(precision)
@@ -265,7 +334,7 @@ class DRM(tf.keras.Model):
         
         # Fourier features (crucial for spatial learning)
         self.fourier_scale = 1.0  # Adjust this if needed
-        self.fourier_dim = 128
+        self.fourier_dim = 256
         
         # +2 for normalized (x,y) coordinates
         coord_input_dim = nb_inputs + 2

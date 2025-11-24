@@ -15,10 +15,8 @@ from igm.processes.iceflow.emulate.utils.misc import (
     load_model_from_path,
 )
 from .interface import InterfaceMapping
-from igm.processes.iceflow.emulate.utils.networks import cnn, unet, StandardizationLayer, ManualNormalizationLayer
+from igm.processes.iceflow.emulate.utils.networks import cnn_og, unet, StandardizationLayer, ManualNormalizationLayer
 from .utils import process_inputs_scales, process_inputs_variances
-
-import tensorflow as tf
 
 class InterfaceNetwork(InterfaceMapping):
 
@@ -35,9 +33,10 @@ class InterfaceNetwork(InterfaceMapping):
         else:
             warnings.warn("No pretrained emulator found. Starting from scratch.")
 
-            nb_inputs = len(cfg_unified.fieldin) + (cfg_physics.dim_arrhenius == 3) * (
+            nb_inputs = len(cfg_unified.inputs) + (cfg_physics.dim_arrhenius == 3) * (
                 cfg_numerics.Nz - 1
             )
+
             nb_outputs = 2 * cfg_numerics.Nz
             
             if cfg_unified.scaling.method.lower() == "automatic":
@@ -54,7 +53,7 @@ class InterfaceNetwork(InterfaceMapping):
                         variances=variances
                     )
             else:
-                norm = None
+                norm = None # a bit reduundant if we make manual normalization 1 everywhere
 
             architecture_name = cfg_unified.network.architecture
 
@@ -76,6 +75,9 @@ class InterfaceNetwork(InterfaceMapping):
 
         state.iceflow_model = iceflow_model
         state.iceflow_model.compile(jit_compile=False) # not all architectures support jit_compile=True
+        
+        if cfg.processes.iceflow.unified.network.print_summary:
+            print(state.iceflow_model.summary())
 
         return {
             "bcs": cfg_unified.bcs,

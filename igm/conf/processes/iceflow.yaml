@@ -75,6 +75,7 @@ iceflow:
           slidingco: 1.0
           dX: 1.0
     network:
+      print_summary: false
       output_scale: 1.0
       architecture: cnn
     data_preparation:
