@@ -618,7 +618,6 @@ def unet(cfg, nb_inputs, nb_outputs):
         name="unet",
     )
 
-
 class ManualNormalizationLayer(tf.keras.layers.Layer):
     """
     Normalization layer with manually specified mean and variance for each channel.

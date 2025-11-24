@@ -57,6 +57,8 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
+    sequential:
+      stages: []
     bcs: []
     inputs: [thk, usurf, arrhenius, slidingco, dX]
     scaling:
