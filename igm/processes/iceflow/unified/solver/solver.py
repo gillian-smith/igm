@@ -10,7 +10,7 @@ from igm.common.core import State
 
 from ..optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import (
-    get_fieldin,
+    fieldin_state_to_X,
 )
 
 
@@ -34,7 +34,7 @@ def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
     """Returns [N, H, W, C] patches (sampler handles batching/augmentation)."""
-    fieldin = get_fieldin(cfg, state)
+    fieldin = fieldin_state_to_X(cfg, state)
 
     # Create patches using the patching object
     patches = state.iceflow.patching.generate_patches(fieldin)

@@ -14,4 +14,5 @@ from .utilities import (
     print_comp,
     print_gpu_info,
     print_model_with_inputs,
+    print_model_with_inputs_detailed,
 )

@@ -9,9 +9,10 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.columns import Columns
-from rich.text import Text
 import io
 import re
+import tensorflow as tf
+import numpy as np
 
 
 from .visualizers import _plot_memory_pie, _plot_computational_pie
@@ -197,6 +198,196 @@ def print_model_with_inputs(
         f"[bold white]Channels:[/bold white] [cyan]{len(input_names)}[/cyan] | "
         f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
     )
+
+    # ===== DISPLAY SIDE BY SIDE =====
+    console.print()
+    console.print(
+        Panel(
+            Columns([model_table, input_table], equal=False, expand=True),
+            title=f"[bold]{title}[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+
+def print_model_with_inputs_detailed(
+    model, input_data, cfg_inputs, normalization_method="standardization", title="Model Architecture"
+):
+    """
+    Extended version with standard deviation and percentiles.
+    
+    Args:
+        model: TensorFlow/Keras model
+        input_data: Dictionary of input fields {field_name: array_data}
+        cfg_inputs: List of input variable names from cfg.unified.inputs
+        normalization_method: String describing normalization method
+        title: Title for the display
+    """
+    console = Console()
+
+    # ===== MODEL TABLE =====
+    string_buffer = io.StringIO()
+    model.summary(print_fn=lambda x: string_buffer.write(x + "\n"))
+    summary_str = string_buffer.getvalue()
+    lines = summary_str.split("\n")
+
+    model_table = Table(
+        title=f"[bold cyan]{model.name}[/bold cyan]",
+        show_header=True,
+        header_style="bold magenta",
+        border_style="blue",
+        title_style="bold cyan",
+        expand=False,
+    )
+
+    model_table.add_column("Layer (type)", style="cyan", no_wrap=True, width=20)
+    model_table.add_column("Output Shape", style="green", width=22)
+    model_table.add_column("Params", style="yellow", justify="right", width=10)
+
+    in_layers = False
+    for line in lines:
+        if line.strip().startswith("=") or line.strip().startswith("_"):
+            continue
+        if "Layer (type)" in line:
+            in_layers = True
+            continue
+        if "Total params:" in line:
+            in_layers = False
+
+        if in_layers and line.strip():
+            parts = re.split(r"\s{2,}", line.strip())
+            if len(parts) >= 3:
+                layer_name = parts[0]
+                output_shape = parts[1].replace("None", "[bold red]None[/bold red]")
+                param_count = parts[2]
+
+                if param_count != "0":
+                    param_count = f"[bold yellow]{param_count}[/bold yellow]"
+                else:
+                    param_count = f"[dim]{param_count}[/dim]"
+
+                model_table.add_row(layer_name, output_shape, param_count)
+
+    total_params = trainable_params = None
+    for line in lines:
+        if "Total params:" in line:
+            total_params = line.split("Total params:")[1].strip()
+        elif "Trainable params:" in line:
+            trainable_params = line.split("Trainable params:")[1].strip()
+
+    model_table.caption = f"[bold white]Total:[/bold white] [cyan]{total_params}[/cyan] | [bold white]Trainable:[/bold white] [green]{trainable_params}[/green]"
+
+    # ===== DETAILED INPUT VARIABLES TABLE =====
+    input_table = Table(
+        title="[bold cyan]Input Variables Statistics[/bold cyan]",
+        show_header=True,
+        header_style="bold magenta",
+        border_style="green",
+        title_style="bold cyan",
+        expand=False,
+    )
+
+    input_table.add_column("Variable", style="cyan bold", width=14)
+    input_table.add_column("Status", style="white", justify="center", width=12)
+    input_table.add_column("Mean", style="yellow", justify="right", width=10)
+    input_table.add_column("Std", style="yellow", justify="right", width=10)
+    input_table.add_column("Min", style="blue", justify="right", width=10)
+    input_table.add_column("Median", style="white", justify="right", width=10)
+    input_table.add_column("Max", style="red", justify="right", width=10)
+
+    # Check which variables are available and requested
+    available_keys = set(input_data.keys())
+    requested_keys = set(cfg_inputs)
+    
+    # Iterate through requested inputs and check availability
+    for var_name in cfg_inputs:
+        if var_name in available_keys:
+            # Variable is available - compute statistics
+            field_data = input_data[var_name]
+            
+            # Convert to numpy if needed
+            if isinstance(field_data, tf.Tensor):
+                field_data = field_data.numpy()
+            
+            # Flatten for statistics
+            flat_data = field_data.flatten()
+            
+            mean_val = np.mean(flat_data)
+            std_val = np.std(flat_data)
+            min_val = np.min(flat_data)
+            median_val = np.median(flat_data)
+            max_val = np.max(flat_data)
+            
+            input_table.add_row(
+                var_name,
+                "[bold green]✓ Found[/bold green]",
+                f"{mean_val:.3e}",
+                f"{std_val:.3e}",
+                f"{min_val:.3e}",
+                f"{median_val:.3e}",
+                f"{max_val:.3e}",
+            )
+        else:
+            # Variable is requested but not available
+            input_table.add_row(
+                var_name,
+                "[bold red]✗ Missing[/bold red]",
+                "[dim]N/A[/dim]",
+                "[dim]N/A[/dim]",
+                "[dim]N/A[/dim]",
+                "[dim]N/A[/dim]",
+                "[dim]N/A[/dim]",
+            )
+    
+    # Get shape information from first available field
+    if available_keys:
+        first_key = list(available_keys)[0]
+        sample_data = input_data[first_key]
+        if isinstance(sample_data, tf.Tensor):
+            sample_data = sample_data.numpy()
+        
+        # Determine shape
+        if sample_data.ndim == 4:  # (N, H, W, C) or similar
+            n_samples, height, width, n_channels = sample_data.shape
+            shape_str = f"({n_samples}, {height}, {width}, {n_channels})"
+            grid_str = f"{height}×{width}"
+            total_points = n_samples * height * width
+        elif sample_data.ndim == 3:  # (N, H, W)
+            n_samples, height, width = sample_data.shape
+            shape_str = f"({n_samples}, {height}, {width})"
+            grid_str = f"{height}×{width}"
+            total_points = n_samples * height * width
+        elif sample_data.ndim == 2:  # (N, features)
+            n_samples, n_features = sample_data.shape
+            shape_str = f"({n_samples}, {n_features})"
+            grid_str = f"{n_features} features"
+            total_points = n_samples
+        else:
+            shape_str = str(sample_data.shape)
+            grid_str = "unknown"
+            total_points = sample_data.size
+        
+        input_table.caption = (
+            f"[bold white]Shape:[/bold white] [cyan]{shape_str}[/cyan] | "
+            f"[bold white]Grid:[/bold white] [yellow]{grid_str}[/yellow] | "
+            f"[bold white]Total points:[/bold white] [magenta]{total_points:,}[/magenta] | "
+            f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
+        )
+    else:
+        input_table.caption = f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
+    
+    # Check for missing or extra variables
+    missing_vars = requested_keys - available_keys
+    extra_vars = available_keys - requested_keys
+    
+    if missing_vars or extra_vars:
+        console.print()
+        if missing_vars:
+            console.print(f"[bold yellow]⚠ Warning:[/bold yellow] Missing variables in input_data: {', '.join(missing_vars)}")
+        if extra_vars:
+            console.print(f"[bold blue]ℹ Info:[/bold blue] Extra variables in input_data (not used): {', '.join(extra_vars)}")
 
     # ===== DISPLAY SIDE BY SIDE =====
     console.print()

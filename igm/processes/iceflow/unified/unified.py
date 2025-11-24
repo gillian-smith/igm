@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.common.core import State
+from igm.common import print_model_with_inputs, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
 from .optimizers import Optimizers, InterfaceOptimizers
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
@@ -20,7 +21,7 @@ from igm.processes.iceflow.data_preparation.config import (
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
-from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X, X_to_fieldin
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
@@ -28,14 +29,20 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     # Initialize training set
     preparation_params_args = get_input_params_args(cfg)
     preparation_params = PreparationParams(**preparation_params_args)
-
+    
     state.iceflow.preparation_params = preparation_params
-    fieldin = get_fieldin(cfg, state)
+    X = fieldin_state_to_X(cfg, state)
+    fieldin_dict = X_to_fieldin(
+        X,
+        fieldin_names=preparation_params.fieldin_names,
+        dim_arrhenius=cfg.processes.iceflow.physics.dim_arrhenius,
+        Nz=cfg.processes.iceflow.numerics.Nz,
+    )
 
     state.iceflow.patching = OverlapPatching(
         patch_size=preparation_params.patch_size,
         overlap=preparation_params.overlap,
-        fieldin=fieldin
+        fieldin=X
     )
     num_patches = state.iceflow.patching.num_patches          # int
     patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape  # patch spatial dimensions
@@ -67,6 +74,14 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     evaluator_params = EvaluatorParams(**evaluator_params_args)
     state.iceflow.evaluator_params = evaluator_params
 
+    if cfg.processes.iceflow.unified.network.print_summary:
+        print_model_with_inputs_detailed(
+            model=state.iceflow_model,
+            input_data=fieldin_dict,
+            cfg_inputs=cfg.processes.iceflow.unified.inputs,
+            normalization_method=cfg.processes.iceflow.unified.scaling.method,
+        )
+    
     # Solve once
     solve_iceflow(cfg, state, init=True)
 

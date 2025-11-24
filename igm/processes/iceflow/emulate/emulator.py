@@ -22,7 +22,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     prepare_X,
 )
 
-from igm.processes.iceflow.utils.data_preprocessing import get_fieldin, compute_PAD
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X, compute_PAD
 from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
 
@@ -91,7 +91,7 @@ def update_iceflow_emulator(
     nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
     lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
 
-    fieldin = get_fieldin(cfg, state)
+    fieldin = fieldin_state_to_X(cfg, state)
     X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
 
     batch_size = X.shape[1]
@@ -193,7 +193,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     cfg_physics = cfg.processes.iceflow.physics
 
     # need to do this dummy call to prepare_X to get the dimensions right
-    fieldin = get_fieldin(cfg, state)
+    fieldin = fieldin_state_to_X(cfg, state)
     X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
 
     Nx = X.shape[-2]

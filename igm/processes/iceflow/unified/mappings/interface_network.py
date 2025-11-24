@@ -87,13 +87,6 @@ class InterfaceNetwork(InterfaceMapping):
             jit_compile=False
         )  # not all architectures support jit_compile=True
 
-        if cfg.processes.iceflow.unified.network.print_summary:
-            print_model_with_inputs(
-                state.iceflow_model,
-                cfg_unified.inputs,
-                normalization_method=cfg_unified.scaling.method,
-            )
-
         return {
             "bcs": cfg_unified.bcs,
             "vertical_discr": state.iceflow.vertical_discr,

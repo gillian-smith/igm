@@ -96,7 +96,7 @@ def match_fieldin_dimensions(fieldin):
     return fieldin_matched
 
 
-def get_fieldin(cfg, state):
+def fieldin_state_to_X(cfg, state):
 
     fieldin = [vars(state)[f] for f in cfg.processes.iceflow.unified.inputs]
     if cfg.processes.iceflow.physics.dim_arrhenius == 3:
@@ -120,7 +120,7 @@ def fieldin_to_X_3d(dim_arrhenius, fieldin):
     return fieldin
 
 @tf.function(jit_compile=True)
-def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
+def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int) -> Dict[str, tf.Tensor]:
     """Converts the input tensor X to a dictionary of fieldin variables."""
     
     fieldin = {}
