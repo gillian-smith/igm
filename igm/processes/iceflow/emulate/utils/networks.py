@@ -9,7 +9,7 @@ import tensorflow as tf
 from igm.utils.math.precision import _normalize_precision
 
 
-def cnn_og(cfg, nb_inputs, nb_outputs, input_normalizer=None):
+def cnn(cfg, nb_inputs, nb_outputs, input_normalizer=None):
     """
     Routine serve to build a convolutional neural network
     """
@@ -157,12 +157,12 @@ class CNNSkip(tf.keras.Model):
         for _ in range(n_layers):
             layer = tf.keras.layers.Conv2D(
                 filters=n_filters,
-                kernel_size=(5, 5),
+                kernel_size=(cfg.processes.iceflow.emulator.network.conv_ker_size, cfg.processes.iceflow.emulator.network.conv_ker_size),
                 padding='same',
                 dtype=self.dtype_model,
             )
             activation = tf.keras.layers.Activation(
-                cfg.processes.iceflow.emulator.network.activation
+                cfg.processes.iceflow.emulator.network.activation, name=cfg.processes.iceflow.emulator.network.activation
             )
             self.conv_layers.append(layer)
             self.activations.append(activation)
@@ -207,62 +207,6 @@ class CNNSkip(tf.keras.Model):
 
         return outputs
 
-
-class CNN(tf.keras.Model):
-    """
-    Simple convolutional neural network
-    """
-    
-    def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None):
-        super(CNN, self).__init__()
-        
-        precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
-        
-        self.input_normalizer = input_normalizer
-        
-        # Build convolutional layers
-        self.conv_layers = []
-        self.activations = []
-        for i in range(int(cfg.processes.iceflow.emulator.network.nb_layers)):
-            layer = tf.keras.layers.Conv2D(
-                filters=cfg.processes.iceflow.emulator.network.nb_out_filter,
-                kernel_size=(5, 5),  # Simple kernels
-                padding='same',
-                dtype=self.dtype_model,
-            )
-            activation = tf.keras.layers.Activation(
-                cfg.processes.iceflow.emulator.network.activation
-            )
-            self.conv_layers.append(layer)
-            self.activations.append(activation)
-        
-        # Output layer
-        self.output_layer = tf.keras.layers.Conv2D(
-            filters=nb_outputs,
-            kernel_size=(1, 1),
-            activation=None,
-            dtype=self.dtype_model,
-        )
-        
-        # Build the model immediately
-        self.build(input_shape=[None, None, None, nb_inputs])
-    
-    def call(self, inputs):
-        x = inputs
-        
-        if self.input_normalizer is not None:
-            x = self.input_normalizer(x)
-        
-        # Pass through convolutional layers
-        for conv, activation in zip(self.conv_layers, self.activations):
-            x = conv(x)
-            x = activation(x)
-        
-        # Output layer
-        outputs = self.output_layer(x)
-        
-        return outputs
 class MLP(tf.keras.Model):
     """
     Simple multi-layer perceptron (fully connected network)
@@ -618,9 +562,9 @@ def unet(cfg, nb_inputs, nb_outputs):
         name="unet",
     )
 
-class ManualNormalizationLayer(tf.keras.layers.Layer):
+class FixedAffineLayer(tf.keras.layers.Layer):
     """
-    Normalization layer with manually specified mean and variance for each channel.
+    Standardization layer with manually specified mean and variance for each channel.
     """
     def __init__(self, scales, variances=None, epsilon=1e-6, dtype='float32', **kwargs):
         """
@@ -630,7 +574,7 @@ class ManualNormalizationLayer(tf.keras.layers.Layer):
             epsilon: Small constant for numerical stability
             dtype: Data type for the layer
         """
-        super(ManualNormalizationLayer, self).__init__(dtype=dtype, **kwargs)
+        super(FixedAffineLayer, self).__init__(dtype=dtype, **kwargs)
         self.epsilon = epsilon
         self.scales = np.array(scales, dtype=dtype)
         
@@ -675,7 +619,7 @@ class ManualNormalizationLayer(tf.keras.layers.Layer):
             dtype=self.dtype
         )
         
-        super(ManualNormalizationLayer, self).build(input_shape)
+        super(FixedAffineLayer, self).build(input_shape)
     
     def call(self, inputs):
         """Apply normalization: (x - mean) / std"""
@@ -685,7 +629,7 @@ class ManualNormalizationLayer(tf.keras.layers.Layer):
     
     def get_config(self):
         """Enable serialization."""
-        config = super(ManualNormalizationLayer, self).get_config()
+        config = super(FixedAffineLayer, self).get_config()
         config.update({
             'scales': self.scales.tolist(),
             'variances': self.variances.tolist(),
@@ -728,3 +672,58 @@ class StandardizationLayer(tf.keras.layers.Layer):
         normalized = (inputs - mean) / std
         
         return normalized
+
+class NormalizationLayer(tf.keras.layers.Layer):
+    """
+    Scales variables to a specified range [a, b] with different normalization strategies.
+    """
+    def __init__(self, mode='channel', scale_range=(0, 1), epsilon=1e-6, **kwargs):
+        """
+        Args:
+            mode: 'spatial' - scale each sample/channel over spatial dims
+                  'channel' - scale each channel over batch and spatial dims
+                  'global' - scale over everything (batch, spatial, channels)
+            scale_range: tuple (a, b) specifying the target range
+            epsilon: small constant for numerical stability
+        """
+        super(NormalizationLayer, self).__init__(**kwargs)
+        self.mode = mode
+        self.scale_range = scale_range
+        self.epsilon = epsilon
+        self.a, self.b = scale_range
+        
+    def call(self, inputs):
+        if self.mode == 'spatial':
+            # Scale each sample/channel over spatial dimensions [H, W]
+            min_val = tf.reduce_min(inputs, axis=[1, 2], keepdims=True)
+            max_val = tf.reduce_max(inputs, axis=[1, 2], keepdims=True)
+        elif self.mode == 'channel':
+            # Scale each channel over batch and spatial [N, H, W]
+            min_val = tf.reduce_min(inputs, axis=[0, 1, 2], keepdims=True)
+            max_val = tf.reduce_max(inputs, axis=[0, 1, 2], keepdims=True)
+        elif self.mode == 'global':
+            # Scale over everything
+            min_val = tf.reduce_min(inputs)
+            max_val = tf.reduce_max(inputs)
+        else:
+            raise ValueError(f"Unknown mode: {self.mode}")
+        
+        # Compute range and handle case where min == max
+        data_range = max_val - min_val + self.epsilon
+        
+        # Scale to [0, 1] first
+        normalized = (inputs - min_val) / data_range
+        
+        # Scale to [a, b]
+        scaled = normalized * (self.b - self.a) + self.a
+        
+        return scaled
+    
+    def get_config(self):
+        config = super(NormalizationLayer, self).get_config()
+        config.update({
+            'mode': self.mode,
+            'scale_range': self.scale_range,
+            'epsilon': self.epsilon
+        })
+        return config

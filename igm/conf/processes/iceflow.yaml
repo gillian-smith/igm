@@ -62,7 +62,7 @@ iceflow:
     bcs: []
     inputs: [thk, usurf, arrhenius, slidingco, dX]
     scaling:
-      method: automatic
+      method: automatic_standardization
       manual:
         inputs_scales: 
           thk: 1.0
@@ -107,12 +107,6 @@ iceflow:
     framesizemax: 750
     exclude_borders: 0
     pretrained: true
-    fieldin:
-    - thk
-    - usurf
-    - arrhenius
-    - slidingco
-    - dX
     halt:
       freq: 1
       success: []

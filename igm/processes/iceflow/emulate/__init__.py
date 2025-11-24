@@ -11,6 +11,6 @@ from .utils import (
     save_iceflow_model,
     get_emulator_path,
     get_effective_pressure_precentage,
-    cnn_og,
+    cnn,
     unet,
 )
