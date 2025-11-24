@@ -24,6 +24,8 @@ class GravityParams(tf.experimental.ExtensionType):
 class GravityComponent(EnergyComponent):
     """Energy component representing gravitational potential energy."""
 
+    name = "gravity"
+    
     def __init__(self, params: GravityParams) -> None:
         """Initialize gravity component with parameters."""
         self.params = params

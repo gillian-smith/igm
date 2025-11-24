@@ -22,6 +22,8 @@ class WeertmanParams(tf.experimental.ExtensionType):
 class Weertman(SlidingComponent):
     """Sliding component implementing Weertman's sliding law."""
 
+    name = "weertman"
+    
     def __init__(self, params: WeertmanParams) -> None:
         """Initialize Weertman sliding component with parameters."""
         self.params = params

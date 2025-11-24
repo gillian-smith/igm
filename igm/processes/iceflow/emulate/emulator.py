@@ -159,6 +159,7 @@ def update_emulator(
                 ) + tf.reduce_sum(energy_mean_staggered, axis=0)
                 cost_emulator += total_energy
 
+
             gradients = tape.gradient(
                 total_energy, bag["iceflow_model"].trainable_variables
             )

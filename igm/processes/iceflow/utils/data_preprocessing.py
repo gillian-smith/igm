@@ -98,7 +98,7 @@ def match_fieldin_dimensions(fieldin):
 
 def get_fieldin(cfg, state):
 
-    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.emulator.fieldin]
+    fieldin = [vars(state)[f] for f in cfg.processes.iceflow.unified.inputs]
     if cfg.processes.iceflow.physics.dim_arrhenius == 3:
         fieldin = match_fieldin_dimensions(fieldin)
     elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
@@ -119,29 +119,22 @@ def fieldin_to_X_3d(dim_arrhenius, fieldin):
 
     return fieldin
 
-
-from typing import List
-
-
 @tf.function(jit_compile=True)
 def X_to_fieldin(X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int):
     """Converts the input tensor X to a dictionary of fieldin variables."""
+    
+    fieldin = {}
+    for i, name in enumerate(fieldin_names):
+        if name.lower() == "arrhenius":
+            if dim_arrhenius == 3:
+                field = tf.experimental.numpy.moveaxis(X[..., i : i + Nz], [-1], [1])
+            else:
+                field = X[..., i]
+        else:
+            field = X[..., i]
+        fieldin[name] = field
 
-    thk = X[..., 0]
-    usurf = X[..., 1]
-
-    if dim_arrhenius == 3:
-        arrhenius = tf.experimental.numpy.moveaxis(X[..., 2 : 2 + Nz], [-1], [1])
-        slidingco = X[..., 2 + Nz]
-        dX = X[..., 3 + Nz]
-    elif dim_arrhenius == 2:
-        arrhenius = X[..., 2]
-        slidingco = X[..., 3]
-        dX = X[..., 4]
-    else:
-        raise ValueError("dim_arrhenius must be 2 or 3")  # issue inside of jit?
-
-    return dict(thk=thk, usurf=usurf, arrhenius=arrhenius, slidingco=slidingco, dX=dX)
+    return fieldin
 
 
 @tf.function(jit_compile=True)

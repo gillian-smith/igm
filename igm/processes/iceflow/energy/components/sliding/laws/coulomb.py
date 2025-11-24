@@ -24,6 +24,8 @@ class CoulombParams(tf.experimental.ExtensionType):
 class Coulomb(SlidingComponent):
     """Sliding component implementing Coulomb's sliding law."""
 
+    name = "coulomb"
+    
     def __init__(self, params: CoulombParams):
         """Initialize Coulomb sliding component with parameters."""
         self.params = params

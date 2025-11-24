@@ -48,13 +48,6 @@ from datetime import datetime
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-    # os.environ['XLA_FLAGS'] = '--xla_gpu_cudnn_gemm_fusion=1'
-    # TF_XLA_FLAGS=--tf_xla_auto_jit=-1
-    # os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '0'  # Enable fused Winograd algorithms
-    # os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1'
-    # os.environ['TF_DISABLE_CUDNN_TENSOR_OP_MATH'] = '1'
-    # os.environ['TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH'] = '1'
-    # os.environ['TF_DISABLE_CUBLAS_TENSOR_OP_MATH'] = '1'
 
     state = State()  # class acting as a dictionary
 

@@ -13,6 +13,8 @@ from .energy import EnergyComponent
 
 class FloatingComponent(EnergyComponent):
 
+    name = "floating"
+    
     def __init__(self, params):
         self.params = params
 

@@ -23,6 +23,8 @@ class BuddParams(tf.experimental.ExtensionType):
 class Budd(SlidingComponent):
     """Sliding component implementing Budd's sliding law."""
 
+    name = "budd"
+    
     def __init__(self, params: BuddParams) -> None:
         """Initialize Budd sliding component with parameters."""
         self.params = params

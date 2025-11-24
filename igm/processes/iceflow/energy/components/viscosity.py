@@ -25,6 +25,8 @@ class ViscosityParams(tf.experimental.ExtensionType):
 class ViscosityComponent(EnergyComponent):
     """Energy component representing viscous energy dissipation."""
 
+    name = "viscosity"
+    
     def __init__(self, params) -> None:
         """Initialize viscous component with parameters."""
         self.params = params
