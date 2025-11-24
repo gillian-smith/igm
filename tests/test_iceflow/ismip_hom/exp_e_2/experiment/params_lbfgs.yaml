@@ -23,12 +23,12 @@ processes:
         weertman:
           exponent: 1.0
     unified:
-      pretrained: False
-      nbit_init: 2000
-      print_cost: True
-      optimizer: lbfgs
-      line_search: armijo
       bcs: [periodic_ns, periodic_we]
+      optimizer: lbfgs
+      nbit_init: 2000
+      line_search: armijo
+      network:
+        pretrained: False
       halt:
         freq: 1
         success:
@@ -45,6 +45,8 @@ processes:
             metric: u
           - criterion: inf
             metric: u
+      display:
+        print_cost: True
     numerics:
       Nz: 10
       vert_basis: lagrange

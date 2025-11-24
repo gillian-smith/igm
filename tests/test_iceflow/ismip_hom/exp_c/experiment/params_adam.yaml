@@ -19,11 +19,11 @@ processes:
     physics:
       energy_components: [viscosity, gravity, sliding]
     unified:
-      pretrained: False
-      nbit_init: 10000
-      print_cost: True
-      optimizer: adam
       bcs: [periodic_ns, periodic_we]
+      optimizer: adam
+      nbit_init: 10000
+      network:
+        pretrained: False
       halt:
         freq: 1
         success:
@@ -36,6 +36,8 @@ processes:
             metric: u
           - criterion: inf
             metric: u
+      display:
+        print_cost: True
     numerics:
       Nz: 10
       vert_basis: Lagrange

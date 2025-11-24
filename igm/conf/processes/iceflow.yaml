@@ -41,100 +41,9 @@ iceflow:
     nbitmax: 100
     optimizer: adam
     print_cost: false
-    fieldin:
-    - thk
-    - usurf
-    - arrhenius
-    - slidingco
-    - dX
-  diagnostic:
-    save_freq: 1
-    filename_metrics: diagnostic_metrics.txt
-  unified:
-    mapping: network
-    optimizer: adam
-    line_search: hager-zhang
-    lbfgs:
-      memory: 10
-      alpha_min: 0.0
-    sequential:
-      stages: []
-    bcs: []
-    inputs: [thk, usurf, arrhenius, slidingco, dX]
-    scaling:
-      method: automatic_standardization
-      manual:
-        inputs_scales: 
-          thk: 1.0
-          usurf: 1.0
-          arrhenius: 1.0
-          slidingco: 1.0
-          dX: 1.0
-        inputs_variances: 
-          thk: 1.0
-          usurf: 1.0
-          arrhenius: 1.0
-          slidingco: 1.0
-          dX: 1.0
-    network:
-      print_summary: false
-      output_scale: 1.0
-      architecture: cnn
-    data_preparation:
-      patch_size: 1000
-      overlap: 0.0
-      batch_size: 32
-      rotation_probability: 0.0
-      flip_probability: 0.0
-      noise_type: none
-      noise_scale: 0.0
-      target_samples: 1
-    save_cost: ''
-    lr: 2.0e-05
-    lr_init: 0.0001
-    lr_decay: 1.0
-    lr_decay_steps: 1000
-    warm_up_it: -10000000000.0
-    nbit_init: 1
-    nbit: 1
-    retrain_freq: 10
-    optimizer_clipnorm: 1.0
-    optimizer_epsilon: 1.0e-07
-    perturbate: false
-    print_cost: false
-    print_cost_freq: 1
-    split_patch_method: sequential
-    framesizemax: 750
-    exclude_borders: 0
-    pretrained: true
-    halt:
-      freq: 1
-      success: []
-      failure: []
-      criteria: 
-        rel_tol:
-          tol: 1e-3
-          ord: l2
-        abs_tol:
-          tol: 1e-3
-          ord: l2_weighted
-        patience: 
-          patience: 100
-        inf: {}
-        nan: {}
-      metrics: 
-        w: {}
-        u: {}
-        cost: {}
-        grad_u_norm: {}
-        grad_w_norm: {}
+    fieldin: [thk, usurf, arrhenius, slidingco, dX]
   emulator:
-    fieldin:
-    - thk
-    - usurf
-    - arrhenius
-    - slidingco
-    - dX
+    fieldin: [thk, usurf, arrhenius, slidingco, dX]
     retrain_freq: 10
     print_cost: false
     lr: 2.0e-05
@@ -171,3 +80,80 @@ iceflow:
       l2_reg: 0.0
       separable: false
       residual: true
+  diagnostic:
+    save_freq: 1
+    filename_metrics: diagnostic_metrics.txt
+  unified:
+    mapping: network
+    bcs: []
+    optimizer: adam
+    warm_up_it: -1
+    nbit_init: 1
+    nbit: 1
+    retrain_freq: 10
+    adam:
+      lr: 2.0e-05
+      lr_init: 0.0001
+      lr_decay: 1.0
+      lr_decay_steps: 1000
+      optimizer_clipnorm: 1.0
+    lbfgs:
+      memory: 10
+      alpha_min: 0.0
+    sequential:
+      stages: []
+    line_search: hager-zhang
+    inputs: [thk, usurf, arrhenius, slidingco, dX]
+    scaling:
+      method: automatic_standardization
+      manual:
+        inputs_scales: 
+          thk: 1.0
+          usurf: 1.0
+          arrhenius: 1.0
+          slidingco: 1.0
+          dX: 1.0
+        inputs_variances: 
+          thk: 1.0
+          usurf: 1.0
+          arrhenius: 1.0
+          slidingco: 1.0
+          dX: 1.0
+    network:
+      pretrained: true
+      print_summary: false
+      output_scale: 1.0
+      architecture: cnn
+    data_preparation:
+      patch_size: 1000
+      overlap: 0.0
+      batch_size: 32
+      rotation_probability: 0.0
+      flip_probability: 0.0
+      noise_type: none
+      noise_scale: 0.0
+      target_samples: 1
+    halt:
+      freq: 1
+      success: []
+      failure: []
+      criteria: 
+        rel_tol:
+          tol: 1e-3
+          ord: l2
+        abs_tol:
+          tol: 1e-3
+          ord: l2_weighted
+        patience: 
+          patience: 100
+        inf: {}
+        nan: {}
+      metrics: 
+        w: {}
+        u: {}
+        cost: {}
+        grad_u_norm: {}
+        grad_w_norm: {}
+    display:
+      print_cost: false
+      print_cost_freq: 1

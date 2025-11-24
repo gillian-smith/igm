@@ -39,7 +39,7 @@ def run_igm_unified(
         argv.append(f"inputs.init_state.L={length * 1e3}")
 
     if mapping == "identity":
-        argv.append("processes.iceflow.unified.lr_init=0.9")
+        argv.append("processes.iceflow.unified.adam.lr_init=0.9")
 
     monkeypatch.setattr(sys, "argv", argv)
     main()

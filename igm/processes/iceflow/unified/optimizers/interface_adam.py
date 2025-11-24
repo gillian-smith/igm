@@ -25,11 +25,13 @@ class InterfaceAdam(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
-        if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
+        if isinstance(map, MappingDataAssimilation) or isinstance(
+            map, MappingCombinedDataAssimilation
+        ):
             lr = cfg.processes.SR_DA.optimization.learning_rate
 
         else:
-            lr = cfg_unified.lr
+            lr = cfg_unified.adam.lr
 
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
@@ -40,12 +42,12 @@ class InterfaceAdam(InterfaceOptimizer):
             "halt": halt,
             "lr": lr,
             "iter_max": cfg_unified.nbit,
-            "print_cost": cfg_unified.print_cost,
-            "print_cost_freq": cfg_unified.print_cost_freq,
+            "print_cost": cfg_unified.display.print_cost,
+            "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
             "ord_grad_w": cfg_numerics.ord_grad_w,
-            "clip_norm": cfg_unified.optimizer_clipnorm,
+            "clip_norm": cfg_unified.adam.optimizer_clipnorm,
         }
 
     @staticmethod
@@ -59,21 +61,21 @@ class InterfaceAdam(InterfaceOptimizer):
 
         # only apply lr schedule if network mapping is used
         if hasattr(optimizer.map, "network"):
-            lr_decay = cfg_unified.lr_decay
-            lr_decay_steps = cfg_unified.lr_decay_steps
+            lr_decay = cfg_unified.adam.lr_decay
+            lr_decay_steps = cfg_unified.adam.lr_decay_steps
         else:
             lr_decay = 1.0
             lr_decay_steps = 1000000
 
         if status == Status.INIT:
             iter_max = cfg_unified.nbit_init
-            lr = cfg_unified.lr_init
+            lr = cfg_unified.adam.lr_init
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
-            lr = cfg_unified.lr_init
+            lr = cfg_unified.adam.lr_init
         elif status == Status.DEFAULT:
             iter_max = cfg_unified.nbit
-            lr = cfg_unified.lr
+            lr = cfg_unified.adam.lr
         elif status == Status.IDLE:
             return False
         else:

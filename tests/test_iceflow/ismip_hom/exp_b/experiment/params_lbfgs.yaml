@@ -19,12 +19,12 @@ processes:
     physics:
       energy_components: [viscosity, gravity]
     unified:
-      pretrained: False
-      nbit_init: 2000
-      print_cost: True
-      optimizer: lbfgs
-      line_search: armijo
       bcs: [frozen_bed, periodic_ns, periodic_we]
+      optimizer: lbfgs
+      nbit_init: 2000
+      line_search: armijo
+      network:
+        pretrained: False
       halt:
         freq: 1
         success:
@@ -41,6 +41,8 @@ processes:
             metric: u
           - criterion: inf
             metric: u
+      display:
+        print_cost: True
     numerics:
       Nz: 10
       vert_basis: Lagrange

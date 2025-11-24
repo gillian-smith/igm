@@ -33,7 +33,7 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
 
-        if cfg_unified.pretrained:
+        if cfg_unified.network.pretrained:
             dir_path = get_pretrained_emulator_path(cfg, state)
             iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
         else:
