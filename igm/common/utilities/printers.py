@@ -213,7 +213,7 @@ def print_model_with_inputs(
 
 
 def print_model_with_inputs_detailed(
-    model, input_data, cfg_inputs, normalization_method="standardization", title="Model Architecture"
+    model, input_data, cfg_inputs, normalization_method, title="Model Information"
 ):
     """
     Extended version with standard deviation and percentiles.
@@ -345,33 +345,20 @@ def print_model_with_inputs_detailed(
     if available_keys:
         first_key = list(available_keys)[0]
         sample_data = input_data[first_key]
+
         if isinstance(sample_data, tf.Tensor):
             sample_data = sample_data.numpy()
         
-        # Determine shape
-        if sample_data.ndim == 4:  # (N, H, W, C) or similar
-            n_samples, height, width, n_channels = sample_data.shape
-            shape_str = f"({n_samples}, {height}, {width}, {n_channels})"
-            grid_str = f"{height}×{width}"
-            total_points = n_samples * height * width
-        elif sample_data.ndim == 3:  # (N, H, W)
-            n_samples, height, width = sample_data.shape
-            shape_str = f"({n_samples}, {height}, {width})"
-            grid_str = f"{height}×{width}"
-            total_points = n_samples * height * width
-        elif sample_data.ndim == 2:  # (N, features)
+        if sample_data.ndim == 2:  # (N, features)
             n_samples, n_features = sample_data.shape
             shape_str = f"({n_samples}, {n_features})"
-            grid_str = f"{n_features} features"
-            total_points = n_samples
+            total_points = n_samples * n_features
         else:
             shape_str = str(sample_data.shape)
-            grid_str = "unknown"
             total_points = sample_data.size
         
         input_table.caption = (
             f"[bold white]Shape:[/bold white] [cyan]{shape_str}[/cyan] | "
-            f"[bold white]Grid:[/bold white] [yellow]{grid_str}[/yellow] | "
             f"[bold white]Total points:[/bold white] [magenta]{total_points:,}[/magenta] | "
             f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
         )

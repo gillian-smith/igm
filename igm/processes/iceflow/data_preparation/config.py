@@ -49,7 +49,7 @@ def get_input_params_args(cfg) -> Dict[str, Any]:
         "noise_type": cfg_data_preparation.noise_type,
         "noise_scale": noise_scale,
         "target_samples": cfg_data_preparation.target_samples,
-        "fieldin_names": cfg.processes.iceflow.emulator.fieldin,
+        "fieldin_names": cfg.processes.iceflow.unified.inputs,
         "precision": cfg.processes.iceflow.numerics.precision,
         "noise_channels": _determine_noise_channels(cfg),
     }
