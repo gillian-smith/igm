@@ -17,12 +17,12 @@ from igm.processes.iceflow.utils.data_preprocessing import (
 def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 
     cfg_unified = cfg.processes.iceflow.unified
-    warm_up_it = cfg_unified.warm_up_it
+    nbit_warmup = cfg_unified.nbit_warmup
     retrain_freq = cfg_unified.retrain_freq
 
     if init:
         status = Status.INIT
-    elif state.it <= warm_up_it:
+    elif state.it <= nbit_warmup:
         status = Status.WARM_UP
     elif retrain_freq > 0 and state.it > 0 and state.it % retrain_freq == 0:
         status = Status.DEFAULT
@@ -38,7 +38,7 @@ def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 
     # Create patches using the patching object
     patches = state.iceflow.patching.generate_patches(fieldin)
-    
+
     return patches
 
 

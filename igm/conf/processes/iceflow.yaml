@@ -87,9 +87,9 @@ iceflow:
     mapping: network
     bcs: []
     optimizer: adam
-    warm_up_it: -1
-    nbit_init: 1
     nbit: 1
+    nbit_init: 1
+    nbit_warmup: -1
     retrain_freq: 10
     adam:
       lr: 2.0e-05
