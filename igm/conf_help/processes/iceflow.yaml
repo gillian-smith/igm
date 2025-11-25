@@ -171,7 +171,7 @@ emulator:
     Description: "Learning rate for the training of the emulator"
     Units: dimless
   lr_init:
-    Type: None
+    Type: float
     Description: "Initial learning rate for the training of the emulator"
     Units: dimless
   lr_decay:
@@ -179,8 +179,8 @@ emulator:
     Description: "Decay learning-rate parameter for the training of the emulator"
     Units: dimless
   warm_up_it:
-    Type: year
-    Description: "Number of iteration for a warm-up period, allowing intense initial training"
+    Type: integer
+    Description: "Number of iterations for a warm-up period, allowing intense initial training"
     Units: dimless
   nbit_init:
     Type: integer
@@ -249,7 +249,7 @@ emulator:
       Units: dimless
     multiple_window_size:
       Type: integer
-      Description: "For a U-Net, this forces window size to be a multiple of 2**N"
+      Description: "For a U-Net, this requires the window size to be a multiple of 2 to the power N"
       Units: dimless
     activation:
       Type: string
@@ -298,4 +298,253 @@ emulator:
     residual:
       Type: boolean
       Description: "Apply residual layer"
+      Units: dimless
+diagnostic:
+  save_freq:
+    Type: integer
+    Description: "Frequency of the saving of the metrics"
+    Units: dimless
+  filename_metrics:
+    Type: string
+    Description: "Name of the file with the metrics"
+    Units: dimless
+unified:
+  mapping:
+    Type: string
+    Description: "Type of mapping between the weights and the velocity"
+    Units: dimless
+  bcs:
+    Type: list
+    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we"
+    Units: dimless
+  bcs:
+    Type: list
+    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we"
+    Units: dimless
+  nbit:
+    Type: integer
+    Description: "Number of iterations done to solve the ice flow"
+    Units: dimless
+  nbit_init:
+    Type: integer
+    Description: "Number of iterations done initially to solve the ice flow"
+    Units: dimless
+  nbit_warmup:
+    Type: integer
+    Description: "Number of iterations done for a warm-up period to solve the ice flow, allowing intense initial training"
+    Units: dimless
+  retrain_freq:
+    Type: integer
+    Description: "Frequency at which the ice flow is solved"
+    Units: dimless
+  adam:
+    lr:
+      Type: float
+      Description: "Learning rate for the Adam optimizer"
+      Units: dimless
+    lr_init:
+      Type: float
+      Description: "Initial learning rate for the Adam optimizer"
+      Units: dimless
+    lr_decay:
+      Type: float
+      Description: "Decay learning-rate parameter for the Adam optimizer"
+      Units: dimless
+    lr_decay_steps:
+      Type: integer
+      Description: "Number of steps during which the decay learning rate is applied for the Adam optimizer"
+      Units: dimless
+    optimizer_clipnorm:
+      Type: float
+      Description: "Maximum value for the gradient of each weight"
+      Units: dimless
+  lbfgs:
+    memory:
+      Type: integer
+      Description: "Number of saved iteration results for the L-BFGS optimizer"
+      Units: dimless
+    alpha_min:
+      Type: float
+      Description: "Minimal value for the step size in the line search"
+      Units: dimless
+  sequential:
+    Type: list
+    Description: "List containing the optimizer configurations when using a sequential optimization approach"
+    Units: dimless
+  inputs:
+    Type: list
+    Description: "Input fields of the mapping for the ice flow"
+    Units: dimless
+  scaling:
+    method: 
+      Type: string
+      Description: "Type of method used for the scaling of the inputs"
+      Units: dimless
+    manual:
+      inputs_scales: 
+        thk:
+          Type: float
+          Description: "Manual scale of the input thk"
+          Units: m
+        usurf:
+          Type: float
+          Description: "Manual scale of the input usurf"
+          Units: m
+        arrhenius:
+          Type: float
+          Description: "Manual scale of the input arrhenius"
+          Units: MPa^{-n} y^{-1}
+        slidingco:
+          Type: float
+          Description: "Manual scale of the input slidingco"
+          Units: MPa y^{m} m^{-m}
+        dX:
+          Type: float
+          Description: "Manual scale of the input dX"
+          Units: m
+      inputs_variances: 
+        thk:
+          Type: float
+          Description: "Manual variance of the input thk"
+          Units: m
+        usurf:
+          Type: float
+          Description: "Manual variance of the input usurf"
+          Units: m
+        arrhenius:
+          Type: float
+          Description: "Manual variance of the input arrhenius"
+          Units: MPa^{-n} y^{-1}
+        slidingco:
+          Type: float
+          Description: "Manual variance of the input slidingco"
+          Units: MPa y^{m} m^{-m}
+        dX:
+          Type: float
+          Description: "Manual variance of the input dX"
+          Units: m
+  network:
+    pretrained:
+      Type: boolean
+      Description: "Use a pretrained network instead of starting from scratch"
+      Units: dimless
+    print_summary: 
+      Type: boolean
+      Description: "Print a summary of the network"
+      Units: dimless
+    output_scale:
+      Type: float
+      Description: "Scale of the outputs of the network"
+      Units: dimless
+    architecture: 
+      Type: string
+      Description: "Type of network"
+      Units: dimless
+  data_preparation:
+    patch_size: 
+      Type: integer
+      Description: "Size of a patch"
+      Units: dimless
+    overlap:
+      Type: float
+      Description: "Fraction of overlap between the patches"
+      Units: dimless
+    batch_size: 
+      Type: integer
+      Description: "Size of batch"
+      Units: dimless
+    rotation_probability:
+      Type: float
+      Description: "Probability of rotation"
+      Units: dimless
+    flip_probability:
+      Type: float
+      Description: "Probability of flip"
+      Units: dimless
+    noise_type: 
+      Type: string
+      Description: "Type of noise"
+      Units: dimless
+    noise_scale:
+      Type: float
+      Description: "Scale of the noise"
+      Units: dimless
+    target_samples:
+      Type: integer
+      Description: "Target for the number of samples"
+      Units: dimless
+  halt:
+    freq: 
+      Type: integer
+      Description: "Frequency of evaluation of the halt criteria"
+      Units: dimless
+    success:
+      Type: list
+      Description: "List of success criteria"
+      Units: dimless
+    failure:
+      Type: list
+      Description: "List of failure criteria"
+      Units: dimless
+    criteria: 
+      rel_tol:
+        tol:
+          Type: float
+          Description: "Default tolerance for the relative-change criterion"
+          Units: dimless
+        ord: 
+          Type: string
+          Description: "Default type of norm for the relative-change criterion"
+          Units: dimless
+      abs_tol:
+        tol:
+          Type: float
+          Description: "Default tolerance for the absolute-change criterion"
+          Units: dimless
+        ord:
+          Type: string
+          Description: "Default type of norm for the absolute-change criterion"
+          Units: dimless
+      patience: 
+        patience:
+          Type: integer
+          Description: "Default number of iteration without improvement before halting"
+          Units: dimless
+      inf:
+        Type: dict
+        Description: "Default parameters for the inf criterion"
+        Units: dimless
+      nan:
+        Type: dict
+        Description: "Default parameters for the nan criterion"
+        Units: dimless
+      metrics: 
+        w:
+          Type: dict
+          Description: "Default parameters for the weight metric"
+          Units: dimless
+        u:
+          Type: dict
+          Description: "Default parameters for the velocity metric"
+          Units: dimless
+        cost:
+          Type: dict
+          Description: "Default parameters for the cost metric"
+          Units: dimless
+        grad_u_norm:
+          Type: dict
+          Description: "Default parameters for the velocity-gradient-of-the-cost metric"
+          Units: dimless
+        grad_w_norm:
+          Type: dict
+          Description: "Default parameters for the weight-gradient-of-the-cost metric"
+          Units: dimless
+  display:
+    print_cost:
+      Type: boolean
+      Description: "Print the cost during the ice-flow optimization"
+      Units: dimless
+    print_cost_freq:
+      Type: integer
+      Description: "Frequency of printing the cost during the ice-flow optimization"
       Units: dimless
