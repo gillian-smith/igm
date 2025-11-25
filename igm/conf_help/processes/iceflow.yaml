@@ -287,11 +287,11 @@ emulator:
       Type: boolean
       Description: "Apply a batch normalization layer"
       Units: dimless
-    batch_norm:
+    l2_reg:
       Type: float
       Description: "Amount of l2 regularization penalty"
       Units: dimless
-    use_separable:
+    separable:
       Type: boolean
       Description: "Apply convolution layers that are separable"
       Units: dimless
@@ -317,9 +317,9 @@ unified:
     Type: list
     Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we"
     Units: dimless
-  bcs:
+  optimizer:
     Type: list
-    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we"
+    Description: "Type of optimizer used to solve the ice flow"
     Units: dimless
   nbit:
     Type: integer
@@ -368,8 +368,13 @@ unified:
       Description: "Minimal value for the step size in the line search"
       Units: dimless
   sequential:
-    Type: list
-    Description: "List containing the optimizer configurations when using a sequential optimization approach"
+    stages:
+      Type: list
+      Description: "List containing the optimizer configurations when using a sequential optimization approach"
+      Units: dimless
+  line_search:
+    Type: string
+    Description: "Type of line-search method"
     Units: dimless
   inputs:
     Type: list
