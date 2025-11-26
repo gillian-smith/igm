@@ -10,6 +10,7 @@ from typing import Callable, Tuple
 
 @tf.function()
 def compute_zeta_linear(Nz: int, dtype: tf.DType = tf.float32) -> tf.Tensor:
+    """Compute linearly spaced vertical coordinates from 0 to 1."""
     return tf.cast(tf.range(Nz) / (Nz - 1), dtype)
 
 
@@ -17,6 +18,7 @@ def compute_zeta_linear(Nz: int, dtype: tf.DType = tf.float32) -> tf.Tensor:
 def compute_zeta_quadratic(
     Nz: int, slope_init: float, dtype: tf.DType = tf.float32
 ) -> tf.Tensor:
+    """Compute quadratically spaced vertical coordinates with specified initial slope."""
     zeta = compute_zeta_linear(Nz, dtype)
     return slope_init * zeta + (1.0 - slope_init) * zeta**2
 
@@ -25,11 +27,13 @@ def compute_zeta_quadratic(
 def compute_zeta(
     Nz: int, slope_init: float = 1.0, dtype: tf.DType = tf.float32
 ) -> tf.Tensor:
+    """Compute vertical coordinate distribution (default quadratic)."""
     return compute_zeta_quadratic(Nz, slope_init, dtype)
 
 
 @tf.function()
 def compute_zeta_mid(zeta: tf.Tensor) -> tf.Tensor:
+    """Compute midpoints between consecutive zeta values."""
     Nz = zeta.shape[0]
     if Nz > 1:
         return (zeta[1:] + zeta[:-1]) / 2.0
@@ -39,6 +43,7 @@ def compute_zeta_mid(zeta: tf.Tensor) -> tf.Tensor:
 
 @tf.function()
 def compute_dzeta(zeta: tf.Tensor) -> tf.Tensor:
+    """Compute spacings between consecutive zeta values."""
     Nz = zeta.shape[0]
     if Nz > 1:
         return zeta[1:] - zeta[:-1]
@@ -50,6 +55,7 @@ def compute_dzeta(zeta: tf.Tensor) -> tf.Tensor:
 def compute_zetas(
     Nz: int, slope_init: float = 1.0, dtype: tf.DType = tf.float32
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Compute zeta coordinates, midpoints, and spacings."""
     zeta = compute_zeta(Nz, slope_init, dtype)
     zeta_mid = compute_zeta_mid(zeta)
     dzeta = compute_dzeta(zeta)
@@ -59,6 +65,7 @@ def compute_zetas(
 def compute_gauss_quad(
     order: int, dtype: tf.DType = tf.float32
 ) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Compute Gauss-Legendre quadrature points and weights on [0,1]."""
     x_quad, w_quad = np.polynomial.legendre.leggauss(order)
 
     x_quad = 0.5 * (x_quad + 1.0)
@@ -73,6 +80,7 @@ def compute_gauss_quad(
 def compute_basis_vector(
     basis: Tuple[Callable[[tf.Tensor], tf.Tensor], ...], x: tf.Tensor
 ) -> tf.Tensor:
+    """Evaluate all basis functions at a single point."""
     V = [fct(x) for fct in basis]
     return V
 
@@ -80,6 +88,7 @@ def compute_basis_vector(
 def compute_basis_matrix(
     basis: Tuple[Callable[[tf.Tensor], tf.Tensor], ...], x: tf.Tensor
 ) -> tf.Tensor:
+    """Evaluate all basis functions at multiple points to form a matrix."""
     M = [fct(x) for fct in basis]
     M = tf.stack(M, axis=1)
     return M
@@ -92,6 +101,7 @@ def compute_matrices(
     x_quad: tf.Tensor,
     w_quad: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Compute basis matrices at quadrature points, boundaries, and vertical average."""
 
     V_q = compute_basis_matrix(basis_fct, x_quad)
     V_q_grad = compute_basis_matrix(basis_fct_grad, x_quad)

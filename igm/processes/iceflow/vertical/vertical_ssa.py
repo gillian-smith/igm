@@ -10,8 +10,10 @@ from .vertical import VerticalDiscr
 
 
 class SSADiscr(VerticalDiscr):
+    """Shallow Shelf Approximation (SSA) vertical discretization (single layer)."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
+        """Compute SSA discretization matrices."""
 
         cfg_numerics = cfg.processes.iceflow.numerics
 

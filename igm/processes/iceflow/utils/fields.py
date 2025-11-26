@@ -10,6 +10,7 @@ from igm.common.core import State
 
 
 def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
+    """Initialize iceflow fields: arrhenius, slidingco, U, V."""
 
     cfg_physics = cfg.processes.iceflow.physics
     Nz = cfg.processes.iceflow.numerics.Nz

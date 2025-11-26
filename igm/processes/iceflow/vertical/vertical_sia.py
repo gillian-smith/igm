@@ -19,8 +19,10 @@ from .vertical import VerticalDiscr
 
 
 class SIADiscr(VerticalDiscr):
+    """Shallow Ice Approximation (SIA) vertical discretization (two layers)."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
+        """Compute SIA discretization matrices."""
 
         cfg_numerics = cfg.processes.iceflow.numerics
         cfg_physics = cfg.processes.iceflow.physics

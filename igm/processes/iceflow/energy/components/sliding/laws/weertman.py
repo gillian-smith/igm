@@ -6,10 +6,10 @@
 import tensorflow as tf
 from typing import Dict
 
+from ..sliding import SlidingComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
-from ..sliding import SlidingComponent
 
 
 class WeertmanParams(tf.experimental.ExtensionType):
@@ -22,10 +22,9 @@ class WeertmanParams(tf.experimental.ExtensionType):
 class Weertman(SlidingComponent):
     """Sliding component implementing Weertman's sliding law."""
 
-    name = "weertman"
-    
     def __init__(self, params: WeertmanParams) -> None:
         """Initialize Weertman sliding component with parameters."""
+        self.name = "weertman"
         self.params = params
 
     def cost(

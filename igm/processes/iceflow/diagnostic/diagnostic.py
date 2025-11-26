@@ -8,18 +8,19 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common.core import State
-from igm.processes.iceflow.solve.solve import (
-    initialize_iceflow_solver,
-    update_iceflow_solved,
-)
 from igm.processes.iceflow.emulate.emulator import (
     initialize_iceflow_emulator,
     update_iceflow_emulator,
+)
+from igm.processes.iceflow.solve.solve import (
+    initialize_iceflow_solver,
+    update_iceflow_solved,
 )
 from igm.processes.iceflow.utils.velocities import get_misfit
 
 
 def initialize_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
+    """Initialize the diagnostic mode for the iceflow module."""
 
     # Initialize emulator
     initialize_iceflow_emulator(cfg, state)
@@ -32,6 +33,7 @@ def initialize_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
 
 
 def update_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
+    """Update the diagnostic mode for the iceflow module."""
 
     # Get emulator results
     update_iceflow_emulator(cfg, state)

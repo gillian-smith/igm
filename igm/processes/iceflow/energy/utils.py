@@ -15,6 +15,7 @@ from . import (
 
 
 def get_energy_components(cfg: DictConfig) -> List[EnergyComponent]:
+    """Get the list of energy components objects."""
 
     cfg_physics = cfg.processes.iceflow.physics
 

@@ -4,52 +4,63 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Callable
 from dataclasses import dataclass
+from typing import Callable
 
 
 class BasisP1:
+    """P1 (linear) basis functions on the reference element [0,1]."""
 
     @staticmethod
     def phi0(xi: tf.Tensor) -> tf.Tensor:
+        """Basis function: phi0(0)=1, phi0(1)=0."""
         return 1.0 - xi
 
     @staticmethod
     def phi1(xi: tf.Tensor) -> tf.Tensor:
+        """Basis function: phi1(0)=0, phi1(1)=1."""
         return xi
 
     @staticmethod
     def grad_phi0(xi: tf.Tensor) -> tf.Tensor:
+        """Gradient of basis function phi0."""
         return -tf.ones_like(xi)
 
     @staticmethod
     def grad_phi1(xi: tf.Tensor) -> tf.Tensor:
+        """Gradient of basis function phi1."""
         return tf.ones_like(xi)
 
     @staticmethod
     def int_phi0(xi: tf.Tensor) -> tf.Tensor:
+        """Integral of basis function phi0."""
         return xi - 0.5 * xi * xi
 
     @staticmethod
     def int_phi1(xi: tf.Tensor) -> tf.Tensor:
+        """Integral of basis function phi1."""
         return 0.5 * xi * xi
 
 
 @dataclass
 class Element:
+    """1D finite element with endpoints x0 and x1."""
 
     x0: tf.Tensor
     x1: tf.Tensor
 
     def xi(self, x: tf.Tensor) -> tf.Tensor:
+        """Map physical coordinate x to reference coordinate xi in [0,1]."""
         return (x - self.x0) / (self.x1 - self.x0)
 
     def jac(self) -> tf.Tensor:
+        """Jacobian of the transformation (element length)."""
         return self.x1 - self.x0
 
     def mask(
         self, x: tf.Tensor, include_l: bool = True, include_r: bool = False
     ) -> tf.Tensor:
+        """Boolean mask for points inside the element."""
         cond_l = (x >= self.x0) if include_l else (x > self.x0)
         cond_r = (x <= self.x1) if include_r else (x < self.x1)
         return cond_l & cond_r
@@ -58,6 +69,7 @@ class Element:
 def compute_basis(
     nodes: tf.Tensor, idx: int, elem_ref: type[BasisP1] = BasisP1
 ) -> Callable[[tf.Tensor], tf.Tensor]:
+    """Compute hat function basis centered at node idx."""
 
     n_nodes = int(nodes.shape[0])
     is_last = idx == n_nodes - 1
@@ -86,6 +98,7 @@ def compute_basis(
 def compute_basis_grad(
     nodes: tf.Tensor, idx: int, elem_ref: type[BasisP1] = BasisP1
 ) -> Callable[[tf.Tensor], tf.Tensor]:
+    """Compute gradient of hat function basis centered at node idx."""
     n_nodes = int(nodes.shape[0])
     is_last = idx == n_nodes - 1
 
@@ -113,6 +126,7 @@ def compute_basis_grad(
 def compute_basis_int(
     nodes: tf.Tensor, idx: int, elem_ref: type[BasisP1] = BasisP1
 ) -> Callable[[tf.Tensor], tf.Tensor]:
+    """Compute integral of hat function basis centered at node idx."""
     n_nodes = int(nodes.shape[0])
     is_last = idx == n_nodes - 1
 

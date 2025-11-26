@@ -1,35 +1,35 @@
 from .data_preprocessing import (
     compute_PAD,
+    fieldin_to_X_2d,
+    fieldin_to_X_3d,
     match_fieldin_dimensions,
+    pertubate_X,
     prepare_X,
     split_into_patches_X,
-    pertubate_X,
-    fieldin_to_X_3d,
-    fieldin_to_X_2d,
 )
 
 from .velocities import (
-    get_velbase_1,
-    get_velbase,
-    get_velsurf_1,
-    get_velsurf,
-    get_velbar_1,
-    get_velbar,
     boundvel,
     clip_max_velbar,
+    get_velbase,
+    get_velbase_1,
+    get_velsurf,
+    get_velsurf_1,
+    get_velbar,
+    get_velbar_1,
 )
 
 from .vertical_discretization import (
-    define_vertical_weight,
     compute_levels,
     compute_zeta_dzeta,
+    define_vertical_weight,
 )
 from .fields import (
     initialize_iceflow_fields,
 )
 
 from ..emulate.utils import (
-    get_emulator_path,
     get_effective_pressure_precentage,
+    get_emulator_path,
     save_iceflow_model,
 )

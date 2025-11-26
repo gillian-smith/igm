@@ -4,13 +4,25 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
+from typing import Dict, Tuple, List
 
+from .components import EnergyComponent
+from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin, Y_to_UV
 
 
 def iceflow_energy(
-    U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
-):
+    U: tf.Tensor,
+    V: tf.Tensor,
+    fieldin: Dict[str, tf.Tensor],
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+    staggered_grid: int,
+    batch_size: int,
+    Ny: int,
+    Nx: int,
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
+
     if staggered_grid == 2:
         energy_tensor_length = 2 * len(energy_components)
     else:
@@ -48,18 +60,18 @@ def iceflow_energy(
 
 @tf.function()
 def iceflow_energy_XY(
-    Nz,
-    dim_arrhenius,
-    staggered_grid,
-    fieldin_names,
-    X,
-    Y,
-    vert_disc,
-    energy_components,
-    batch_size,
-    Ny,
-    Nx,
-):
+    Nz: int,
+    dim_arrhenius: int,
+    staggered_grid: int,
+    fieldin_names: List[str],
+    X: tf.Tensor,
+    Y: tf.Tensor,
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+    batch_size: int,
+    Ny: int,
+    Nx: int,
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
 
     U, V = Y_to_UV(Nz, Y)
     fieldin = X_to_fieldin(
@@ -73,16 +85,16 @@ def iceflow_energy_XY(
 
 @tf.function()
 def iceflow_energy_UV(
-    Nz,
-    dim_arrhenius,
-    staggered_grid,
-    inputs_names,
-    inputs,
-    U,
-    V,
-    vert_disc,
-    energy_components,
-):
+    Nz: int,
+    dim_arrhenius: int,
+    staggered_grid: int,
+    inputs_names: List[str],
+    inputs: tf.Tensor,
+    U: tf.Tensor,
+    V: tf.Tensor,
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
 
     fieldin = X_to_fieldin(
         X=inputs, fieldin_names=inputs_names, dim_arrhenius=dim_arrhenius, Nz=Nz
