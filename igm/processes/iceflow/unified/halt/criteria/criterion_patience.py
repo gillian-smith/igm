@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Copyright ...
-# Published under the GNU GPL (Version 3)
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
 from typing import Tuple
@@ -12,6 +12,8 @@ from igm.utils.math.norms import compute_norm
 
 
 class CriterionPatience(Criterion):
+    """Criterion satisfied when metric has not improved for a specified number of iterations."""
+
     def __init__(
         self,
         metric: Metric,
@@ -21,6 +23,7 @@ class CriterionPatience(Criterion):
         mode: str = "min",
         ord: str = "id",
     ):
+        """Initialize patience criterion."""
         super().__init__(metric, dtype)
         self.name = "patience"
         self.mode = mode
@@ -39,16 +42,19 @@ class CriterionPatience(Criterion):
         self.name = "patience"
 
     def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Check if metric has not improved beyond tolerance for patience iterations."""
         metric_value = self.metric.compute(step_state)
         iter = step_state.iter
 
         def init():
+            """Initialize best metric value and iteration."""
             self.metric_value_best.assign(metric_value)
             self.iter_best.assign(iter)
             self.init.assign(True)
             return tf.constant(False), tf.constant(0, dtype=self.dtype)
 
         def compute():
+            """Compare current metric to best and check patience."""
             if self.mode == "min":
                 value_delta = self.metric_value_best - metric_value
             else:
@@ -57,11 +63,13 @@ class CriterionPatience(Criterion):
             improved = tf.greater(compute_norm(value_delta, ord=self.ord), self.tol)
 
             def improved_true():
+                """Update best metric when improvement detected."""
                 self.metric_value_best.assign(metric_value)
                 self.iter_best.assign(iter)
                 return tf.constant(False), tf.constant(0, dtype=self.dtype)
 
             def improved_false():
+                """Check if patience exceeded without improvement."""
                 iter_delta = iter - self.iter_best
                 is_satisfied = tf.greater_equal(iter_delta, self.patience)
                 return is_satisfied, tf.cast(iter_delta, dtype=self.dtype)
@@ -71,4 +79,5 @@ class CriterionPatience(Criterion):
         return tf.cond(self.init, compute, init)
 
     def reset(self) -> None:
+        """Reset patience criterion state."""
         self.init = self.init.assign(False)

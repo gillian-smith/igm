@@ -4,32 +4,33 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 from omegaconf import DictConfig
-import numpy as np
-import tensorflow as tf
 
-from igm.common.core import State
-from igm.common import print_model_with_inputs, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
 from .optimizers import Optimizers, InterfaceOptimizers
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .solver import solve_iceflow
 from .utils import get_cost_fn
-
+from igm.common import print_model_with_inputs_detailed
+from igm.common.core import State
 from igm.processes.iceflow.data_preparation.config import (
     PreparationParams,
     get_input_params_args,
 )
 from igm.processes.iceflow.data_preparation.patching import OverlapPatching
 from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X, X_to_fieldin
+from igm.processes.iceflow.utils.data_preprocessing import (
+    fieldin_state_to_X,
+    X_to_fieldin,
+)
 
 
 def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
+    """Initialize iceflow module in unified mode."""
 
     # Initialize training set
     preparation_params_args = get_input_params_args(cfg)
     preparation_params = PreparationParams(**preparation_params_args)
-    
+
     state.iceflow.preparation_params = preparation_params
     X = fieldin_state_to_X(cfg, state)
     fieldin_dict = X_to_fieldin(
@@ -42,10 +43,10 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     state.iceflow.patching = OverlapPatching(
         patch_size=preparation_params.patch_size,
         overlap=preparation_params.overlap,
-        fieldin=X
+        fieldin=X,
     )
-    num_patches = state.iceflow.patching.num_patches          # int
-    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape  # patch spatial dimensions
+    num_patches = state.iceflow.patching.num_patches
+    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
 
     # Initialize mapping
     mapping_name = cfg.processes.iceflow.unified.mapping
@@ -60,7 +61,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     )
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.iceflow.optimizer = optimizer
-    
+
     sampler = TrainingBatchBuilder(
         preparation_params=preparation_params,
         fieldin_names=preparation_params.fieldin_names,
@@ -81,7 +82,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
             cfg_inputs=cfg.processes.iceflow.unified.inputs,
             normalization_method=cfg.processes.iceflow.unified.scaling.method,
         )
-    
+
     # Solve once
     solve_iceflow(cfg, state, init=True)
 
@@ -90,6 +91,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
 
 
 def update_iceflow_unified(cfg: DictConfig, state: State) -> None:
+    """Update iceflow module in unified mode."""
 
     # Solve ice flow
     solve_iceflow(cfg, state)

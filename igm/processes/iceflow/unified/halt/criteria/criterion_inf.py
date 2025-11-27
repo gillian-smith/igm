@@ -12,12 +12,15 @@ from ..step_state import StepState
 
 
 class CriterionInf(Criterion):
+    """Criterion satisfied when metric contains infinite values."""
 
     def __init__(self, metric: Metric, dtype: str):
+        """Initialize infinity detection criterion."""
         super().__init__(metric, dtype)
         self.name = "inf"
 
     def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Check if metric contains any infinite values."""
         metric_value = self.metric.compute(step_state)
         is_satisfied = tf.reduce_any(tf.math.is_inf(metric_value))
 

@@ -9,6 +9,8 @@ from .metric import Metric, StepState
 
 
 class MetricU(Metric):
+    """Metric for monitoring u."""
 
     def compute_impl(self, step_state: StepState) -> tf.Tensor:
+        """Return u from step state."""
         return step_state.u

@@ -14,8 +14,10 @@ from igm.utils.math.norms import compute_norm
 
 
 class CriterionRelTol(Criterion):
+    """Criterion satisfied when relative change in metric falls below tolerance."""
 
     def __init__(self, metric: Metric, dtype: str, tol: float, ord: str):
+        """Initialize relative tolerance criterion."""
         super().__init__(metric, dtype)
         self.tol = tol
         self.ord = ord
@@ -30,14 +32,17 @@ class CriterionRelTol(Criterion):
         self.name = "rel_tol"
 
     def check(self, step_state: StepState) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Check if relative change in metric is below tolerance."""
         metric_value = self.metric.compute(step_state)
 
         def init():
+            """Initialize previous metric value."""
             self.metric_value_prev.assign(metric_value)
             self.init.assign(True)
             return tf.constant(False), tf.constant(np.nan)
 
         def compute():
+            """Compute relative change and check against tolerance."""
             num = compute_norm(metric_value - self.metric_value_prev, ord=self.ord)
             denom = compute_norm(self.metric_value_prev, ord=self.ord) + 1e-12
             relative_change = num / denom
@@ -49,4 +54,5 @@ class CriterionRelTol(Criterion):
         return tf.cond(self.init, compute, init)
 
     def reset(self) -> None:
+        """Reset relative tolerance criterion state."""
         self.init = self.init.assign(False)

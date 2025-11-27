@@ -10,6 +10,8 @@ from typing import Tuple
 
 @dataclass
 class StepState:
+    """State at each iteration of the optimization process."""
+
     iter: tf.Tensor
     u: Tuple[tf.Tensor, tf.Tensor]
     w: tf.Tensor

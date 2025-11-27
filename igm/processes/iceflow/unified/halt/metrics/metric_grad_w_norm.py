@@ -9,6 +9,8 @@ from .metric import Metric, StepState
 
 
 class MetricGradWNorm(Metric):
+    """Metric for monitoring |∂cost/∂w|."""
 
     def compute_impl(self, step_state: StepState) -> tf.Tensor:
+        """Return |∂cost/∂w| from step state."""
         return step_state.grad_w_norm

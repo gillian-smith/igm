@@ -11,9 +11,11 @@ from .metrics import Metrics
 
 
 class InterfaceHalt:
+    """Interface for configuring halting criteria for optimization."""
 
     @staticmethod
     def get_halt_args(cfg: DictConfig) -> Dict[str, Any]:
+        """Extract halting arguments from configuration."""
         cfg_halt = cfg.processes.iceflow.unified.halt
         cfg_numerics = cfg.processes.iceflow.numerics
 
@@ -34,6 +36,7 @@ class InterfaceHalt:
     def _create_crit_list(
         list_crit: ListConfig, cfg_halt: DictConfig, cfg_numerics: DictConfig
     ) -> List[Criterion]:
+        """Create list of criterion objects from configurations."""
 
         crit_list = []
 
@@ -81,6 +84,7 @@ class InterfaceHalt:
         default_cfg: DictConfig,
         override_cfg: DictConfig,
     ) -> Dict[str, Any]:
+        """Merge default and override metric arguments from configurations."""
         default_args = {}
         if default_name in default_cfg:
             default_args = dict(default_cfg[default_name].items())
@@ -100,6 +104,7 @@ class InterfaceHalt:
         default_cfg: DictConfig,
         override_cfg: DictConfig,
     ) -> Dict[str, Any]:
+        """Merge default and override criterion arguments from configurations."""
         default_args = {}
         if default_name in default_cfg:
             default_args = dict(default_cfg[default_name].items())
