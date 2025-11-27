@@ -3,6 +3,9 @@ import math, tensorflow as tf
 from typing import Tuple
 from rich.theme import Theme
 from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.columns import Columns
 from .config import create_channel_mask, _to_py_int
 
 from .augmentations.rotation import RotationAugmentation, RotationParams
@@ -82,64 +85,206 @@ def ensure_fixed_tensor_shape(tensor: tf.Tensor, expected_shape: Tuple[int, int,
 
 def _print_skip_message(training_tensor: tf.Tensor, reason: str):
     global _print_already_done
-    if _print_already_done: return
+    if _print_already_done:
+        return
     _print_already_done = True
+
     console = Console(theme=data_prep_theme)
+
+    # Expect 5D: [num_batches, batch_size, H, W, C]
+    training_tensor = tf.convert_to_tensor(training_tensor)
     shape = tf.shape(training_tensor)
+
+    try:
+        nb, bs, h, w, c = map(
+            _to_py_int,
+            (shape[0], shape[1], shape[2], shape[3], shape[4]),
+        )
+        shape_str = f"[{nb}, {bs}, {h}, {w}, {c}]"
+    except Exception:
+        # Fallback: don’t crash if rank is unexpected
+        shape_str = str(training_tensor.shape)
+
+    table = Table(
+        show_header=False,
+        border_style="green",
+        expand=False,
+    )
+    table.add_column("Label", style="label")
+    table.add_column("Value", style="value.dimensions")
+
+    table.add_row("Reason", reason)
+    table.add_row("Output shape", shape_str)
+
     console.print()
-    console.print("🚫 [label]DATA PREPARATION SKIPPED[/]", justify="center")
-    console.print(f"[label]Reason:[/] {reason}")
-    console.print(f"[label]Output Shape:[/] [value.dimensions][{_to_py_int(shape[0])}, {_to_py_int(shape[1])}, {_to_py_int(shape[2])}, {_to_py_int(shape[3])}, {_to_py_int(shape[4])}][/]")
+    console.print(
+        Panel(
+            table,
+            title="[bold]Data Preparation Skipped[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
     console.print()
 
-def _print_tensor_dimensions(fieldin, training_tensor, effective_batch_size, prep, actual_patch_count):
+def _print_tensor_dimensions(
+    fieldin,
+    training_tensor,
+    effective_batch_size: int,
+    prep,
+    actual_patch_count: int,
+):
+    """
+    Rich summary of data-preparation geometry, sampling, and augmentations.
+
+    fieldin:
+        Original input field (expected shape [H, W, C])
+    training_tensor:
+        Final training tensor (expected shape [num_batches, batch_size, H, W, C])
+    effective_batch_size:
+        Actual batch size used by the sampler
+    prep:
+        PreparationParams instance
+    actual_patch_count:
+        Number of patches produced by the patcher (before any up/down-sampling)
+    """
     global _print_already_done
-    if _print_already_done: return
+    if _print_already_done:
+        return
     _print_already_done = True
+
     console = Console(theme=data_prep_theme)
-    inp = tf.shape(fieldin); out = tf.shape(training_tensor)
+
+    # Make sure we are working with tensors
+    fieldin = tf.convert_to_tensor(fieldin)
+    training_tensor = tf.convert_to_tensor(training_tensor)
+
+    inp = tf.shape(fieldin)
+    out = tf.shape(training_tensor)
+
+    # Expect fieldin: [H, W, C]
     ih, iw, ic = _to_py_int(inp[0]), _to_py_int(inp[1]), _to_py_int(inp[2])
-    nb, bs, oh, ow, oc = map(_to_py_int, [out[0], out[1], out[2], out[3], out[4]])
+
+    # Expect training_tensor: [num_batches, batch_size, H, W, C]
+    nb, bs, oh, ow, oc = map(
+        _to_py_int,
+        (out[0], out[1], out[2], out[3], out[4]),
+    )
+
     total = nb * bs
     was_patched = not (ih == oh and iw == ow)
-    addl = max(0, total - int(actual_patch_count))
+    addl_from_patches = max(0, total - int(actual_patch_count))
     has_augs = _augs_effective(prep)
-    
-    console.print(); console.print("📊 [label]DATA PREPARATION SUMMARY[/]", justify="center")
-    console.print(f"[label]Input:[/] [value.dimensions]{ih} × {iw} × {ic}[/] [label]→[/] [value.dimensions]{nb}[/] [value.brackets](batches)[/] × [value.dimensions]{bs}[/] [value.brackets](samples)[/] × [value.dimensions]{oh}[/] [value.brackets](height)[/] × [value.dimensions]{ow}[/] [value.brackets](width)[/] × [value.dimensions]{oc}[/] [value.brackets](inputs)[/]")
-    
-    if was_patched:
-        console.print(f"[label]Patching:[/] [value.dimensions]{ih}×{iw} → {oh}×{ow}[/] [label]•[/] [value.samples]{actual_patch_count} patches[/]")
+
+    # ===================== GEOMETRY TABLE =====================
+    geom_table = Table(
+        title="[bold cyan]Data Prep Geometry[/bold cyan]",
+        show_header=False,
+        border_style="green",
+        title_style="bold cyan",
+        expand=False,
+    )
+    geom_table.add_column("Label", style="label")
+    geom_table.add_column("Value", style="value.dimensions")
+
+    geom_table.add_row("Input field", f"{ih} × {iw} × {ic}")
+    geom_table.add_row("Patch", f"{oh} × {ow} × {oc}")
+    geom_table.add_row("Num. patches", str(actual_patch_count))
+    geom_table.add_row(
+        "Patching applied",
+        "[green]no[/]" if not was_patched else "[bold yellow]yes[/]",
+    )
+
+    if actual_patch_count > 0:
+        geom_table.caption = (
+            f"[label]Patch-derived samples:[/] "
+            f"[value.samples]{actual_patch_count}[/]"
+        )
+
+    # ================= SAMPLING & BATCHING TABLE ==============
+    samp_table = Table(
+        title="[bold cyan]Sampling & Batching[/bold cyan]",
+        show_header=False,
+        border_style="blue",
+        title_style="bold cyan",
+        expand=False,
+    )
+    samp_table.add_column("Label", style="label")
+    samp_table.add_column("Value", style="value.samples")
+
+    samp_table.add_row("Target samples", str(prep.target_samples))
+    samp_table.add_row("Effective samples", str(total))
+    samp_table.add_row("Batch size", str(effective_batch_size))
+    samp_table.add_row("Num. batches", str(nb))
+
+    # Generation / upsampling info
+    if addl_from_patches > 0 or has_augs:
+        if addl_from_patches > 0 and has_augs:
+            gen_text = (
+                f"[value.samples]+{addl_from_patches}[/] via upsampling"
+                " + augmentation"
+            )
+        elif addl_from_patches > 0:
+            gen_text = f"[value.samples]+{addl_from_patches}[/] via upsampling"
+        else:  # has_augs only
+            gen_text = "No extra samples; augmentations applied in-place"
+        samp_table.add_row("Generation", gen_text)
     else:
-        console.print(f"[label]Patching:[/] None (dimensions preserved) [label]•[/] [value.samples]{actual_patch_count} samples[/]")
-    
-    if addl > 0:
-        method_icon = "🔄" if has_augs else "📋"
-        method_text = "Upsampling + Augmentation" if has_augs else "Upsampling only"
-        console.print(f"[label]Generation:[/] {method_icon} [value.samples]+{addl}[/] via {method_text}")
-        if has_augs:
-            parts = []
-            if prep.rotation_probability > 0: parts.append(f"🔄Rotation({prep.rotation_probability:.2f})")
-            if prep.flip_probability > 0: parts.append(f"🔀Flip({prep.flip_probability:.2f})")
-            if prep.noise_type != 'none' and prep.noise_scale > 0: parts.append(f"🎲{prep.noise_type.title()}({prep.noise_scale:.3f})")
-            if parts: console.print(f"[label]Augmentations:[/] [value.augmentation]{' [label]•[/] '.join(parts)}[/]")
+        samp_table.add_row("Generation", "Using patches only")
+
+    # Augmentation details
+    if has_augs:
+        aug_parts = []
+        if getattr(prep, "rotation_probability", 0.0) > 0:
+            aug_parts.append(
+                f"🔄Rotation({prep.rotation_probability:.2f})"
+            )
+        if getattr(prep, "flip_probability", 0.0) > 0:
+            aug_parts.append(
+                f"🔀Flip({prep.flip_probability:.2f})"
+            )
+        if (
+            getattr(prep, "noise_type", "none") != "none"
+            and getattr(prep, "noise_scale", 0.0) > 0
+        ):
+            aug_parts.append(
+                f"🎲{prep.noise_type.title()}({prep.noise_scale:.3f})"
+            )
+
+        aug_text = " [label]•[/] ".join(aug_parts) if aug_parts else "Enabled"
+        samp_table.add_row("Augmentations", f"[value.augmentation]{aug_text}[/]")
     else:
-        console.print(f"[label]Generation:[/] None (using patches only)")
-    
-    # Combined summary line with reason if different
+        samp_table.add_row("Augmentations", "None")
+
+    # Caption describing how effective samples relate to target
     if total == prep.target_samples:
-        console.print(f"[label]Samples:[/] [value.samples]{total}[/] [label](matches target)[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/]")
+        caption = (
+            f"[label]Effective samples:[/] [value.samples]{total}[/] "
+            "(matches target)"
+        )
     else:
-        # Determine reason for mismatch
         if total > prep.target_samples:
-            # Could be from patching or from rounding up to batch_size multiple
-            if not was_patched or actual_patch_count <= prep.target_samples:
-                reason = "rounded up to batch_size multiple"
-            else:
-                reason = "patching created more than target"
-        else:  # total < prep.target_samples (should be rare/impossible with new logic)
-            reason = "no augmentations to upsample"
-        
-        console.print(f"[label]Samples:[/] [value.samples]{total}[/] [label]vs target[/] [value.samples]{prep.target_samples}[/] [value.brackets]({reason})[/] [label]•[/] [label]Batch Size:[/] [value.samples]{effective_batch_size}[/]")
-    
+            reason_text = "more than target (patching / upsampling)"
+        else:
+            reason_text = "less than target (subsampling / batching)"
+
+        caption = (
+            f"[label]Effective samples:[/] [value.samples]{total}[/] "
+            f"(target [value.samples]{prep.target_samples}[/]; {reason_text})"
+        )
+
+    samp_table.caption = caption
+
+    # ================= COMBINED PANEL OUTPUT ==================
+    body = Columns([geom_table, samp_table], expand=True, equal=False)
+
+    console.print()
+    console.print(
+        Panel(
+            body,
+            title="[bold]Data Preparation Summary[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
     console.print()

@@ -13,7 +13,7 @@ from .mappings import Mappings, InterfaceMappings
 from .optimizers import Optimizers, InterfaceOptimizers
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .solver import solve_iceflow
-from .utils import get_cost_fn
+from .utils import get_cost_fn, _print_data_preparation_summary
 
 from igm.processes.iceflow.data_preparation.config import (
     PreparationParams,
@@ -68,6 +68,13 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
         num_patches=num_patches,
     )
     optimizer.sampler = sampler
+
+    _print_data_preparation_summary(
+        prep=preparation_params,
+        X=X,
+        patching=state.iceflow.patching,
+        sampler=sampler,
+    )
 
     # Evaluator params
     evaluator_params_args = get_evaluator_params_args(cfg)
