@@ -1,2 +1,2 @@
 flow_accumulation:
-  update_freq: 100
+  update_freq: 100.0

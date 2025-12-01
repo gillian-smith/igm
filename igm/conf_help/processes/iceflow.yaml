@@ -55,6 +55,10 @@ physics:
     Type: float
     Description: "Density of ice."
     Units: kg m^{-3}
+  water_density:
+    Type: float
+    Description: "Density of water."
+    Units: kg m^{-3}
   init_slidingco:
     Type: float
     Description: "Initial value for the sliding coefficient."

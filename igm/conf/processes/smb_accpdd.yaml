@@ -1,5 +1,5 @@
 smb_accpdd:
-  update_freq: 1
+  update_freq: 1.0
   refreeze_factor: 0.6
   thr_temp_snow: 0.0
   thr_temp_rain: 2.0

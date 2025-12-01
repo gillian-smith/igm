@@ -1,83 +1,78 @@
 url_data:
-  Type: str
-  Description: Url supplied to download .nc data files
+  Type: string
+  Description: "Url supplied to download .nc data files."
   Units: dimless
 folder_data:
-  Type: str
-  Description: Folder that holds the data for default IGM downloading
+  Type: string
+  Description: "Folder that holds the data for default IGM downloading."
   Units: dimless
 logging_file:
-  Type: str
-  Description: ""
+  Type: string
+  Description: ''
   Units: dimless
-
 logging:
-  Type: bool
-  Description: False
+  Type: boolean
+  Description: "false"
   Units: dimless
 logging_level:
-  Type: str
-  Description: 30
+  Type: string
+  Description: "30"
   Units: dimless
-
 hardware:
   gpu_info:
-    Type: bool
-    Description: True
+    Type: boolean
+    Description: "true"
     Units: dimless
   visible_gpus:
     Type: list
-    Description: "visible gpus"
+    Description: "visible gpus."
     Units: dimless
   strategy:
-    Type: str
-    Description: "strategy"
+    Type: string
+    Description: "strategy."
     Units: dimless
-
-
 print_params:
-  Type: bool
-  Description: True
+  Type: boolean
+  Description: "true"
   Units: dimless
 print_comp:
-  Type: bool
-  Description: Print information related to computational performances
+  Type: boolean
+  Description: "Print information related to computational performances."
   Units: dimless
 print_info:
-  Type: bool
-  Description: Print live information when the model is running
+  Type: boolean
+  Description: "Print live information when the model is running."
   Units: dimless
 print_imported_modules:
-  Type: bool
-  Description: Print imported modules
+  Type: boolean
+  Description: "Print imported modules."
   Units: dimless
 check_compat_params:
-  Type: bool
-  Description: Check compatibility btween default pasm name and user-defined one to check for typos, ect.
+  Type: boolean
+  Description: "Check compatibility btween default pasm name and user-defined one to check for typos, ect."
   Units: dimless
-
 structure:
   root_foldername:
-    Type: str
-    Description: user
+    Type: string
+    Description: "user."
     Units: dimless
   conf_foldername:
-    Type: str
-    Description: conf
+    Type: string
+    Description: "conf."
     Units: dimless
   code_foldername:
-    Type: str
-    Description: code
+    Type: string
+    Description: "code."
     Units: dimless
   input_modules_foldername:
-    Type: str
-    Description: inputs
+    Type: string
+    Description: "inputs."
     Units: dimless
   process_modules_foldername:
-    Type: str
-    Description: processes
+    Type: string
+    Description: "processes."
     Units: dimless
   output_modules_foldername:
-    Type: str
-    Description: outputs
+    Type: string
+    Description: "outputs."
     Units: dimless
