@@ -4,222 +4,179 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Tuple
+from omegaconf import DictConfig
 
-from igm.processes.iceflow.utils.vertical_discretization import compute_levels
-from igm.utils.stag.stag import stag2
 from .energy import EnergyComponent
-
-
-class FloatingComponent(EnergyComponent):
-
-    name = "floating"
-    
-    def __init__(self, params):
-        self.params = params
-
-    # ! Get rid of this dependency on vert_disc if floating does not use it...
-    def cost(self, U, V, fieldin, vert_disc, staggered_grid):
-        return cost_floating(U, V, fieldin, vert_disc, staggered_grid, self.params)
+from igm.processes.iceflow.vertical import VerticalDiscr
 
 
 class FloatingParams(tf.experimental.ExtensionType):
-    """Floating parameters for the cost function."""
+    """Parameters for floating ice-shelf calving front."""
 
-    Nz: int
-    vert_spacing: float
+    rho: float
+    rho_water: float
+    g: float
     cf_eswn: Tuple[str, ...]
-    vert_basis: str
 
 
-def get_floating_params_args(cfg) -> Dict[str, Any]:
+class FloatingComponent(EnergyComponent):
+    """Energy component for floating ice-shelf calving front."""
 
-    cfg_numerics = cfg.processes.iceflow.numerics
+    name = "floating"
+
+    def __init__(self, params: FloatingParams) -> None:
+        """Initialize floating component with parameters."""
+        self.params = params
+
+    def cost(
+        self,
+        U: tf.Tensor,
+        V: tf.Tensor,
+        fieldin: Dict[str, tf.Tensor],
+        vert_disc: VerticalDiscr,
+        _: bool,
+    ) -> tf.Tensor:
+        """Compute calving front energy cost."""
+        return cost_floating(U, V, fieldin, vert_disc, self.params)
+
+
+def get_floating_params_args(cfg: DictConfig) -> Dict[str, Any]:
+    """Extract floating ice parameters from configuration."""
+
     cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "Nz": cfg_numerics.Nz,
-        "vert_spacing": cfg_numerics.vert_spacing,
         "cf_eswn": cfg_physics.cf_eswn,
-        "vert_basis": cfg_numerics.vert_basis,
+        "rho": cfg_physics.ice_density,
+        "rho_water": cfg_physics.water_density,
+        "g": cfg_physics.gravity_cst,
     }
 
 
 def cost_floating(
-    U, V, fieldin, vert_disc, staggered_grid, floating_params
-):  # ! Update to new signature
+    U: tf.Tensor,
+    V: tf.Tensor,
+    fieldin: Dict[str, tf.Tensor],
+    vert_disc: VerticalDiscr,
+    floating_params: FloatingParams,
+) -> tf.Tensor:
+    """Compute calving front energy cost from field inputs."""
 
-    thk, usurf, _, _, dX = fieldin
+    h = fieldin["thk"]
+    s = fieldin["usurf"]
+    dx = fieldin["dX"]
 
-    Nz = floating_params.Nz
-    vert_spacing = floating_params.vert_spacing
+    V_q = vert_disc.V_q
+    w = vert_disc.w
+
+    dtype = U.dtype
+    rho = tf.cast(floating_params.rho, dtype)
+    rho_w = tf.cast(floating_params.rho_water, dtype)
+    g = tf.cast(floating_params.g, dtype)
     cf_eswn = floating_params.cf_eswn
-    vert_basis = floating_params.vert_basis
 
-    return _cost(
-        U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis
-    )
+    return _cost(U, V, h, s, dx, rho, rho_w, g, cf_eswn, V_q, w)
 
 
 @tf.function()
-def _cost(U, V, thk, usurf, dX, Nz, vert_spacing, cf_eswn, staggered_grid, vert_basis):
+def _cost(
+    U: tf.Tensor,
+    V: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
+    dx: tf.Tensor,
+    rho: tf.Tensor,
+    rho_w: tf.Tensor,
+    g: tf.Tensor,
+    cf_eswn: Tuple[str, ...],
+    V_q: tf.Tensor,
+    w: tf.Tensor,
+) -> tf.Tensor:
+    """
+    Compute the calving front energy cost term.
 
-    if not staggered_grid:
-        raise ValueError(
-            "Floating cost function requires staggered grid, non-staggered grid is not implmented yet."
-        )
+    Calculates the work done by gravity: ∫_Γ P · u·n ds, where the integral
+    is computed over the ice thickness using vertical quadrature, and where
+    P = 0.5 * ρ * g * h² * (1 - ρ/ρ_w * r²) accounts for the stress balance
+    at the calving front. This expression is divided by dx to account so
+    that it is properly accounted for when summing all the cost terms.
 
-    if vert_basis == "Legendre":
-        raise ValueError(
-            "Floating cost function requires Lagrange or SIA vert_basis, Legendre is not implmented yet."
-        )
+    Parameters
+    ----------
+    U : tf.Tensor
+        Horizontal velocity along x axis (m/year)
+    V : tf.Tensor
+        Horizontal velocity along y axis (m/year)
+    h : tf.Tensor
+        Ice thickness (m)
+    s : tf.Tensor
+        Upper surface elevation (m)
+    dx : tf.Tensor
+        Grid spacing (m)
+    rho : float
+        Ice density (kg m^-3)
+    rho_w : float
+        Water density (kg m^-3)
+    g : float
+        Gravity acceleration (m s^-2)
+    cf_eswn : tuple
+        Calving front boundaries: ("E", "S", "W", "N")
+    V_q : tf.Tensor
+        Quadrature matrix: dofs -> quads
+    w : tf.Tensor
+        Weights for vertical integration
 
-    # if activae this applies the stress condition along the calving front
+    Returns
+    -------
+    tf.Tensor
+        Calving front energy cost in MPa m/year
+    """
 
-    lsurf = usurf - thk
-    dtype = thk.dtype
+    # Get dtype from input tensors
+    dtype = U.dtype
 
-    #   Check formula (17) in [Jouvet and Graeser 2012], Unit is Mpa
-    zero = tf.constant(0.0, dtype=dtype)
-    half = tf.constant(0.5, dtype=dtype)
-    scale = tf.constant(10.0 ** (-6), dtype=dtype)
-    g_const = tf.constant(9.81, dtype=dtype)
-    rho_ice = tf.constant(910.0, dtype=dtype)
-    rho_water = tf.constant(1000.0, dtype=dtype)
+    # Lower surface elevation
+    l = s - h
 
-    P = (
-        tf.where(
-            lsurf < zero,
-            half
-            * scale
-            * g_const
-            * rho_ice
-            * (thk**2 - (rho_water / rho_ice) * lsurf**2),
-            zero,
-        )
-        / dX[:, 0, 0]
-    )
+    # Pad to detect calving front (pad with 1.0 if edge NOT in cf_eswn)
+    pad_value = lambda edge: 1.0 if edge not in cf_eswn else 0.0
 
-    one = tf.constant(1.0, dtype=dtype)
+    # Pad h: [[batch], [top, bottom], [left, right]]
+    h_ext = tf.pad(h, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
+    h_ext = tf.pad(h_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
+    h_ext = tf.pad(h_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
+    h_ext = tf.pad(h_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
 
-    if len(cf_eswn) == 0:
-        thkext = tf.pad(thk, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=one)
-        lsurfext = tf.pad(
-            lsurf, [[0, 0], [1, 1], [1, 1]], "CONSTANT", constant_values=one
-        )
-    else:
-        thkext = thk
-        thkext = tf.pad(
-            thkext,
-            [[0, 0], [1, 0], [0, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("S" not in cf_eswn), dtype=dtype),
-        )
-        thkext = tf.pad(
-            thkext,
-            [[0, 0], [0, 1], [0, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("N" not in cf_eswn), dtype=dtype),
-        )
-        thkext = tf.pad(
-            thkext,
-            [[0, 0], [0, 0], [1, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("W" not in cf_eswn), dtype=dtype),
-        )
-        thkext = tf.pad(
-            thkext,
-            [[0, 0], [0, 0], [0, 1]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("E" not in cf_eswn), dtype=dtype),
-        )
-        lsurfext = lsurf
-        lsurfext = tf.pad(
-            lsurfext,
-            [[0, 0], [1, 0], [0, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("S" not in cf_eswn), dtype=dtype),
-        )
-        lsurfext = tf.pad(
-            lsurfext,
-            [[0, 0], [0, 1], [0, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("N" not in cf_eswn), dtype=dtype),
-        )
-        lsurfext = tf.pad(
-            lsurfext,
-            [[0, 0], [0, 0], [1, 0]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("W" not in cf_eswn), dtype=dtype),
-        )
-        lsurfext = tf.pad(
-            lsurfext,
-            [[0, 0], [0, 0], [0, 1]],
-            "CONSTANT",
-            constant_values=tf.constant(1.0 * ("E" not in cf_eswn), dtype=dtype),
-        )
+    # Pad l
+    l_ext = tf.pad(l, [[0, 0], [1, 0], [0, 0]], constant_values=pad_value("S"))
+    l_ext = tf.pad(l_ext, [[0, 0], [0, 1], [0, 0]], constant_values=pad_value("N"))
+    l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [1, 0]], constant_values=pad_value("W"))
+    l_ext = tf.pad(l_ext, [[0, 0], [0, 0], [0, 1]], constant_values=pad_value("E"))
 
-    # this permits to locate the calving front in a cell in the 4 directions
-    CF_W = tf.where(
-        (lsurf < zero)
-        & (thk > zero)
-        & (thkext[:, 1:-1, :-2] == zero)
-        & (lsurfext[:, 1:-1, :-2] <= zero),
-        one,
-        zero,
-    )
-    CF_E = tf.where(
-        (lsurf < zero)
-        & (thk > zero)
-        & (thkext[:, 1:-1, 2:] == zero)
-        & (lsurfext[:, 1:-1, 2:] <= zero),
-        one,
-        zero,
-    )
-    CF_S = tf.where(
-        (lsurf < zero)
-        & (thk > zero)
-        & (thkext[:, :-2, 1:-1] == zero)
-        & (lsurfext[:, :-2, 1:-1] <= zero),
-        one,
-        zero,
-    )
-    CF_N = tf.where(
-        (lsurf < zero)
-        & (thk > zero)
-        & (thkext[:, 2:, 1:-1] == zero)
-        & (lsurfext[:, 2:, 1:-1] <= zero),
-        one,
-        zero,
-    )
+    # Detect calving front: floating ice (l≤0, h>0) next to ocean (h=0, l≤0)
+    is_float = (l <= 0.0) & (h > 0.0)
+    is_ocean = lambda h, l: (h == 0.0) & (l <= 0.0)
+    is_cf = lambda h, l: tf.cast(is_float & is_ocean(h, l), dtype)
 
-    if Nz > 1:
-        # Blatter-Pattyn
-        levels = compute_levels(Nz, vert_spacing)
-        temd = levels[1:] - levels[:-1]
-        weight = tf.stack(
-            [
-                tf.ones_like(thk, dtype=dtype) * tf.constant(z, dtype=dtype)
-                for z in temd
-            ],
-            axis=1,
-        )  # dimensionless,
-        C_float = (
-            P
-            * tf.reduce_sum(weight * stag2(U), axis=1)
-            * CF_W  # Check is stag2 is OK !!!
-            - P
-            * tf.reduce_sum(weight * stag2(U), axis=1)
-            * CF_E  # Check is stag2 is OK !!!
-            + P
-            * tf.reduce_sum(weight * stag2(V), axis=1)
-            * CF_S  # Check is stag2 is OK !!!
-            - P
-            * tf.reduce_sum(weight * stag2(V), axis=1)
-            * CF_N  # Check is stag2 is OK !!!
-        )
-    else:
-        # SSA
-        C_float = P * U * CF_W - P * U * CF_E + P * V * CF_S - P * V * CF_N
+    CF_W = is_cf(h_ext[:, 1:-1, :-2], l_ext[:, 1:-1, :-2])
+    CF_E = is_cf(h_ext[:, 1:-1, 2:], l_ext[:, 1:-1, 2:])
+    CF_S = is_cf(h_ext[:, :-2, 1:-1], l_ext[:, :-2, 1:-1])
+    CF_N = is_cf(h_ext[:, 2:, 1:-1], l_ext[:, 2:, 1:-1])
 
-    return C_float
+    # Depth-integrated velocity using vertical quadrature
+    u_q = tf.einsum("ij,bjkl->bikl", V_q, U)
+    v_q = tf.einsum("ij,bjkl->bikl", V_q, V)
+    w_q = w[None, :, None, None]
+    U_int = tf.reduce_sum(u_q * w_q, axis=1)
+    V_int = tf.reduce_sum(v_q * w_q, axis=1)
+
+    # Pre-factor
+    r = tf.maximum(-l / tf.maximum(h, 1.0), 0.0)
+    P = 0.5 * g * rho * h * h * (1.0 - (rho_w / rho) * r * r)
+
+    # ∫ P · u·n ds
+    C_float = P * (U_int * (CF_E - CF_W) + V_int * (CF_N - CF_S)) / dx
+
+    # Convert to Mpa*m/year
+    return 1e-6 * C_float
