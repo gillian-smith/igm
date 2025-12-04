@@ -8,8 +8,8 @@ from omegaconf import DictConfig
 
 from igm.common.core import State
 from .interface import InterfaceMapping
-from .mapping_network import MappingNetwork
-from .mapping_combined_data_assimilation import CombinedVariableSpec
+from ..mapping_network import MappingNetwork
+from ..mapping_combined_data_assimilation import CombinedVariableSpec
 
 
 class InterfaceCombinedDataAssimilation(InterfaceMapping):

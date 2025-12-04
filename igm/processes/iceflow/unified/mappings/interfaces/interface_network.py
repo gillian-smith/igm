@@ -15,9 +15,7 @@ from igm.processes.iceflow.emulate.utils.misc import (
     load_model_from_path,
 )
 from .interface import InterfaceMapping
-from igm.processes.iceflow.emulate import Architectures
-
-from ...emulate import NormalizationsDict
+from igm.processes.iceflow.emulate import Architectures, NormalizationsDict
 
 
 class InterfaceNetwork(InterfaceMapping):

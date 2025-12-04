@@ -6,15 +6,14 @@ from .emulator import (
     initialize_iceflow_emulator,
 )  # ! this initializer works for both emulated and emulator - maybe make it clearer...
 
-from .utils import Architectures
-
 from .utils import (
     save_iceflow_model,
     get_emulator_path,
     get_effective_pressure_precentage,
+    Architectures,
     CNN,
     FixedAffineLayer,
     AdaptiveAffineLayer,
     StandardizationLayer,
-    NormalizationsDict
+    NormalizationsDict,
 )

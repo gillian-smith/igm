@@ -7,7 +7,6 @@ from .lbfgs_DA import OptimizerLBFGSDataAssimilation
 from .cg import OptimizerCG
 from .sequential import OptimizerSequential
 
-
 Optimizers = {
     "adam": OptimizerAdam,
     "adam_da": OptimizerAdamDataAssimilation,
@@ -18,5 +17,4 @@ Optimizers = {
     "sequential": OptimizerSequential,
 }
 
-from .interfaces import InterfaceOptimizers
-from .interfaces.interface import InterfaceOptimizer, Status
+from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status

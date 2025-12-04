@@ -10,9 +10,9 @@ from omegaconf import DictConfig
 
 from igm.common.core import State
 from .interface import InterfaceMapping
-from .mapping_data_assimilation import MappingDataAssimilation, VariableSpec
-from .mapping_network import MappingNetwork
-from .transforms import TRANSFORMS
+from ..mapping_data_assimilation import MappingDataAssimilation, VariableSpec
+from ..mapping_network import MappingNetwork
+from ..transforms import TRANSFORMS
 
 
 class InterfaceDataAssimilation(InterfaceMapping):

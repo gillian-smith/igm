@@ -1,3 +1,4 @@
+from .interface import InterfaceOptimizer, Status
 from .adam import InterfaceAdam
 from .lbfgs import InterfaceLBFGS
 from .cg import InterfaceCG
