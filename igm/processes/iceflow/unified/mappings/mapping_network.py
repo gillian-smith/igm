@@ -8,25 +8,28 @@ from typing import List, Tuple
 
 from .mapping import Mapping
 from ...vertical import VerticalDiscr
+from ..bcs import BoundaryCondition
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 
 class MappingNetwork(Mapping):
     def __init__(
         self,
-        bcs: List[str],
+        apply_bcs: List[BoundaryCondition],
         vertical_discr: VerticalDiscr,
         network: tf.keras.Model,
+        normalizer: tf.keras.layers.Layer,
         Nz: tf.Tensor,
         output_scale: tf.Tensor = 1.0,
         precision: str = "float32",
     ):
-        super().__init__(bcs, vertical_discr, precision)
+        super().__init__(apply_bcs, vertical_discr, precision)
         self.network = network
-        self.Nz = Nz
         self.output_scale = output_scale
+        self.network.input_normalizer = normalizer
         self.shapes = [w.shape for w in network.trainable_variables]
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
+        self.Nz = Nz
 
         # Patience-based halt criterion variables
         self.patience = 500  # Default patience value; can be overridden

@@ -6,7 +6,7 @@
 import tensorflow as tf
 from typing import Optional, Tuple
 
-from .optimizer_lbfgs import OptimizerLBFGS
+from .lbfgs import OptimizerLBFGS
 from .line_search import LineSearches, ValueAndGradient
 
 tf.config.optimizer.set_jit(True)

@@ -2,10 +2,10 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
-from ..mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
-from .optimizer import Optimizer
+from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from .optimizer_cg import OptimizerCG
+from ..cg import OptimizerCG
 
 
 class InterfaceCG(InterfaceOptimizer):

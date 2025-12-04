@@ -10,9 +10,13 @@ from typing import Any, Callable, Optional, Tuple
 
 from .progress_optimizer import ProgressOptimizer
 from ..mappings import Mapping
-from ..halt import Halt, HaltStatus, HaltState, StepState
+from ..halt import Halt, HaltStatus, HaltState, StepState, DebugState
 from igm.utils.math.precision import _normalize_precision
 from igm.utils.math.norms import compute_norm
+
+import logging
+log = logging.getLogger("werkzeug") # for DASH POST requests...
+log.setLevel(logging.ERROR)
 
 
 class Optimizer(ABC):
@@ -27,6 +31,8 @@ class Optimizer(ABC):
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
         ord_grad_w: str = "l2_weighted",
+        debug_mode: bool = False,
+        debug_freq: int = 100,
     ):
         self.name = ""
         self.cost_fn = cost_fn
@@ -38,6 +44,10 @@ class Optimizer(ABC):
         self.precision = _normalize_precision(precision)
         self.ord_grad_u = ord_grad_u
         self.ord_grad_w = ord_grad_w
+        self.debug_mode = debug_mode
+        self.debug_freq = debug_freq
+        if self.debug_mode:
+            self._init_debug_display()
 
     @abstractmethod
     def update_parameters(self) -> None:
@@ -189,3 +199,130 @@ class Optimizer(ABC):
             lambda: tf.py_function(finalize, [halt_status], tf.int32),
             lambda: tf.constant(0),
         )
+
+    def _update_debug_state(
+        self,
+        iter: tf.Tensor,
+        costs: tf.Tensor,
+        grad_u: list[tf.Tensor],
+        grad_w: list[tf.Tensor],
+        # costs: Dict[tf.Tensor],
+    ) -> None:
+        self.debug_state = DebugState(iter, costs, grad_u, grad_w)
+
+    def _init_debug_display(self) -> None:
+        """Initialize the debug figure with live updates"""
+        from dash import Dash, dcc, html, Input, Output
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        import threading
+
+        # Store the latest data separately
+        self._latest_grad_norm = [[0]]  # Placeholder
+        self._layer_grad_norms = []  # Placeholder for layer norms
+        self._latest_iter = 0
+
+        # Create Dash app
+        app = Dash(__name__)
+        app.layout = html.Div(
+            [
+                dcc.Graph(
+                    id="live-graph",
+                    config={
+                        "scrollZoom": True,
+                        "displayModeBar": True,
+                        "displaylogo": False,
+                    },
+                    style={"height": "90vh"},
+                ),
+                dcc.Interval(id="interval", interval=500, n_intervals=0),
+            ]
+        )
+
+        @app.callback(Output("live-graph", "figure"), Input("interval", "n_intervals"))
+        def update_graph(n):
+            # Create subplots: heatmap on left, bar chart on right
+            fig = make_subplots(
+                rows=1,
+                cols=2,
+                subplot_titles=("Gradient Norm Heatmap", "Layer Gradient Norms"),
+                specs=[[{"type": "heatmap"}, {"type": "bar"}]],
+                column_widths=[0.6, 0.4],
+                horizontal_spacing=0.1,
+            )
+
+            # Add heatmap
+            fig.add_trace(
+                go.Heatmap(
+                    z=self._latest_grad_norm,
+                    colorscale="RdBu",
+                    colorbar=dict(title="Gradient Norm", x=0.55),
+                ),
+                row=1,
+                col=1,
+            )
+
+            # Add bar chart for layer norms
+            if len(self._layer_grad_norms) > 0:
+                fig.add_trace(
+                    go.Bar(
+                        x=[f"L{i}" for i in range(len(self._layer_grad_norms))],
+                        y=self._layer_grad_norms,
+                        marker=dict(color="steelblue"),
+                        text=[f"{val:.2e}" for val in self._layer_grad_norms],
+                        textposition="auto",
+                    ),
+                    row=1,
+                    col=2,
+                )
+
+            # Update layout
+            fig.update_layout(
+                title=f"Gradient Norm Visualization (iter {self._latest_iter})",
+                width=1600,
+                height=900,
+                uirevision="constant",
+                showlegend=False,
+            )
+
+            # Update axes
+            fig.update_xaxes(title_text="X", row=1, col=1, fixedrange=False)
+            fig.update_yaxes(title_text="Y", row=1, col=1, fixedrange=False)
+            fig.update_xaxes(title_text="Layer", row=1, col=2)
+            fig.update_yaxes(title_text="Gradient Norm", type="log", row=1, col=2)
+
+            return fig
+
+        # Start server in background thread
+        def run_server():
+            app.run(debug=False, port=8050, host="127.0.0.1")
+
+        threading.Thread(target=run_server, daemon=True).start()
+
+    def _debug_display(self) -> None:
+        """Update the debug figure. Will extend this to arbitrary cost terms (for inverse and more physically motivated problems)"""
+
+        def _spatial_grads(*args) -> int:
+            grad_u_vector = tf.reduce_mean(tf.abs(args[0]), axis=[1, 2])
+            grad_u_norm = tf.sqrt(tf.reduce_sum(tf.square(grad_u_vector), axis=0))
+
+            grad_u_norm_np = grad_u_norm.numpy()
+            self._latest_grad_norm = grad_u_norm_np.tolist()
+
+            return 0
+
+        def _layer_grad_norms(*grad_w: list[tf.Tensor]) -> int:
+            layer_norms = []
+            for layer in grad_w:
+                layer_norm = tf.linalg.norm(tf.reshape(layer, [-1]), ord=2)
+                layer_norms.append(layer_norm.numpy())
+            self._layer_grad_norms = layer_norms
+            return 0
+
+        def _save_iter(iter: tf.Tensor) -> int:
+            self._latest_iter = int(iter.numpy())
+            return 0
+
+        tf.py_function(_spatial_grads, [self.debug_state.grad_u], tf.int32)
+        tf.py_function(_save_iter, [self.debug_state.iter], tf.int32)
+        tf.py_function(_layer_grad_norms, self.debug_state.grad_w, tf.int32)

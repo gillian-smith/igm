@@ -8,12 +8,14 @@ from typing import List, Tuple
 
 from .mapping import Mapping
 from ...vertical import VerticalDiscr
+from ..bcs import BoundaryCondition
+from .normalizer import IdentityNormalizer
 
 
 class MappingIdentity(Mapping):
     def __init__(
         self,
-        bcs: List[str],
+        apply_bcs: List[BoundaryCondition],
         vertical_discr: VerticalDiscr,
         U_guess: tf.Tensor,
         V_guess: tf.Tensor,
@@ -23,11 +25,12 @@ class MappingIdentity(Mapping):
         if U_guess.shape != V_guess.shape:
             raise ValueError("❌ U_guess and V_guess must have the same shape.")
 
-        super().__init__(bcs, vertical_discr, precision)
+        super().__init__(apply_bcs, vertical_discr, precision)
         self.shape = U_guess.shape
         self.type = U_guess.dtype
         self.U = tf.Variable(U_guess, trainable=True)
         self.V = tf.Variable(V_guess, trainable=True)
+        self.input_normalizer = IdentityNormalizer()
 
     def get_UV_impl(self) -> Tuple[tf.Variable, tf.Variable]:
         return self.U, self.V

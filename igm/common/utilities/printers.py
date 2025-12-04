@@ -292,7 +292,7 @@ def print_model_with_inputs_detailed(
     input_table.add_column("Variable", style="cyan bold", width=14)
     input_table.add_column("Status", style="white", justify="center", width=12)
     input_table.add_column("Mean", style="yellow", justify="right", width=10)
-    input_table.add_column("Std", style="yellow", justify="right", width=10)
+    input_table.add_column("Variance", style="yellow", justify="right", width=10)
     input_table.add_column("Min", style="blue", justify="right", width=10)
     input_table.add_column("Median", style="white", justify="right", width=10)
     input_table.add_column("Max", style="red", justify="right", width=10)
@@ -315,7 +315,8 @@ def print_model_with_inputs_detailed(
             flat_data = field_data.flatten()
             
             mean_val = np.mean(flat_data)
-            std_val = np.std(flat_data)
+            # var_val = np.std(flat_data)**2
+            var_val = np.mean((flat_data - mean_val)**2)
             min_val = np.min(flat_data)
             median_val = np.median(flat_data)
             max_val = np.max(flat_data)
@@ -324,7 +325,7 @@ def print_model_with_inputs_detailed(
                 var_name,
                 "[bold green]✓ Found[/bold green]",
                 f"{mean_val:.3e}",
-                f"{std_val:.3e}",
+                f"{var_val:.3e}",
                 f"{min_val:.3e}",
                 f"{median_val:.3e}",
                 f"{max_val:.3e}",

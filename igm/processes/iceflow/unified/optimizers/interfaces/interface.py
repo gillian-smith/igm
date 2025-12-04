@@ -9,8 +9,8 @@ from abc import ABC, abstractmethod
 from enum import Enum, auto
 from typing import Any, Callable, Dict
 
-from ..mappings import Mapping
-from ..optimizers import Optimizer
+from ...mappings import Mapping
+from .. import Optimizer
 
 
 class Status(Enum):

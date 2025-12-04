@@ -15,13 +15,9 @@ from igm.processes.iceflow.emulate.utils.misc import (
     load_model_from_path,
 )
 from .interface import InterfaceMapping
-from igm.processes.iceflow.emulate.utils.networks import (
-    StandardizationLayer,
-    FixedAffineLayer,
-    NormalizationLayer,
-)
-from .utils import process_inputs_scales, process_inputs_variances
-from igm.common import print_model_with_inputs
+from igm.processes.iceflow.emulate import Architectures
+
+from ...emulate import NormalizationsDict
 
 
 class InterfaceNetwork(InterfaceMapping):
@@ -32,6 +28,22 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_numerics = cfg.processes.iceflow.numerics
         cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
+
+        normalizing_method = cfg_unified.normalization.method
+        normalizing_class = NormalizationsDict[normalizing_method]
+        if normalizing_method == "adaptive":
+            nb_channels = len(cfg.processes.iceflow.unified.inputs)
+            normalizing_layer = normalizing_class(nb_channels)
+        elif normalizing_method == "fixed":
+            offsets = cfg_unified.normalization.fixed.inputs_offsets
+            variances = cfg_unified.normalization.fixed.inputs_variances
+            normalizing_layer = normalizing_class(offsets, variances)
+        elif normalizing_method == "automatic":
+            normalizing_layer = normalizing_class()
+        elif normalizing_method == "none":
+            normalizing_layer = normalizing_class()
+        else:
+            raise ValueError(f"Unknown normalizing method: {normalizing_method}")
 
         if cfg_unified.network.pretrained:
             dir_path = get_pretrained_emulator_path(cfg, state)
@@ -44,42 +56,17 @@ class InterfaceNetwork(InterfaceMapping):
             )
 
             nb_outputs = 2 * cfg_numerics.Nz
-
-            # TODO: Work on refactoring as this is currently quite messy with the names and hierarchy
-            if cfg_unified.scaling.method.lower() == "automatic_standardization":
-                norm = StandardizationLayer()
-            elif cfg_unified.scaling.method.lower() == "automatic_normalization":
-                norm = NormalizationLayer()
-            elif cfg_unified.scaling.method.lower() == "manual_standardization":
-                scales = process_inputs_scales(
-                    cfg_unified.scaling.manual.inputs_scales, cfg_unified.inputs
-                )
-                variances = process_inputs_variances(
-                    cfg_unified.scaling.manual.inputs_variances, cfg_unified.inputs
-                )
-                norm = FixedAffineLayer(scales=scales, variances=variances)
-            else:
-                raise ValueError(
-                    f"Unknown scaling method: {cfg_unified.scaling.method}. "
-                    f"Available methods: automatic_standardization, automatic_normalization, manual_standardization"
-                )
-
             architecture_name = cfg_unified.network.architecture
 
             # Get the function from the networks module
-            if hasattr(igm.processes.iceflow.emulate.utils.networks, architecture_name):
-                architecture_class = getattr(
-                    igm.processes.iceflow.emulate.utils.networks, architecture_name
-                )
-
-                iceflow_model = architecture_class(
-                    cfg, nb_inputs, nb_outputs, input_normalizer=norm
-                )
+            if architecture_name in Architectures:
+                architecture_class = Architectures[architecture_name]
+                iceflow_model = architecture_class(cfg, nb_inputs, nb_outputs)
 
             else:
                 raise ValueError(
                     f"Unknown network architecture: {architecture_name}. "
-                    f"Available architectures: cnn, unet"
+                    f"Available architectures: {Architectures.keys()}"
                 )
 
         state.iceflow_model = iceflow_model
@@ -89,6 +76,7 @@ class InterfaceNetwork(InterfaceMapping):
 
         return {
             "bcs": cfg_unified.bcs,
+            "normalizer": normalizing_layer,
             "vertical_discr": state.iceflow.vertical_discr,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,

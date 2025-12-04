@@ -29,16 +29,18 @@ class OptimizerLBFGS(Optimizer):
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
+        **kwargs
     ):
         super().__init__(
             cost_fn,
-            map, 
+            map,
             halt,
             print_cost,
             print_cost_freq,
             precision,
             ord_grad_u,
             ord_grad_w,
+            **kwargs  # ! confirm this is not causing any simular named attributes to be overwritten...
         )
         self.name = "lbfgs"
 
@@ -191,7 +193,7 @@ class OptimizerLBFGS(Optimizer):
         n_batches = first_batch.shape[0]
         if n_batches != 1:
             raise NotImplementedError("❌ L-BFGS requires a single batch.")
-        
+
         if getattr(self.sampler, "dynamic_augmentation", False):
             static_batches = None
             dynamic_augmentation = True
@@ -226,7 +228,7 @@ class OptimizerLBFGS(Optimizer):
             if dynamic_augmentation:
                 next_batch = self.sampler(inputs)  # [M, B, H, W, C]
             else:
-                next_batch = static_batches       # [M, B, H, W, C]
+                next_batch = static_batches  # [M, B, H, W, C]
 
             input = next_batch[0, :, :, :, :]
 
@@ -279,6 +281,10 @@ class OptimizerLBFGS(Optimizer):
             self._update_step_state(iter, U, V, w_flat, cost, grad_u_norm, grad_w_norm)
             halt_status = self._check_stopping()
             self._update_display()
+
+            if self.debug_mode and iter % self.debug_freq == 0:
+                self._update_debug_state(iter, cost, grad_u, grad_w)
+                self._debug_display()
 
             iter_last = iter
 

@@ -7,13 +7,13 @@ import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
 
-from .optimizer import Optimizer
+from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ..mappings import Mapping
-from ..halt import Halt, InterfaceHalt
+from ...mappings import Mapping, MappingDataAssimilation, MappingCombinedDataAssimilation
+from ...halt import Halt, InterfaceHalt
 
 
-class InterfaceLBFGS(InterfaceOptimizer):
+class InterfaceAdam(InterfaceOptimizer):
 
     @staticmethod
     def get_optimizer_args(
@@ -25,6 +25,14 @@ class InterfaceLBFGS(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
+        if isinstance(map, MappingDataAssimilation) or isinstance(
+            map, MappingCombinedDataAssimilation
+        ):
+            lr = cfg.processes.SR_DA.optimization.learning_rate
+
+        else:
+            lr = cfg_unified.adam.lr
+
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
 
@@ -32,15 +40,16 @@ class InterfaceLBFGS(InterfaceOptimizer):
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
-            "line_search_method": cfg_unified.line_search,
+            "lr": lr,
             "iter_max": cfg_unified.nbit,
-            "alpha_min": cfg_unified.lbfgs.alpha_min,
-            "memory": cfg_unified.lbfgs.memory,
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
             "ord_grad_w": cfg_numerics.ord_grad_w,
+            "clip_norm": cfg_unified.adam.optimizer_clipnorm,
+            "debug_mode": cfg_unified.network.debug_mode,
+            "debug_freq": cfg_unified.network.debug_freq,
         }
 
     @staticmethod
@@ -52,19 +61,30 @@ class InterfaceLBFGS(InterfaceOptimizer):
 
         cfg_unified = cfg.processes.iceflow.unified
 
+        # only apply lr schedule if network mapping is used
+        if hasattr(optimizer.map, "network"):
+            lr_decay = cfg_unified.adam.lr_decay
+            lr_decay_steps = cfg_unified.adam.lr_decay_steps
+        else:
+            lr_decay = 1.0
+            lr_decay_steps = 1000000
+
         if status == Status.INIT:
             iter_max = cfg_unified.nbit_init
+            lr = cfg_unified.adam.lr_init
         elif status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
+            lr = cfg_unified.adam.lr_init
         elif status == Status.DEFAULT:
             iter_max = cfg_unified.nbit
+            lr = cfg_unified.adam.lr
         elif status == Status.IDLE:
             return False
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        alpha_min = cfg_unified.lbfgs.alpha_min
-
-        optimizer.update_parameters(iter_max=iter_max, alpha_min=alpha_min)
+        optimizer.update_parameters(
+            iter_max=iter_max, lr=lr, lr_decay=lr_decay, lr_decay_steps=lr_decay_steps
+        )
 
         return True

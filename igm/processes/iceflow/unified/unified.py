@@ -5,6 +5,9 @@
 
 from omegaconf import DictConfig
 
+from igm.common.core import State
+from .bcs import BoundaryConditions
+from igm.common import print_model_with_inputs, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
 from .optimizers import Optimizers, InterfaceOptimizers
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
@@ -45,13 +48,26 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
         overlap=preparation_params.overlap,
         fieldin=X,
     )
-    num_patches = state.iceflow.patching.num_patches
-    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
+    num_patches = state.iceflow.patching.num_patches  # int
+    patch_H, patch_W, patch_C = (
+        state.iceflow.patching.patch_shape
+    )  # patch spatial dimensions
 
     # Initialize mapping
     mapping_name = cfg.processes.iceflow.unified.mapping
     mapping_args = InterfaceMappings[mapping_name].get_mapping_args(cfg, state)
-    mapping = Mappings[mapping_name](**mapping_args)
+
+    # TODO: This would be great to have a single mesh object in state...
+    state.Nz = cfg.processes.iceflow.numerics.Nz
+
+    # Set up BC's
+    boundary_conditions = [BoundaryConditions[bc] for bc in mapping_args["bcs"]]
+    apply_bcs = [
+        bc(state) for bc in boundary_conditions
+    ]  # ! currently this works for most cases but we should make each BC take a dictionary/get function if we need dynamic updates
+    del mapping_args["bcs"]  # TODO: ideally do all of this this in interface mapping
+
+    mapping = Mappings[mapping_name](apply_bcs=apply_bcs, **mapping_args)
     state.iceflow.mapping = mapping
 
     # Initialize optimizer
@@ -75,12 +91,15 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     evaluator_params = EvaluatorParams(**evaluator_params_args)
     state.iceflow.evaluator_params = evaluator_params
 
-    if cfg.processes.iceflow.unified.network.print_summary:
+    if (
+        cfg.processes.iceflow.unified.mapping == "network"
+        and cfg.processes.iceflow.unified.network.print_summary
+    ):
         print_model_with_inputs_detailed(
             model=state.iceflow_model,
             input_data=fieldin_dict,
             cfg_inputs=cfg.processes.iceflow.unified.inputs,
-            normalization_method=cfg.processes.iceflow.unified.scaling.method,
+            normalization_method=cfg.processes.iceflow.unified.normalization.method,
         )
 
     # Solve once

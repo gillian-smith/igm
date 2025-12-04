@@ -7,9 +7,9 @@ import tensorflow as tf
 from omegaconf import DictConfig, OmegaConf
 from typing import Any, Callable, Dict
 
-from .optimizer import Optimizer
+from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
-from ..mappings import Mapping
+from ...mappings import Mapping
 
 
 class InterfaceSequential(InterfaceOptimizer):

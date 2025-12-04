@@ -30,6 +30,7 @@ class OptimizerAdam(Optimizer):
         iter_max: int = int(1e5),
         lr_decay: float = 0.0,
         lr_decay_steps: int = 1000,
+        **kwargs
     ):
         super().__init__(
             cost_fn,
@@ -40,6 +41,7 @@ class OptimizerAdam(Optimizer):
             precision,
             ord_grad_u,
             ord_grad_w,
+            **kwargs  # ! confirm this is not causing any simular named attributes to be overwritten...
         )
         self.name = "adam"
 
@@ -139,12 +141,15 @@ class OptimizerAdam(Optimizer):
             costs = costs.write(iter, cost_avg)
 
             U, V = self.map.get_UV(input)
-
             self._update_step_state(
                 iter, U, V, w, cost_avg, grad_u_norm_avg, grad_w_norm_avg
             )
             halt_status = self._check_stopping()
             self._update_display()
+
+            if self.debug_mode and iter % self.debug_freq == 0:
+                self._update_debug_state(iter, cost, grad_u, grad_w)
+                self._debug_display()
 
             iter_last = iter
 

@@ -105,26 +105,32 @@ iceflow:
       stages: []
     line_search: hager-zhang
     inputs: [thk, usurf, arrhenius, slidingco, dX]
-    scaling:
-      method: automatic_standardization
-      manual:
-        inputs_scales: 
-          thk: 1.0
-          usurf: 1.0
-          arrhenius: 1.0
-          slidingco: 1.0
-          dX: 1.0
+    normalization:
+      method: adaptive
+      fixed:
+        inputs_offsets: 
+          thk: 0.0
+          usurf: 0.0
+          arrhenius: 0.0
+          slidingco: 0.0
+          dX: 0.0
+          X: 0.0
+          Y: 0.0
         inputs_variances: 
           thk: 1.0
           usurf: 1.0
           arrhenius: 1.0
           slidingco: 1.0
           dX: 1.0
+          X: 1.0
+          Y: 1.0
     network:
+      debug_mode: false
+      debug_freq: 100
       pretrained: true
       print_summary: false
       output_scale: 1.0
-      architecture: cnn
+      architecture: CNN
     data_preparation:
       patch_size: 1000
       overlap: 0.0
