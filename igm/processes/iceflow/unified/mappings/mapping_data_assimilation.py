@@ -46,7 +46,6 @@ class MappingDataAssimilation(Mapping):
     def __init__(
         self,
         bcs: List[str],
-        vertical_discr: VerticalDiscr,
         network: tf.keras.Model,
         Nz: tf.Tensor,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
@@ -57,7 +56,7 @@ class MappingDataAssimilation(Mapping):
         field_to_channel: Optional[Dict[str, int]] = None,
         precision: str = "single",
     ):
-        super().__init__(bcs, vertical_discr, precision)
+        super().__init__(bcs, precision)
         if not variables:
             raise ValueError(
                 "❌ DataAssimilation mapping requires at least one variable."

@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 import igm
 from igm.common.core import State
+from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
@@ -72,10 +73,11 @@ class InterfaceNetwork(InterfaceMapping):
             jit_compile=False
         )  # not all architectures support jit_compile=True
 
+        bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+
         return {
-            "bcs": cfg_unified.bcs,
+            "bcs": bcs,
             "normalizer": normalizing_layer,
-            "vertical_discr": state.iceflow.vertical_discr,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,

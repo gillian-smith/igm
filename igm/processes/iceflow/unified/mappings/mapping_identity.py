@@ -15,8 +15,7 @@ from .normalizer import IdentityNormalizer
 class MappingIdentity(Mapping):
     def __init__(
         self,
-        apply_bcs: List[BoundaryCondition],
-        vertical_discr: VerticalDiscr,
+        bcs: List[BoundaryCondition],
         U_guess: tf.Tensor,
         V_guess: tf.Tensor,
         precision: str = "float32",
@@ -25,7 +24,7 @@ class MappingIdentity(Mapping):
         if U_guess.shape != V_guess.shape:
             raise ValueError("❌ U_guess and V_guess must have the same shape.")
 
-        super().__init__(apply_bcs, vertical_discr, precision)
+        super().__init__(bcs, precision)
         self.shape = U_guess.shape
         self.type = U_guess.dtype
         self.U = tf.Variable(U_guess, trainable=True)

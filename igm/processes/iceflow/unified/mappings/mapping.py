@@ -7,8 +7,7 @@ import tensorflow as tf
 from abc import ABC, abstractmethod
 from typing import Any, Tuple, Union, List
 
-from ..bcs import BoundaryConditions, BoundaryCondition
-from ...vertical import VerticalDiscr
+from ..bcs import BoundaryCondition
 from igm.utils.math.precision import _normalize_precision
 
 TV = Union[tf.Tensor, tf.Variable]
@@ -17,14 +16,10 @@ TV = Union[tf.Tensor, tf.Variable]
 class Mapping(ABC):
     def __init__(
         self,
-        apply_bcs: List[BoundaryCondition],
-        vertical_discr: VerticalDiscr,
+        bcs: List[BoundaryCondition],
         precision: str = "float32",
     ) -> None:
-
-        # self.apply_bcs = [BoundaryConditions[bc](vertical_discr.V_b) for bc in bcs]
-        # ! Be careful how this is done as it breaks with other BC initializaitons (ideally we should use a dict for each BCs' arguments...)
-        self.apply_bcs = apply_bcs
+        self.apply_bcs = bcs
         self.precision = _normalize_precision(precision)
 
     def set_inputs(self, inputs: tf.Tensor) -> None:

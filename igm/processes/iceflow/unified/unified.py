@@ -56,18 +56,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     # Initialize mapping
     mapping_name = cfg.processes.iceflow.unified.mapping
     mapping_args = InterfaceMappings[mapping_name].get_mapping_args(cfg, state)
-
-    # TODO: This would be great to have a single mesh object in state...
-    state.Nz = cfg.processes.iceflow.numerics.Nz
-
-    # Set up BC's
-    boundary_conditions = [BoundaryConditions[bc] for bc in mapping_args["bcs"]]
-    apply_bcs = [
-        bc(state) for bc in boundary_conditions
-    ]  # ! currently this works for most cases but we should make each BC take a dictionary/get function if we need dynamic updates
-    del mapping_args["bcs"]  # TODO: ideally do all of this this in interface mapping
-
-    mapping = Mappings[mapping_name](apply_bcs=apply_bcs, **mapping_args)
+    mapping = Mappings[mapping_name](**mapping_args)
     state.iceflow.mapping = mapping
 
     # Initialize optimizer

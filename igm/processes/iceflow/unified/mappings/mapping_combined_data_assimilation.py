@@ -48,7 +48,6 @@ class MappingCombinedDataAssimilation(Mapping):
     def __init__(
         self,
         bcs: List[str],
-        vertical_discr: VerticalDiscr,
         network: tf.keras.Model,
         Nz: tf.Tensor,
         output_scale: tf.Tensor,
@@ -60,7 +59,7 @@ class MappingCombinedDataAssimilation(Mapping):
         precision: str = "single",  # kept: precision support
         store_freq: int = 0,
     ):
-        super().__init__(bcs, vertical_discr, precision)
+        super().__init__(bcs, precision)
 
         self.store_freq = int(store_freq)
         self._num_vars = None

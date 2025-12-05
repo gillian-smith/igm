@@ -7,6 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common.core import State
+from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from .interface import InterfaceMapping
 from ..mapping_network import MappingNetwork
 from ..mapping_combined_data_assimilation import CombinedVariableSpec
@@ -107,9 +108,10 @@ class InterfaceCombinedDataAssimilation(InterfaceMapping):
         precision = cfg.processes.iceflow.numerics.precision
         store_freq = int(getattr(da_cfg, "store_freq", 0))
 
+        bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+
         return {
             "bcs": bcs,
-            "vertical_discr": state.iceflow.vertical_discr,
             "network": base_map.network,
             "Nz": base_map.Nz,
             "output_scale": base_map.output_scale,

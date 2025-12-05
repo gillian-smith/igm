@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from omegaconf import DictConfig
 
 from igm.common.core import State
+from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from .interface import InterfaceMapping
 from ..mapping_data_assimilation import MappingDataAssimilation, VariableSpec
 from ..mapping_network import MappingNetwork
@@ -85,9 +86,10 @@ class InterfaceDataAssimilation(InterfaceMapping):
         cost_fn = state.iceflow.optimizer.cost_fn
         precision = cfg.processes.iceflow.numerics.precision
 
+        bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+
         return {
             "bcs": bcs,
-            "vertical_discr": state.iceflow.vertical_discr,
             "network": base_mapping.network,
             "Nz": base_mapping.Nz,
             "cost_fn": cost_fn,  # for halt diagnostics

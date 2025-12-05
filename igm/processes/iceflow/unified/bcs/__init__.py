@@ -1,5 +1,7 @@
-from .bcs import FrozenBed, PeriodicNS, PeriodicWE, PeriodicNSGlobal, PeriodicWEGlobal
-from .bcs import BoundaryCondition
+from .bc import BoundaryCondition
+from .frozen_bed import FrozenBed
+from .periodic_ns import PeriodicNS, PeriodicNSGlobal
+from .periodic_we import PeriodicWE, PeriodicWEGlobal
 
 BoundaryConditions = {
     "frozen_bed": FrozenBed,
@@ -8,3 +10,5 @@ BoundaryConditions = {
     "periodic_ns_global": PeriodicNSGlobal,
     "periodic_we_global": PeriodicWEGlobal,
 }
+
+from .interfaces import InterfaceBoundaryCondition, InterfaceBoundaryConditions

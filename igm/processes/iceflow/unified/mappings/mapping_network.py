@@ -15,15 +15,14 @@ from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 class MappingNetwork(Mapping):
     def __init__(
         self,
-        apply_bcs: List[BoundaryCondition],
-        vertical_discr: VerticalDiscr,
+        bcs: List[BoundaryCondition],
         network: tf.keras.Model,
         normalizer: tf.keras.layers.Layer,
         Nz: tf.Tensor,
         output_scale: tf.Tensor = 1.0,
         precision: str = "float32",
     ):
-        super().__init__(apply_bcs, vertical_discr, precision)
+        super().__init__(bcs, precision)
         self.network = network
         self.output_scale = output_scale
         self.network.input_normalizer = normalizer
