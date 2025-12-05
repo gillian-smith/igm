@@ -1,8 +1,8 @@
 from .interface import InterfaceMapping
-from .interface_network import InterfaceNetwork
-from .interface_identity import InterfaceIdentity
-from .interface_data_assimilation import InterfaceDataAssimilation
-from .interface_combined_data_assimilation import InterfaceCombinedDataAssimilation
+from .network import InterfaceNetwork
+from .identity import InterfaceIdentity
+from .data_assimilation import InterfaceDataAssimilation
+from .combined_data_assimilation import InterfaceCombinedDataAssimilation
 
 InterfaceMappings = {
     "identity": InterfaceIdentity,

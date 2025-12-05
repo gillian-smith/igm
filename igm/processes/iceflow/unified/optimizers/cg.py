@@ -3,7 +3,7 @@ import tensorflow as tf
 from typing import Callable
 from ..mappings import Mapping
 from .optimizer import Optimizer
-from .line_search import LineSearches, ValueAndGradient
+from .line_searches import LineSearches, ValueAndGradient
 
 class OptimizerCG(Optimizer):
     def __init__(

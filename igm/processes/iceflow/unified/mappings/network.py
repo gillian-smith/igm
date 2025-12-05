@@ -7,7 +7,6 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from .mapping import Mapping
-from ...vertical import VerticalDiscr
 from ..bcs import BoundaryCondition
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 

@@ -7,7 +7,7 @@ import tensorflow as tf
 from typing import Callable, Optional, Tuple
 
 from .optimizer import Optimizer
-from .line_search import LineSearches, ValueAndGradient
+from .line_searches import LineSearches, ValueAndGradient
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 

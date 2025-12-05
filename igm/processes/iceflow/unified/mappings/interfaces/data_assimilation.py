@@ -11,8 +11,8 @@ from omegaconf import DictConfig
 from igm.common.core import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from .interface import InterfaceMapping
-from ..mapping_data_assimilation import MappingDataAssimilation, VariableSpec
-from ..mapping_network import MappingNetwork
+from ..data_assimilation import MappingDataAssimilation, VariableSpec
+from ..network import MappingNetwork
 from ..transforms import TRANSFORMS
 
 

@@ -9,8 +9,8 @@ from omegaconf import DictConfig
 from igm.common.core import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from .interface import InterfaceMapping
-from ..mapping_network import MappingNetwork
-from ..mapping_combined_data_assimilation import CombinedVariableSpec
+from ..network import MappingNetwork
+from ..combined_data_assimilation import CombinedVariableSpec
 
 
 class InterfaceCombinedDataAssimilation(InterfaceMapping):

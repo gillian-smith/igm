@@ -7,7 +7,6 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from .mapping import Mapping
-from ...vertical import VerticalDiscr
 from ..bcs import BoundaryCondition
 from .normalizer import IdentityNormalizer
 

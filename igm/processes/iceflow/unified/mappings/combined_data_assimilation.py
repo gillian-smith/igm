@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .mapping import Mapping
 from .transforms import TRANSFORMS
-from ...vertical import VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 TV = Union[tf.Tensor, tf.Variable]

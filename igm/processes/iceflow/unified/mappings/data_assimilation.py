@@ -10,7 +10,6 @@ from typing import Callable, Dict, List, Tuple, Optional
 
 from .mapping import Mapping
 from .transforms import TRANSFORMS, ParameterTransform
-from ...vertical import VerticalDiscr
 from igm.processes.iceflow.utils.data_preprocessing import Y_to_UV
 
 

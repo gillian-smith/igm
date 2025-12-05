@@ -1,8 +1,8 @@
 from .mapping import Mapping
-from .mapping_network import MappingNetwork
-from .mapping_identity import MappingIdentity
-from .mapping_data_assimilation import MappingDataAssimilation
-from .mapping_combined_data_assimilation import MappingCombinedDataAssimilation
+from .network import MappingNetwork
+from .identity import MappingIdentity
+from .data_assimilation import MappingDataAssimilation
+from .combined_data_assimilation import MappingCombinedDataAssimilation
 
 Mappings = {
     "identity": MappingIdentity,
