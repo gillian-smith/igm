@@ -18,6 +18,41 @@ import numpy as np
 from .visualizers import _plot_memory_pie, _plot_computational_pie
 
 
+PRINTER_COLORS = {
+    "primary": "cyan",
+    "secondary": "magenta",
+    "accent": "green",
+    "model_title": "bold cyan",
+    "model_border": "blue",
+    "model_header": "bold magenta",
+    "model_layer": "cyan",
+    "model_shape": "green",
+    "model_params": "yellow",
+    "model_params_zero": "dim",
+    "model_none": "bold red",
+    "input_title": "bold cyan",
+    "input_border": "green",
+    "input_header": "bold magenta",
+    "input_variable": "cyan bold",
+    "input_status": "white",
+    "input_mean": "yellow",
+    "input_variance": "yellow",
+    "input_min": "blue",
+    "input_median": "white",
+    "input_max": "red",
+    "status_found": "bold green",
+    "status_missing": "bold red",
+    "status_na": "dim",
+    "label": "bold white",
+    "value": "cyan",
+    "value_alt": "green",
+    "warning": "bold yellow",
+    "info": "bold blue",
+    "panel_border": "cyan",
+    "panel_title": "bold",
+}
+
+
 def print_comp(state):
     ################################################################
 
@@ -217,7 +252,7 @@ def print_model_with_inputs_detailed(
 ):
     """
     Extended version with standard deviation and percentiles.
-    
+
     Args:
         model: TensorFlow/Keras model
         input_data: Dictionary of input fields {field_name: array_data}
@@ -234,17 +269,17 @@ def print_model_with_inputs_detailed(
     lines = summary_str.split("\n")
 
     model_table = Table(
-        title=f"[bold cyan]{model.name}[/bold cyan]",
+        title=f"[{PRINTER_COLORS['model_title']}]{model.name}[/{PRINTER_COLORS['model_title']}]",
         show_header=True,
-        header_style="bold magenta",
-        border_style="blue",
-        title_style="bold cyan",
+        header_style=PRINTER_COLORS["model_header"],
+        border_style=PRINTER_COLORS["model_border"],
+        title_style=PRINTER_COLORS["model_title"],
         expand=False,
     )
 
-    model_table.add_column("Layer (type)", style="cyan", no_wrap=True, width=20)
-    model_table.add_column("Output Shape", style="green", width=22)
-    model_table.add_column("Params", style="yellow", justify="right", width=10)
+    model_table.add_column("Layer (type)", style=PRINTER_COLORS["model_layer"], no_wrap=True, width=20)
+    model_table.add_column("Output Shape", style=PRINTER_COLORS["model_shape"], width=22)
+    model_table.add_column("Params", style=PRINTER_COLORS["model_params"], justify="right", width=10)
 
     in_layers = False
     for line in lines:
@@ -260,13 +295,13 @@ def print_model_with_inputs_detailed(
             parts = re.split(r"\s{2,}", line.strip())
             if len(parts) >= 3:
                 layer_name = parts[0]
-                output_shape = parts[1].replace("None", "[bold red]None[/bold red]")
+                output_shape = parts[1].replace("None", f"[{PRINTER_COLORS['model_none']}]None[/{PRINTER_COLORS['model_none']}]")
                 param_count = parts[2]
 
                 if param_count != "0":
-                    param_count = f"[bold yellow]{param_count}[/bold yellow]"
+                    param_count = f"[{PRINTER_COLORS['model_params']}]{param_count}[/{PRINTER_COLORS['model_params']}]"
                 else:
-                    param_count = f"[dim]{param_count}[/dim]"
+                    param_count = f"[{PRINTER_COLORS['model_params_zero']}]{param_count}[/{PRINTER_COLORS['model_params_zero']}]"
 
                 model_table.add_row(layer_name, output_shape, param_count)
 
@@ -277,25 +312,25 @@ def print_model_with_inputs_detailed(
         elif "Trainable params:" in line:
             trainable_params = line.split("Trainable params:")[1].strip()
 
-    model_table.caption = f"[bold white]Total:[/bold white] [cyan]{total_params}[/cyan] | [bold white]Trainable:[/bold white] [green]{trainable_params}[/green]"
+    model_table.caption = f"[{PRINTER_COLORS['label']}]Total:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value']}]{total_params}[/{PRINTER_COLORS['value']}] | [{PRINTER_COLORS['label']}]Trainable:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value_alt']}]{trainable_params}[/{PRINTER_COLORS['value_alt']}]"
 
     # ===== DETAILED INPUT VARIABLES TABLE =====
     input_table = Table(
-        title="[bold cyan]Input Variables Statistics[/bold cyan]",
+        title=f"[{PRINTER_COLORS['input_title']}]Input Variables Statistics[/{PRINTER_COLORS['input_title']}]",
         show_header=True,
-        header_style="bold magenta",
-        border_style="green",
-        title_style="bold cyan",
+        header_style=PRINTER_COLORS["input_header"],
+        border_style=PRINTER_COLORS["input_border"],
+        title_style=PRINTER_COLORS["input_title"],
         expand=False,
     )
 
-    input_table.add_column("Variable", style="cyan bold", width=14)
-    input_table.add_column("Status", style="white", justify="center", width=12)
-    input_table.add_column("Mean", style="yellow", justify="right", width=10)
-    input_table.add_column("Variance", style="yellow", justify="right", width=10)
-    input_table.add_column("Min", style="blue", justify="right", width=10)
-    input_table.add_column("Median", style="white", justify="right", width=10)
-    input_table.add_column("Max", style="red", justify="right", width=10)
+    input_table.add_column("Variable", style=PRINTER_COLORS["input_variable"], width=14)
+    input_table.add_column("Status", style=PRINTER_COLORS["input_status"], justify="center", width=12)
+    input_table.add_column("Mean", style=PRINTER_COLORS["input_mean"], justify="right", width=10)
+    input_table.add_column("Variance", style=PRINTER_COLORS["input_variance"], justify="right", width=10)
+    input_table.add_column("Min", style=PRINTER_COLORS["input_min"], justify="right", width=10)
+    input_table.add_column("Median", style=PRINTER_COLORS["input_median"], justify="right", width=10)
+    input_table.add_column("Max", style=PRINTER_COLORS["input_max"], justify="right", width=10)
 
     # Check which variables are available and requested
     available_keys = set(input_data.keys())
@@ -323,7 +358,7 @@ def print_model_with_inputs_detailed(
             
             input_table.add_row(
                 var_name,
-                "[bold green]✓ Found[/bold green]",
+                f"[{PRINTER_COLORS['status_found']}]✓ Found[/{PRINTER_COLORS['status_found']}]",
                 f"{mean_val:.3e}",
                 f"{var_val:.3e}",
                 f"{min_val:.3e}",
@@ -334,12 +369,12 @@ def print_model_with_inputs_detailed(
             # Variable is requested but not available
             input_table.add_row(
                 var_name,
-                "[bold red]✗ Missing[/bold red]",
-                "[dim]N/A[/dim]",
-                "[dim]N/A[/dim]",
-                "[dim]N/A[/dim]",
-                "[dim]N/A[/dim]",
-                "[dim]N/A[/dim]",
+                f"[{PRINTER_COLORS['status_missing']}]✗ Missing[/{PRINTER_COLORS['status_missing']}]",
+                f"[{PRINTER_COLORS['status_na']}]N/A[/{PRINTER_COLORS['status_na']}]",
+                f"[{PRINTER_COLORS['status_na']}]N/A[/{PRINTER_COLORS['status_na']}]",
+                f"[{PRINTER_COLORS['status_na']}]N/A[/{PRINTER_COLORS['status_na']}]",
+                f"[{PRINTER_COLORS['status_na']}]N/A[/{PRINTER_COLORS['status_na']}]",
+                f"[{PRINTER_COLORS['status_na']}]N/A[/{PRINTER_COLORS['status_na']}]",
             )
     
     # Get shape information from first available field
@@ -359,12 +394,12 @@ def print_model_with_inputs_detailed(
             total_points = sample_data.size
         
         input_table.caption = (
-            f"[bold white]Shape:[/bold white] [cyan]{shape_str}[/cyan] | "
-            f"[bold white]Total points:[/bold white] [magenta]{total_points:,}[/magenta] | "
-            f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
+            f"[{PRINTER_COLORS['label']}]Shape:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value']}]{shape_str}[/{PRINTER_COLORS['value']}] | "
+            f"[{PRINTER_COLORS['label']}]Total points:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value_alt']}]{total_points:,}[/{PRINTER_COLORS['value_alt']}] | "
+            f"[{PRINTER_COLORS['label']}]Normalization:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value']}]{normalization_method}[/{PRINTER_COLORS['value']}]"
         )
     else:
-        input_table.caption = f"[bold white]Normalization:[/bold white] [yellow]{normalization_method}[/yellow]"
+        input_table.caption = f"[{PRINTER_COLORS['label']}]Normalization:[/{PRINTER_COLORS['label']}] [{PRINTER_COLORS['value']}]{normalization_method}[/{PRINTER_COLORS['value']}]"
     
     # Check for missing or extra variables
     missing_vars = requested_keys - available_keys
@@ -373,17 +408,17 @@ def print_model_with_inputs_detailed(
     if missing_vars or extra_vars:
         console.print()
         if missing_vars:
-            console.print(f"[bold yellow]⚠ Warning:[/bold yellow] Missing variables in input_data: {', '.join(missing_vars)}")
+            console.print(f"[{PRINTER_COLORS['warning']}]⚠ Warning:[/{PRINTER_COLORS['warning']}] Missing variables in input_data: {', '.join(missing_vars)}")
         if extra_vars:
-            console.print(f"[bold blue]ℹ Info:[/bold blue] Extra variables in input_data (not used): {', '.join(extra_vars)}")
+            console.print(f"[{PRINTER_COLORS['info']}]ℹ Info:[/{PRINTER_COLORS['info']}] Extra variables in input_data (not used): {', '.join(extra_vars)}")
 
     # ===== DISPLAY SIDE BY SIDE =====
     console.print()
     console.print(
         Panel(
             Columns([model_table, input_table], equal=False, expand=True),
-            title=f"[bold]{title}[/bold]",
-            border_style="cyan",
+            title=f"[{PRINTER_COLORS['panel_title']}]{title}[/{PRINTER_COLORS['panel_title']}]",
+            border_style=PRINTER_COLORS["panel_border"],
             padding=(1, 2),
         )
     )
