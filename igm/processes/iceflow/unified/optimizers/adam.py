@@ -24,7 +24,7 @@ class OptimizerAdam(Optimizer):
         print_cost_freq: int = 1,
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
-        ord_grad_w: str = "l2_weighted",
+        ord_grad_theta: str = "l2_weighted",
         clip_norm: Optional[float] = None,
         lr: float = 1e-3,
         iter_max: int = int(1e5),
@@ -40,7 +40,7 @@ class OptimizerAdam(Optimizer):
             print_cost_freq,
             precision,
             ord_grad_u,
-            ord_grad_w,
+            ord_grad_theta,
             **kwargs  # ! confirm this is not causing any simular named attributes to be overwritten...
         )
         self.name = "adam"
@@ -84,7 +84,7 @@ class OptimizerAdam(Optimizer):
             inputs: [N, H, W, C] tensor of patches (sampler creates batches per iteration)
         """
         # State variables
-        w = self.map.get_w()
+        theta = self.map.get_theta()
         first_batch = self.sampler(inputs)  # [M, B, H, W, C]
 
         if getattr(self.sampler, "dynamic_augmentation", False):
@@ -100,7 +100,7 @@ class OptimizerAdam(Optimizer):
 
         # Sample first batch to initialize
         U, V = self.map.get_UV(input)
-        self._init_step_state(U, V, w)
+        self._init_step_state(U, V, theta)
 
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
@@ -111,7 +111,7 @@ class OptimizerAdam(Optimizer):
 
             cost_sum = tf.constant(0.0, dtype=self.precision)
             grad_u_norm_sum = tf.constant(0.0, dtype=self.precision)
-            grad_w_norm_sum = tf.constant(0.0, dtype=self.precision)
+            grad_theta_norm_sum = tf.constant(0.0, dtype=self.precision)
 
             # Sample fresh augmented batch for this iteration
             if dynamic_augmentation:
@@ -122,18 +122,18 @@ class OptimizerAdam(Optimizer):
             for b in tf.range(n_batches):
                 input = batched_inputs[b, :, :, :, :]
 
-                cost, grad_u, grad_w = self._get_grad(input)
-                self.optim_adam.apply_gradients(zip(grad_w, w))
+                cost, grad_u, grad_theta = self._get_grad(input)
+                self.optim_adam.apply_gradients(zip(grad_theta, theta))
 
-                grad_u_norm, grad_w_norm = self._get_grad_norm(grad_u, grad_w)
+                grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
 
                 cost_sum = cost_sum + cost
                 grad_u_norm_sum = grad_u_norm_sum + grad_u_norm
-                grad_w_norm_sum = grad_w_norm_sum + grad_w_norm
+                grad_theta_norm_sum = grad_theta_norm_sum + grad_theta_norm
 
             cost_avg = cost_sum / n_batches
             grad_u_norm_avg = grad_u_norm_sum / n_batches
-            grad_w_norm_avg = grad_w_norm_sum / n_batches
+            grad_theta_norm_avg = grad_theta_norm_sum / n_batches
 
             # TODO: check if this is necessary
             self.map.on_step_end(iter)
@@ -142,13 +142,13 @@ class OptimizerAdam(Optimizer):
 
             U, V = self.map.get_UV(input)
             self._update_step_state(
-                iter, U, V, w, cost_avg, grad_u_norm_avg, grad_w_norm_avg
+                iter, U, V, theta, cost_avg, grad_u_norm_avg, grad_theta_norm_avg
             )
             halt_status = self._check_stopping()
             self._update_display()
 
             if self.debug_mode and iter % self.debug_freq == 0:
-                self._update_debug_state(iter, cost, grad_u, grad_w)
+                self._update_debug_state(iter, cost, grad_u, grad_theta)
                 self._debug_display()
 
             iter_last = iter

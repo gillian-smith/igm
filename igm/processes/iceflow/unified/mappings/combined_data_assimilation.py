@@ -36,9 +36,9 @@ class CombinedVariableSpec:
 
 class MappingCombinedDataAssimilation(Mapping):
     """
-    Optimize *both* the emulator network weights and DA controls with a single w.
+    Optimize *both* the emulator network weights and DA controls with a single theta.
 
-      w = [ network.trainable_variables...,  θ_1, θ_2, ... ]
+      theta = [ network.trainable_variables...,  θ_1, θ_2, ... ]
 
     θ live in transform space (via TRANSFORMS). Before the forward pass, θ are mapped
     back to PHYSICAL space via transform.to_physical(θ) and written into inputs.
@@ -258,47 +258,47 @@ class MappingCombinedDataAssimilation(Mapping):
         return updated
 
     # --------------------------------------------------------------------------
-    # w management
+    # theta management
     # --------------------------------------------------------------------------
-    def _split_blocks(self, w: List[TV]) -> Tuple[List[TV], List[TV]]:
-        return list(w[: len(self._net_vars)]), list(w[len(self._net_vars) :])
+    def _split_blocks(self, theta: List[TV]) -> Tuple[List[TV], List[TV]]:
+        return list(theta[: len(self._net_vars)]), list(theta[len(self._net_vars) :])
 
-    def get_w(self) -> List[tf.Variable]:
+    def get_theta(self) -> List[tf.Variable]:
         return self._net_vars + self._theta_vars
 
-    def set_w(self, w: List[tf.Tensor]) -> None:
-        net_vals, theta_vals = self._split_blocks(w)
+    def set_theta(self, theta: List[tf.Tensor]) -> None:
+        net_vals, theta_vals = self._split_blocks(theta)
         if len(net_vals) != len(self._net_vars) or len(theta_vals) != len(
             self._theta_vars
         ):
-            raise ValueError("❌ set_w received a vector with unexpected block sizes.")
+            raise ValueError("❌ set_theta received a vector with unexpected block sizes.")
         for v, val in zip(self._net_vars, net_vals):
             v.assign(tf.cast(val, v.dtype))
         for t, val in zip(self._theta_vars, theta_vals):
             t.assign(tf.cast(val, t.dtype))
 
-    def copy_w(self, w: List[tf.Variable]) -> List[tf.Tensor]:
-        return [wi.read_value() for wi in w]
+    def copy_theta(self, theta: List[tf.Variable]) -> List[tf.Tensor]:
+        return [theta_i.read_value() for theta_i in theta]
 
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
-        return tf.identity(w_flat)
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
+        return tf.identity(theta_flat)
 
-    def flatten_w(self, w: List[Union[tf.Variable, tf.Tensor]]) -> tf.Tensor:
-        flats = [tf.reshape(tf.cast(wi, self.precision), [-1]) for wi in w]
+    def flatten_theta(self, theta: List[Union[tf.Variable, tf.Tensor]]) -> tf.Tensor:
+        flats = [tf.reshape(tf.cast(theta_i, self.precision), [-1]) for theta_i in theta]
         return tf.concat(flats, axis=0)
 
-    def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> List[tf.Tensor]:
         # network block
         idx = 0
         net_vals: List[tf.Tensor] = []
         for s, shp, var in zip(self._net_sizes, self._net_shapes, self._net_vars):
-            split = tf.reshape(w_flat[idx : idx + s], shp)
+            split = tf.reshape(theta_flat[idx : idx + s], shp)
             net_vals.append(tf.cast(split, var.dtype))
             idx += s
         # theta block
         theta_vals: List[tf.Tensor] = []
         for s, shp, var in zip(self._theta_sizes, self._theta_shapes, self._theta_vars):
-            split = tf.reshape(w_flat[idx : idx + s], shp)
+            split = tf.reshape(theta_flat[idx : idx + s], shp)
             theta_vals.append(tf.cast(split, var.dtype))
             idx += s
         return net_vals + theta_vals

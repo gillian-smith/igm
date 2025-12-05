@@ -47,25 +47,25 @@ class MappingNetwork(Mapping):
         U, V = Y_to_UV(self.Nz, Y)
         return U, V
 
-    def copy_w(self, w: list[tf.Variable]) -> list[tf.Tensor]:
-        return [wi.read_value() for wi in w]
+    def copy_theta(self, theta: list[tf.Variable]) -> list[tf.Tensor]:
+        return [theta_i.read_value() for theta_i in theta]
 
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
-        return tf.identity(w_flat)
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
+        return tf.identity(theta_flat)
 
-    def get_w(self) -> list[tf.Variable]:
+    def get_theta(self) -> list[tf.Variable]:
         return self.network.trainable_variables
 
-    def set_w(self, w: list[tf.Tensor]) -> None:
-        for var, val in zip(self.network.trainable_variables, w):
+    def set_theta(self, theta: list[tf.Tensor]) -> None:
+        for var, val in zip(self.network.trainable_variables, theta):
             var.assign(val)
 
-    def flatten_w(self, w: list[tf.Variable | tf.Tensor]) -> tf.Tensor:
-        w_flat = [tf.reshape(wi, [-1]) for wi in w]
-        return tf.concat(w_flat, axis=0)
+    def flatten_theta(self, theta: list[tf.Variable | tf.Tensor]) -> tf.Tensor:
+        theta_flat = [tf.reshape(theta_i, [-1]) for theta_i in theta]
+        return tf.concat(theta_flat, axis=0)
 
-    def unflatten_w(self, w_flat: tf.Tensor) -> list[tf.Tensor]:
-        splits = tf.split(w_flat, self.sizes)
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> list[tf.Tensor]:
+        splits = tf.split(theta_flat, self.sizes)
         return [tf.reshape(t, s) for t, s in zip(splits, self.shapes)]
 
     def check_halt_criterion(

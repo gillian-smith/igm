@@ -1,14 +1,14 @@
 from .metric import Metric
 from .cost import MetricCost
 from .grad_u_norm import MetricGradUNorm
-from .grad_w_norm import MetricGradWNorm
+from .grad_theta_norm import MetricGradThetaNorm
 from .u import MetricU
-from .w import MetricW
+from .theta import MetricTheta
 
 Metrics = {
     "cost": MetricCost,
     "grad_u_norm": MetricGradUNorm,
-    "grad_w_norm": MetricGradWNorm,
+    "grad_theta_norm": MetricGradThetaNorm,
     "u": MetricU,
-    "w": MetricW,
+    "theta": MetricTheta,
 }

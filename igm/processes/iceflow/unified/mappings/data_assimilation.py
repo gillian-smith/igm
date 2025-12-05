@@ -115,7 +115,7 @@ class MappingDataAssimilation(Mapping):
 
         # Build transform objects, initialize θ from physical fields, record shapes/sizes.
         self.transforms: List[ParameterTransform] = []
-        self._w: List[tf.Variable] = []
+        self._theta: List[tf.Variable] = []
         self._shapes: List[tf.TensorShape] = []
         self._sizes: List[tf.Tensor] = []
         self._sizes_int: List[Optional[int]] = []
@@ -167,7 +167,7 @@ class MappingDataAssimilation(Mapping):
                 trainable=True,
                 name=f"theta_{spec.name}",
             )
-            self._w.append(theta)
+            self._theta.append(theta)
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
             self._sizes_int.append(
@@ -182,7 +182,7 @@ class MappingDataAssimilation(Mapping):
         # Precompute θ-space bounds for optimizer consumption.
         self._L_list: List[tf.Tensor] = []
         self._U_list: List[tf.Tensor] = []
-        for spec, theta, tform in zip(self.vars, self._w, self.transforms):
+        for spec, theta, tform in zip(self.vars, self._theta, self.transforms):
             Ls, Us = tform.theta_bounds(
                 spec.lower_bound, spec.upper_bound, dtype=theta.dtype, eps=self.eps
             )
@@ -205,7 +205,7 @@ class MappingDataAssimilation(Mapping):
     def _theta_to_field(self, idx: int) -> tf.Tensor:
         mask_bool = self._mask_bool[idx]
         tform = self.transforms[idx]
-        theta = self._w[idx]
+        theta = self._theta[idx]
         full_shape = self._full_shapes[idx]
 
         if mask_bool is None:
@@ -264,40 +264,40 @@ class MappingDataAssimilation(Mapping):
 
     # ------- Parameter plumbing ----------------------------------------------
 
-    def get_w(self) -> List[tf.Variable]:
-        return self._w
+    def get_theta(self) -> List[tf.Variable]:
+        return self._theta
 
-    def set_w(self, w: List[tf.Tensor]) -> None:
-        if len(w) != len(self._w):
-            raise ValueError("❌ set_w: length mismatch.")
-        for var, val in zip(self._w, w):
+    def set_theta(self, theta: List[tf.Tensor]) -> None:
+        if len(theta) != len(self._theta):
+            raise ValueError("❌ set_theta: length mismatch.")
+        for var, val in zip(self._theta, theta):
             var.assign(val)
 
-    def copy_w(self, w: List[tf.Variable]) -> List[tf.Tensor]:
-        return [wi.read_value() for wi in w]
+    def copy_theta(self, theta: List[tf.Variable]) -> List[tf.Tensor]:
+        return [theta_i.read_value() for theta_i in theta]
 
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
-        return tf.identity(w_flat)
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
+        return tf.identity(theta_flat)
 
-    def flatten_w(self, w: List[tf.Variable | tf.Tensor]) -> tf.Tensor:
+    def flatten_theta(self, theta: List[tf.Variable | tf.Tensor]) -> tf.Tensor:
         flats = []
-        for i, wi in enumerate(w):
-            if wi is None:
+        for i, theta_i in enumerate(theta):
+            if theta_i is None:
                 raise ValueError(f"❌ None gradient for parameter: {self.vars[i].name}")
-            flats.append(tf.reshape(wi, [-1]))
+            flats.append(tf.reshape(theta_i, [-1]))
         return tf.concat(flats, axis=0)
 
-    def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> List[tf.Tensor]:
         if all(s is not None for s in self._sizes_int):
             vals: List[tf.Tensor] = []
             idx = 0
             for s_int, shp in zip(self._sizes_int, self._shapes):
                 nxt = idx + int(s_int)  # type: ignore[arg-type]
-                vals.append(tf.reshape(w_flat[idx:nxt], shp))
+                vals.append(tf.reshape(theta_flat[idx:nxt], shp))
                 idx = nxt
             return vals
         else:
-            splits = tf.split(w_flat, self._sizes)
+            splits = tf.split(theta_flat, self._sizes)
             return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
     # ------- Halt criterion  ------------------------

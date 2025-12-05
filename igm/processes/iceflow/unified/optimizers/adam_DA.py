@@ -86,7 +86,7 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
     # identical shape/signature as your LBFGS-DA version
     @tf.function
     def _get_grad(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
-        w = self.map.get_w()
+        w = self.map.get_theta()
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             for wi in w:
                 tape.watch(wi)
@@ -99,9 +99,9 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
         self.data_cost.assign(tf.cast(data_cost, self.precision))
         self.physics_cost.assign(tf.cast(physics_cost, self.precision))
 
-        grad_w = tape.gradient(cost, w)
+        grad_theta = tape.gradient(cost, theta)
         del tape
-        return cost, grad_w
+        return cost, grad_theta
 
     # same UI as your LBFGS DA
     def _progress_setup(self) -> None:

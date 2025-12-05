@@ -23,7 +23,7 @@ class OptimizerSequential(Optimizer):
         print_cost_freq: int = 1,
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
-        ord_grad_w: str = "l2_weighted",
+        ord_grad_theta: str = "l2_weighted",
     ):
         if not optimizers:
             raise ValueError("❌ Sequential optimizer requires at least one optimizer.")
@@ -36,7 +36,7 @@ class OptimizerSequential(Optimizer):
             print_cost_freq=print_cost_freq,
             precision=precision,
             ord_grad_u=ord_grad_u,
-            ord_grad_w=ord_grad_w,
+            ord_grad_theta=ord_grad_theta,
         )
 
         self.name = "sequential"

@@ -30,7 +30,7 @@ class Optimizer(ABC):
         print_cost_freq: int = 1,
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
-        ord_grad_w: str = "l2_weighted",
+        ord_grad_theta: str = "l2_weighted",
         debug_mode: bool = False,
         debug_freq: int = 100,
     ):
@@ -43,7 +43,7 @@ class Optimizer(ABC):
         self.display = ProgressOptimizer(enabled=print_cost, freq=print_cost_freq)
         self.precision = _normalize_precision(precision)
         self.ord_grad_u = ord_grad_u
-        self.ord_grad_w = ord_grad_w
+        self.ord_grad_theta = ord_grad_theta
         self.debug_mode = debug_mode
         self.debug_freq = debug_freq
         if self.debug_mode:
@@ -69,45 +69,45 @@ class Optimizer(ABC):
         )
 
     def _get_grad_norm(
-        self, grad_u: list[tf.Tensor], grad_w: list[tf.Tensor]
+        self, grad_u: list[tf.Tensor], grad_theta: list[tf.Tensor]
     ) -> Tuple[tf.Tensor, tf.Tensor]:
-        # For w
-        grad_w_flat = self.map.flatten_w(grad_w)
-        grad_w_norm = compute_norm(grad_w_flat, ord=self.ord_grad_w)
+        # For theta
+        grad_theta_flat = self.map.flatten_theta(grad_theta)
+        grad_theta_norm = compute_norm(grad_theta_flat, ord=self.ord_grad_theta)
         # For (u,v)
         grad_u_x, grad_u_y = grad_u
         grad_u_flat = tf.sqrt(tf.square(grad_u_x) + tf.square(grad_u_y))
         grad_u_norm = compute_norm(grad_u_flat, ord=self.ord_grad_u)
-        return grad_u_norm, grad_w_norm
+        return grad_u_norm, grad_theta_norm
 
     @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
-        w = self.map.get_w()
+        theta = self.map.get_theta()
         with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-            for wi in w:
-                tape.watch(wi)
+            for theta_i in theta:
+                tape.watch(theta_i)
             U, V = self.map.get_UV(inputs)
             cost = self.cost_fn(U, V, inputs)
         grad_u = tape.gradient(cost, [U, V])
-        grad_w = tape.gradient(cost, w)
+        grad_theta = tape.gradient(cost, theta)
         del tape
-        return cost, grad_u, grad_w
+        return cost, grad_u, grad_theta
 
     def _init_step_state(
         self,
         U: tf.Tensor,
         V: tf.Tensor,
-        w: Any,
+        theta: Any,
     ) -> None:
         self.step_state = StepState(
             iter=tf.constant(-1, dtype=self.precision),
             u=[U, V],
-            w=w,
+            theta=theta,
             cost=tf.constant(np.nan, dtype=self.precision),
             grad_u_norm=tf.constant(np.nan, dtype=self.precision),
-            grad_w_norm=tf.constant(np.nan, dtype=self.precision),
+            grad_theta_norm=tf.constant(np.nan, dtype=self.precision),
         )
 
     def _update_step_state(
@@ -115,12 +115,12 @@ class Optimizer(ABC):
         iter: tf.Tensor,
         U: tf.Tensor,
         V: tf.Tensor,
-        w: Any,
+        theta: Any,
         cost: tf.Tensor,
         grad_u_norm: tf.Tensor,
-        grad_w_norm: tf.Tensor,
+        grad_theta_norm: tf.Tensor,
     ) -> None:
-        self.step_state = StepState(iter, [U, V], w, cost, grad_u_norm, grad_w_norm)
+        self.step_state = StepState(iter, [U, V], theta, cost, grad_u_norm, grad_theta_norm)
 
     def _check_stopping(self) -> tf.Tensor:
         """Check stopping criteria, update halt_state, and return status"""
@@ -205,10 +205,10 @@ class Optimizer(ABC):
         iter: tf.Tensor,
         costs: tf.Tensor,
         grad_u: list[tf.Tensor],
-        grad_w: list[tf.Tensor],
+        grad_theta: list[tf.Tensor],
         # costs: Dict[tf.Tensor],
     ) -> None:
-        self.debug_state = DebugState(iter, costs, grad_u, grad_w)
+        self.debug_state = DebugState(iter, costs, grad_u, grad_theta)
 
     def _init_debug_display(self) -> None:
         """Initialize the debug figure with live updates"""
@@ -311,9 +311,9 @@ class Optimizer(ABC):
 
             return 0
 
-        def _layer_grad_norms(*grad_w: list[tf.Tensor]) -> int:
+        def _layer_grad_norms(*grad_theta: list[tf.Tensor]) -> int:
             layer_norms = []
-            for layer in grad_w:
+            for layer in grad_theta:
                 layer_norm = tf.linalg.norm(tf.reshape(layer, [-1]), ord=2)
                 layer_norms.append(layer_norm.numpy())
             self._layer_grad_norms = layer_norms
@@ -325,4 +325,4 @@ class Optimizer(ABC):
 
         tf.py_function(_spatial_grads, [self.debug_state.grad_u], tf.int32)
         tf.py_function(_save_iter, [self.debug_state.iter], tf.int32)
-        tf.py_function(_layer_grad_norms, self.debug_state.grad_w, tf.int32)
+        tf.py_function(_layer_grad_norms, self.debug_state.grad_theta, tf.int32)

@@ -32,7 +32,7 @@ iceflow:
   numerics:
     precision: single
     ord_grad_u: l2_weighted
-    ord_grad_w: l2_weighted
+    ord_grad_theta: l2_weighted
     Nz: 10
     vert_spacing: 4.0
     staggered_grid: 1
@@ -155,12 +155,12 @@ iceflow:
           patience: 100
         inf: {}
         nan: {}
-      metrics: 
-        w: {}
+      metrics:
+        theta: {}
         u: {}
         cost: {}
         grad_u_norm: {}
-        grad_w_norm: {}
+        grad_theta_norm: {}
     display:
       print_cost: false
       print_cost_freq: 1

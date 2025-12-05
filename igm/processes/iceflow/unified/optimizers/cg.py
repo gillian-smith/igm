@@ -53,9 +53,9 @@ class OptimizerCG(Optimizer):
         return tf.maximum(beta_pr, tf.cast(0.0, self.precision))
 
     @tf.function(reduce_retracing=True)
-    def _project_box(self, w_flat: tf.Tensor, L_flat: tf.Tensor, U_flat: tf.Tensor) -> tf.Tensor:
+    def _project_box(self, theta_flat: tf.Tensor, L_flat: tf.Tensor, U_flat: tf.Tensor) -> tf.Tensor:
         """Project parameters onto box constraints [L, U]."""
-        return tf.minimum(tf.maximum(w_flat, L_flat), U_flat)
+        return tf.minimum(tf.maximum(theta_flat, L_flat), U_flat)
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -65,7 +65,7 @@ class OptimizerCG(Optimizer):
         x = inputs[0, :, :, :, :]
 
         # Start point
-        w_flat = self.map.flatten_w(self.map.get_w())
+        theta_flat = self.map.flatten_theta(self.map.get_theta())
 
         # Optional θ-space bounds (only if mapping provides them)
         if self._has_box_bounds:
@@ -74,16 +74,16 @@ class OptimizerCG(Optimizer):
             tf.debugging.assert_type(L_flat, self.precision, message="[CG] lower bounds must match optimizer dtype")
             tf.debugging.assert_type(U_flat, self.precision, message="[CG] upper bounds must match optimizer dtype")
             # Start feasible
-            w_flat = self._project_box(w_flat, L_flat, U_flat)
-            self.map.set_w(self.map.unflatten_w(w_flat))
+            theta_flat = self._project_box(theta_flat, L_flat, U_flat)
+            self.map.set_theta(self.map.unflatten_theta(theta_flat))
         else:
             # Dummy tensors to satisfy TF signature; never used when _has_box_bounds is False
-            L_flat = tf.zeros_like(w_flat)
-            U_flat = tf.zeros_like(w_flat)
+            L_flat = tf.zeros_like(theta_flat)
+            U_flat = tf.zeros_like(theta_flat)
 
         # Initial value/grad
-        cost, grad_w = self._get_grad(x)
-        g = self.map.flatten_w(grad_w)
+        cost, grad_theta = self._get_grad(x)
+        g = self.map.flatten_theta(grad_theta)
         p = -g
 
         costs = tf.TensorArray(dtype=self.precision, size=int(self.iter_max))
@@ -93,7 +93,7 @@ class OptimizerCG(Optimizer):
             costs = costs.write(it, cost)
             
             # Check stopping criteria
-            grad_norm = self._get_grad_norm(grad_w)
+            grad_norm = self._get_grad_norm(grad_theta)
             self.map.on_step_end(it)
             should_stop = self._progress_update(it, cost, grad_norm)
             if should_stop:
@@ -101,17 +101,17 @@ class OptimizerCG(Optimizer):
             
             # Line search along p (projected-path if bounded)
             def val_grad(alpha):
-                w_bak = self.map.copy_w(self.map.get_w())
-                w_trial = w_flat + alpha * p
+                theta_bak = self.map.copy_theta(self.map.get_theta())
+                theta_trial = theta_flat + alpha * p
                 if self._has_box_bounds:
-                    w_trial = self._project_box(w_trial, L_flat, U_flat)
-                self.map.set_w(self.map.unflatten_w(w_trial))
+                    theta_trial = self._project_box(theta_trial, L_flat, U_flat)
+                self.map.set_theta(self.map.unflatten_theta(theta_trial))
                 f, grad = self._get_grad(x)
-                df = self._dot(self.map.flatten_w(grad), p)
-                self.map.set_w(w_bak)
+                df = self._dot(self.map.flatten_theta(grad), p)
+                self.map.set_theta(theta_bak)
                 return ValueAndGradient(x=alpha, f=f, df=df)
 
-            alpha = self.line_search.search(w_flat, p, val_grad)
+            alpha = self.line_search.search(theta_flat, p, val_grad)
             
             # Safeguard against NaN or invalid step sizes
             alpha = tf.where(tf.math.is_nan(alpha) | tf.math.is_inf(alpha), 
@@ -120,14 +120,14 @@ class OptimizerCG(Optimizer):
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
 
             # Step (and project if bounded)
-            w_new = w_flat + alpha * p
+            theta_new = theta_flat + alpha * p
             if self._has_box_bounds:
-                w_new = self._project_box(w_new, L_flat, U_flat)
-            self.map.set_w(self.map.unflatten_w(w_new))
+                theta_new = self._project_box(theta_new, L_flat, U_flat)
+            self.map.set_theta(self.map.unflatten_theta(theta_new))
 
             # New grad/cost for next iteration
-            cost, grad_w = self._get_grad(x)
-            g_new = self.map.flatten_w(grad_w)
+            cost, grad_theta = self._get_grad(x)
+            g_new = self.map.flatten_theta(grad_theta)
             
             # Check for NaN/Inf in cost or gradient - stop if detected (use tf.cond for graph mode)
             cost_is_invalid = tf.math.is_nan(cost) | tf.math.is_inf(cost)
@@ -149,7 +149,7 @@ class OptimizerCG(Optimizer):
             p = tf.where(restart, -g_new, -g_new + beta * p)
 
             # Update loop vars
-            w_flat = w_new
+            theta_flat = theta_new
             g = g_new
 
         # Fill remaining slots with final cost (in case of early termination)

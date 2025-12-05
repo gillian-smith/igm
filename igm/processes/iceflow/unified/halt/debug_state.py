@@ -13,4 +13,4 @@ class DebugState:
     iter: tf.Tensor
     costs: tf.Tensor
     grad_u: tf.Tensor
-    grad_w: list[tf.Tensor]
+    grad_theta: list[tf.Tensor]

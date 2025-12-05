@@ -24,7 +24,7 @@ class OptimizerLBFGS(Optimizer):
         print_cost_freq: int = 1,
         precision: str = "float32",
         ord_grad_u: str = "l2_weighted",
-        ord_grad_w: str = "l2_weighted",
+        ord_grad_theta: str = "l2_weighted",
         line_search_method: str = "armijo",
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
@@ -39,7 +39,7 @@ class OptimizerLBFGS(Optimizer):
             print_cost_freq,
             precision,
             ord_grad_u,
-            ord_grad_w,
+            ord_grad_theta,
             **kwargs  # ! confirm this is not causing any simular named attributes to be overwritten...
         )
         self.name = "lbfgs"
@@ -116,22 +116,22 @@ class OptimizerLBFGS(Optimizer):
         return -r
 
     def _force_descent(
-        self, p_flat: tf.Tensor, grad_w_flat: tf.Tensor, _: tf.Tensor
+        self, p_flat: tf.Tensor, grad_theta_flat: tf.Tensor, _: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
-        dot_gp = self._dot(grad_w_flat, p_flat)
-        return tf.cond(dot_gp >= 0.0, lambda: -grad_w_flat, lambda: p_flat), None
+        dot_gp = self._dot(grad_theta_flat, p_flat)
+        return tf.cond(dot_gp >= 0.0, lambda: -grad_theta_flat, lambda: p_flat), None
 
     def _apply_step(
-        self, w_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
+        self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
-        return w_flat + alpha * p_flat, None
+        return theta_flat + alpha * p_flat, None
 
     def _constrain_pair(
         self,
         s: tf.Tensor,
         y: tf.Tensor,
         w_old: tf.Tensor,
-        w_trial: Optional[tf.Tensor],
+        theta_trial: Optional[tf.Tensor],
         mask: Optional[tf.Tensor],
     ) -> Tuple[tf.Tensor, tf.Tensor]:
         return s, y
@@ -170,22 +170,22 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function
     def _line_search(
-        self, w_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
+        self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
     ) -> tf.Tensor:
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
-            w_backup = self.map.copy_w(self.map.get_w())
-            w_alpha, _ = self._apply_step(w_flat, alpha, p_flat)
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
 
-            self.map.set_w(self.map.unflatten_w(w_alpha))
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
             f, _, grad = self._get_grad(input)
-            grad_flat = self.map.flatten_w(grad)
+            grad_flat = self.map.flatten_theta(grad)
             df = self._dot(grad_flat, p_flat)
             df = tf.cast(df, grad_flat.dtype)
 
-            self.map.set_w(w_backup)
+            self.map.set_theta(theta_backup)
             return ValueAndGradient(x=alpha, f=f, df=df)
 
-        return self.line_search.search(w_flat, p_flat, eval_fn)
+        return self.line_search.search(theta_flat, p_flat, eval_fn)
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -205,17 +205,17 @@ class OptimizerLBFGS(Optimizer):
         input = first_batch[0, :, :, :, :]  # Define before loop for AutoGraph
 
         # State variables
-        w_flat = self.map.flatten_w(self.map.get_w())
-        cost, grad_u, grad_w = self._get_grad(input)
-        grad_w_flat = self.map.flatten_w(grad_w)
+        theta_flat = self.map.flatten_theta(self.map.get_theta())
+        cost, grad_u, grad_theta = self._get_grad(input)
+        grad_theta_flat = self.map.flatten_theta(grad_theta)
         U, V = self.map.get_UV(input)
-        self._init_step_state(U, V, w_flat)
+        self._init_step_state(U, V, theta_flat)
 
         # Memory variables
-        w_dim = tf.shape(w_flat)[0]
+        w_dim = tf.shape(theta_flat)[0]
         idx_memory = tf.constant(0, dtype=tf.int32)
-        s_flat_mem = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
-        y_flat_mem = tf.zeros([self.memory, w_dim], dtype=w_flat.dtype)
+        s_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
+        y_flat_mem = tf.zeros([self.memory, w_dim], dtype=theta_flat.dtype)
 
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
@@ -232,15 +232,15 @@ class OptimizerLBFGS(Optimizer):
 
             input = next_batch[0, :, :, :, :]
 
-            w_prev = w_flat
-            grad_w_prev = grad_w_flat
+            theta_prev = theta_flat
+            grad_theta_prev = grad_theta_flat
 
             # Tempering
             tau = self._compute_tau(iter)
 
             # Direction
             p_flat = self._compute_direction(
-                grad_w_flat,
+                grad_theta_flat,
                 s_flat_mem[:idx_memory],
                 y_flat_mem[:idx_memory],
                 idx_memory,
@@ -248,23 +248,23 @@ class OptimizerLBFGS(Optimizer):
             )
 
             # Force descent
-            p_flat, mask = self._force_descent(p_flat, grad_w_flat, w_flat)
+            p_flat, mask = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
             # Line search
-            alpha = self._line_search(w_flat, p_flat, input)
+            alpha = self._line_search(theta_flat, p_flat, input)
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
 
             # Apply step
-            w_flat, w_trial = self._apply_step(w_flat, alpha, p_flat)
+            theta_flat, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
 
             # New weights, cost, and grads
-            self.map.set_w(self.map.unflatten_w(w_flat))
-            cost, grad_u, grad_w = self._get_grad(input)
-            grad_w_flat = self.map.flatten_w(grad_w)
+            self.map.set_theta(self.map.unflatten_theta(theta_flat))
+            cost, grad_u, grad_theta = self._get_grad(input)
+            grad_theta_flat = self.map.flatten_theta(grad_theta)
 
             # Curvature pair
-            s, y = w_flat - w_prev, grad_w_flat - grad_w_prev
-            s, y = self._constrain_pair(s, y, w_prev, w_trial, mask)
+            s, y = theta_flat - theta_prev, grad_theta_flat - grad_theta_prev
+            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask)
 
             # Update memory
             s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
@@ -277,13 +277,13 @@ class OptimizerLBFGS(Optimizer):
             costs = costs.write(iter, cost)
 
             U, V = self.map.get_UV(input)
-            grad_u_norm, grad_w_norm = self._get_grad_norm(grad_u, grad_w)
-            self._update_step_state(iter, U, V, w_flat, cost, grad_u_norm, grad_w_norm)
+            grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
+            self._update_step_state(iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm)
             halt_status = self._check_stopping()
             self._update_display()
 
             if self.debug_mode and iter % self.debug_freq == 0:
-                self._update_debug_state(iter, cost, grad_u, grad_w)
+                self._update_debug_state(iter, cost, grad_u, grad_theta)
                 self._debug_display()
 
             iter_last = iter

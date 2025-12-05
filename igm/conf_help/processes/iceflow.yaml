@@ -116,9 +116,9 @@ numerics:
     Type: string
     Description: "Default type of norm used for the halt critera associated with the velocity."
     Units: dimless
-  ord_grad_w:
+  ord_grad_theta:
     Type: string
-    Description: "Default type of norm used for the halt critera associated with the weights."
+    Description: "Default type of norm used for the halt critera associated with the parameters."
     Units: dimless
   Nz:
     Type: integer
@@ -528,9 +528,9 @@ unified:
         Description: "Default parameters for the nan criterion."
         Units: dimless
     metrics:
-      w:
+      theta:
         Type: dict
-        Description: "Default parameters for the weight metric."
+        Description: "Default parameters for the parameter metric."
         Units: dimless
       u:
         Type: dict
@@ -544,9 +544,9 @@ unified:
         Type: dict
         Description: "Default parameters for the velocity-gradient-of-the-cost metric."
         Units: dimless
-      grad_w_norm:
+      grad_theta_norm:
         Type: dict
-        Description: "Default parameters for the weight-gradient-of-the-cost metric."
+        Description: "Default parameters for the parameter-gradient-of-the-cost metric."
         Units: dimless
   display:
     print_cost:

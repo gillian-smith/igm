@@ -38,27 +38,27 @@ class Mapping(ABC):
         return U, V
 
     @abstractmethod
-    def get_w(self) -> Any:
+    def get_theta(self) -> Any:
         pass
 
     @abstractmethod
-    def set_w(self, w: Any) -> None:
+    def set_theta(self, theta: Any) -> None:
         pass
 
     @abstractmethod
-    def copy_w(self, w: Any) -> Any:
+    def copy_theta(self, theta: Any) -> Any:
         pass
 
     @abstractmethod
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
         pass
 
     @abstractmethod
-    def flatten_w(self, w: Any) -> tf.Tensor:
+    def flatten_theta(self, theta: Any) -> tf.Tensor:
         pass
 
     @abstractmethod
-    def unflatten_w(self, w_flat: tf.Tensor) -> Any:
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> Any:
         pass
 
     @abstractmethod

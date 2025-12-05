@@ -46,7 +46,7 @@ class InterfaceAdam(InterfaceOptimizer):
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
-            "ord_grad_w": cfg_numerics.ord_grad_w,
+            "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "clip_norm": cfg_unified.adam.optimizer_clipnorm,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,

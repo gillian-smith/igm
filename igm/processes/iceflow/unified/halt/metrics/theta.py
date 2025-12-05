@@ -8,9 +8,9 @@ import tensorflow as tf
 from .metric import Metric, StepState
 
 
-class MetricGradWNorm(Metric):
-    """Metric for monitoring |∂cost/∂w|."""
+class MetricTheta(Metric):
+    """Metric for monitoring theta."""
 
     def compute_impl(self, step_state: StepState) -> tf.Tensor:
-        """Return |∂cost/∂w| from step state."""
-        return step_state.grad_w_norm
+        """Return theta from step state."""
+        return step_state.theta

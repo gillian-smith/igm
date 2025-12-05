@@ -33,28 +33,28 @@ class MappingIdentity(Mapping):
     def get_UV_impl(self) -> Tuple[tf.Variable, tf.Variable]:
         return self.U, self.V
 
-    def copy_w(self, w: list[tf.Variable]) -> list[tf.Tensor]:
-        return [w[0].read_value(), w[1].read_value()]
+    def copy_theta(self, theta: list[tf.Variable]) -> list[tf.Tensor]:
+        return [theta[0].read_value(), theta[1].read_value()]
 
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
-        return tf.identity(w_flat)
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
+        return tf.identity(theta_flat)
 
-    def get_w(self) -> list[tf.Variable]:
+    def get_theta(self) -> list[tf.Variable]:
         return [self.U, self.V]
 
-    def set_w(self, w: list[tf.Tensor]) -> None:
-        self.U.assign(w[0])
-        self.V.assign(w[1])
+    def set_theta(self, theta: list[tf.Tensor]) -> None:
+        self.U.assign(theta[0])
+        self.V.assign(theta[1])
 
-    def flatten_w(self, w: list[tf.Variable | tf.Tensor]) -> tf.Tensor:
-        u_flat = tf.reshape(w[0], [-1])
-        v_flat = tf.reshape(w[1], [-1])
+    def flatten_theta(self, theta: list[tf.Variable | tf.Tensor]) -> tf.Tensor:
+        u_flat = tf.reshape(theta[0], [-1])
+        v_flat = tf.reshape(theta[1], [-1])
         return tf.concat([u_flat, v_flat], axis=0)
 
-    def unflatten_w(self, w_flat: tf.Tensor) -> list[tf.Tensor]:
-        n = tf.size(w_flat) // 2
-        u_flat = w_flat[:n]
-        v_flat = w_flat[n:]
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> list[tf.Tensor]:
+        n = tf.size(theta_flat) // 2
+        u_flat = theta_flat[:n]
+        v_flat = theta_flat[n:]
         U = tf.reshape(u_flat, self.shape)
         V = tf.reshape(v_flat, self.shape)
         return [U, V]

@@ -24,25 +24,25 @@ class VectorMapping(Mapping):
         return z, z
 
     # --- Parameter plumbing ---
-    def get_w(self) -> List[tf.Variable]:
+    def get_theta(self) -> List[tf.Variable]:
         return [self.theta]
 
-    def set_w(self, w: List[tf.Tensor]) -> None:
-        if len(w) != 1:
-            raise ValueError("TestVectorMapping.set_w: expected a single tensor.")
-        self.theta.assign(w[0])
+    def set_theta(self, theta: List[tf.Tensor]) -> None:
+        if len(theta) != 1:
+            raise ValueError("TestVectorMapping.set_theta: expected a single tensor.")
+        self.theta.assign(theta[0])
 
-    def copy_w(self, w: List[tf.Variable]) -> List[tf.Tensor]:
-        return [w[0].read_value()]
+    def copy_theta(self, theta: List[tf.Variable]) -> List[tf.Tensor]:
+        return [theta[0].read_value()]
 
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
-        return tf.identity(w_flat)
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
+        return tf.identity(theta_flat)
 
-    def flatten_w(self, w: List[tf.Variable | tf.Tensor]) -> tf.Tensor:
-        return tf.reshape(w[0], [-1])
+    def flatten_theta(self, theta: List[tf.Variable | tf.Tensor]) -> tf.Tensor:
+        return tf.reshape(theta[0], [-1])
 
-    def unflatten_w(self, w_flat: tf.Tensor) -> List[tf.Tensor]:
-        return [tf.reshape(w_flat, self.theta.shape)]
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> List[tf.Tensor]:
+        return [tf.reshape(theta_flat, self.theta.shape)]
 
     def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         return inputs
