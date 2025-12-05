@@ -7,7 +7,7 @@ import pytest
 import numpy as np
 import tensorflow as tf
 
-from igm.processes.iceflow.vertical.utils_sia import (
+from igm.processes.iceflow.vertical.utils_molho import (
     phi_bed,
     phi_surf,
     grad_phi_bed,

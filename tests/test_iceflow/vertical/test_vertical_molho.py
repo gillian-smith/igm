@@ -12,7 +12,7 @@ import igm
 from igm.common.runner.configuration.loader import load_yaml_recursive
 from igm.processes.iceflow.vertical import VerticalDiscrs
 from igm.processes.iceflow.vertical.utils import compute_gauss_quad
-from igm.processes.iceflow.vertical.vertical_sia import SIADiscr
+from igm.processes.iceflow.vertical.vertical_molho import MOLHODiscr
 
 
 @pytest.fixture
@@ -24,22 +24,22 @@ def cfg() -> DictConfig:
 
 
 def test_registry_name() -> None:
-    assert "sia" in VerticalDiscrs
-    assert VerticalDiscrs["sia"] == SIADiscr
+    assert "molho" in VerticalDiscrs
+    assert VerticalDiscrs["molho"] == MOLHODiscr
 
 
 def test_registry_instantiate(cfg: DictConfig) -> None:
-    assert isinstance(VerticalDiscrs["sia"](cfg), SIADiscr)
+    assert isinstance(VerticalDiscrs["molho"](cfg), MOLHODiscr)
 
 
 def test_nz(cfg: DictConfig) -> None:
     cfg.processes.iceflow.numerics.Nz = 3
     with pytest.raises(ValueError):
-        SIADiscr(cfg)
+        MOLHODiscr(cfg)
 
 
 def test_matrices_shapes(cfg: DictConfig) -> None:
-    discr = SIADiscr(cfg)
+    discr = MOLHODiscr(cfg)
 
     assert discr.w.shape == (5,)
     assert discr.zeta.shape == (5,)
@@ -52,7 +52,7 @@ def test_matrices_shapes(cfg: DictConfig) -> None:
 
 
 def test_matrices_properties(cfg: DictConfig) -> None:
-    discr = SIADiscr(cfg)
+    discr = MOLHODiscr(cfg)
 
     sum_rows_V_q = np.sum(discr.V_q.numpy(), axis=1)
     sum_rows_V_q_grad = np.sum(discr.V_q_grad.numpy(), axis=1)
@@ -63,7 +63,7 @@ def test_matrices_properties(cfg: DictConfig) -> None:
 
 def test_matrices_example(cfg: DictConfig) -> None:
     cfg.processes.iceflow.physics.exp_glen = 0.0
-    discr = SIADiscr(cfg)
+    discr = MOLHODiscr(cfg)
 
     w_computed = discr.w.numpy()
     zeta_computed = discr.zeta.numpy()

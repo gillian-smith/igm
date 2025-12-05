@@ -7,7 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from .utils import compute_matrices, compute_gauss_quad
-from .utils_sia import (
+from .utils_molho import (
     phi_bed,
     phi_surf,
     grad_phi_bed,
@@ -18,11 +18,11 @@ from .utils_sia import (
 from .vertical import VerticalDiscr
 
 
-class SIADiscr(VerticalDiscr):
-    """Shallow Ice Approximation (SIA) vertical discretization (two layers)."""
+class MOLHODiscr(VerticalDiscr):
+    """MOno-Layer Higher-Order (MOLHO) vertical discretization (two layers)."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute SIA discretization matrices."""
+        """Compute MOLHO discretization matrices."""
 
         cfg_numerics = cfg.processes.iceflow.numerics
         cfg_physics = cfg.processes.iceflow.physics
@@ -31,7 +31,7 @@ class SIADiscr(VerticalDiscr):
         n = cfg_physics.exp_glen
 
         if Nz != 2:
-            raise ValueError("❌ SIA vertical basis only supports Nz=2.")
+            raise ValueError("❌ MOLHO vertical basis only supports Nz=2.")
 
         x_quad, w_quad = compute_gauss_quad(order=5)
 
