@@ -10,7 +10,7 @@ from igm.utils.grad.compute_divflux import compute_divflux
 from ..cost_terms.total_cost import total_cost
 
 from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
-from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing
 
@@ -46,7 +46,7 @@ def optimize_update_lbfgs(cfg, state, cost, i):
             else:
                 vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
 
-        fieldin = get_fieldin(cfg, state)
+        fieldin = fieldin_state_to_X(cfg, state)
 
         update_iceflow_emulated(cfg, state, fieldin)
 

@@ -14,7 +14,7 @@ from ..cost_terms.total_cost import total_cost
 #from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
 
 from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
-from igm.processes.iceflow.utils.data_preprocessing import get_fieldin
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
 
 
 from ..utils import compute_flow_direction_for_anisotropic_smoothing
