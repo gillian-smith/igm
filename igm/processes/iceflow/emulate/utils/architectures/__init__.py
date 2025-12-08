@@ -1,6 +1,6 @@
 from .cnns import CNN, CNNPeriodic, CNNPatch, CNNSkip
 from .mlps import MLP, FourierMLP
-from .nos import FNO
+from .nos import FNO, FNO2
 from .utils import DTypeActivation
 
 Architectures = {
@@ -10,5 +10,6 @@ Architectures = {
     'CNNSkip': CNNSkip,
     'MLP': MLP,
     'FourierMLP': FourierMLP,
-    'FNO': FNO
+    'FNO': FNO,
+    'FNO2': FNO2,
 }
