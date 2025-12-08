@@ -48,15 +48,8 @@ processes:
       display:
         print_cost: True
     numerics:
-      Nz: 4
-      vert_basis: lagrange
-    emulator:
-      network:
-        nb_layers: 32
-        nb_blocks: 4
-        nb_out_filter: 32
-        conv_ker_size: 7
-        dropout_rate: 0
+      Nz: 2
+      vert_basis: molho
 
 outputs:
   write_ncdf:

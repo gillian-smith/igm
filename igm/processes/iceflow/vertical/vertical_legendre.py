@@ -12,8 +12,10 @@ from .utils_legendre import compute_basis, compute_basis_grad, compute_basis_int
 
 
 class LegendreDiscr(VerticalDiscr):
+    """Legendre vertical discretization."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
+        """Compute Legendre discretization matrices."""
         cfg_numerics = cfg.processes.iceflow.numerics
 
         Nz = cfg_numerics.Nz

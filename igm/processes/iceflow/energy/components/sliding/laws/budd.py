@@ -6,11 +6,11 @@
 import tensorflow as tf
 from typing import Dict
 
+from ..sliding import SlidingComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
-from ..sliding import SlidingComponent
 
 
 class BuddParams(tf.experimental.ExtensionType):
@@ -23,10 +23,9 @@ class BuddParams(tf.experimental.ExtensionType):
 class Budd(SlidingComponent):
     """Sliding component implementing Budd's sliding law."""
 
-    name = "budd"
-    
     def __init__(self, params: BuddParams) -> None:
         """Initialize Budd sliding component with parameters."""
+        self.name = "budd"
         self.params = params
 
     def cost(

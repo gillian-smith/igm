@@ -43,8 +43,8 @@ processes:
       display:
         print_cost: True
     numerics:
-      Nz: 10
-      vert_basis: lagrange
+      Nz: 2
+      vert_basis: molho
 
 outputs:
   write_ncdf:

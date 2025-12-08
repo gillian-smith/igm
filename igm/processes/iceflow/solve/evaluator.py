@@ -49,7 +49,8 @@ def get_evaluator_inputs_from_state(_: DictConfig, state: State) -> tf.Tensor:
     return tf.stack([state.U, state.V], axis=0)
 
 
-@tf.function(jit_compile=True)
+@tf.function(jit_compile=False)
+# @tf.function(jit_compile=True)
 def evaluator_iceflow(
     inputs: tf.Tensor, parameters: EvaluatorParams, **kwargs: Dict[str, Any]
 ) -> Dict[str, tf.Tensor]:
@@ -84,6 +85,7 @@ def evaluator_iceflow(
 
 def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
 
+    print("eval?")
     # Get inputs for mapping
     inputs = get_evaluator_inputs_from_state(cfg, state)
 

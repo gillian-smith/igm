@@ -24,7 +24,6 @@ def initialize_iceflow_solver(cfg: DictConfig, state: State) -> None:
 
     # Initialize optimizer
     optimizer_name = cfg.processes.iceflow.solver.optimizer.lower()
-    learning_rate = cfg.processes.iceflow.solver.step_size
 
     if optimizer_name == "adam":
         version_tf = int(tf.__version__.split(".")[1])

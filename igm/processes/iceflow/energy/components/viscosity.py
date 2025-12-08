@@ -26,7 +26,7 @@ class ViscosityComponent(EnergyComponent):
     """Energy component representing viscous energy dissipation."""
 
     name = "viscosity"
-    
+
     def __init__(self, params) -> None:
         """Initialize viscous component with parameters."""
         self.params = params
@@ -275,7 +275,12 @@ def _cost(
     """
 
     # Get dtype from input tensors
+    # ! There is a bug here. Even if the model is fully in float64, the cost functions are not and there is a mismatch.
+    # For now, we will lose precision this way for convenience but it is not true double precision...
+
     dtype = U.dtype
+
+    n = tf.cast(n, dtype=dtype)
 
     # Ice stiffness parameter
     B = tf.constant(2.0, dtype=dtype) * tf.pow(A, tf.constant(-1.0, dtype=dtype) / n)

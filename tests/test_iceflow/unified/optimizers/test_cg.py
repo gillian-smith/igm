@@ -4,7 +4,7 @@ import tensorflow as tf
 import pytest
 import warnings
 
-from igm.processes.iceflow.unified.optimizers.optimizer_cg import OptimizerCG
+from igm.processes.iceflow.unified.optimizers.cg import OptimizerCG
 from .vector_mapping import VectorMapping, BoundedVectorMapping
 
 # Mark the whole module as slow

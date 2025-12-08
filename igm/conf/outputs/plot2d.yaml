@@ -3,4 +3,4 @@ plot2d:
   live: False
   particles: True
   var: "velbar_mag"
-  var_max: 1000
+  var_max: 1000.0

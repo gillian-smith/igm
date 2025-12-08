@@ -23,6 +23,7 @@ from igm.processes.iceflow.data_preparation.config import _augs_effective
 def get_cost_fn(
     cfg: DictConfig, state: State
 ) -> Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]:
+    """Create cost function for ice flow optimization."""
 
     cfg_unified = cfg.processes.iceflow.unified
     cfg_physics = cfg.processes.iceflow.physics
@@ -31,6 +32,7 @@ def get_cost_fn(
     energy_components = get_energy_components(cfg)
 
     def cost_fn(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+        """Cost function from velocity fields and inputs."""
         nonstaggered_energy, staggered_energy = iceflow_energy_UV(
             Nz=cfg_numerics.Nz,
             dim_arrhenius=cfg_physics.dim_arrhenius,

@@ -51,7 +51,7 @@ def update(cfg, state):
 
         state.W = compute_vertical_velocity_legendre(cfg, state)
 
-    elif vert_basis.lower() == "sia":
+    elif vert_basis.lower() == "molho":
 
         state.W = compute_vertical_velocity_twolayers(cfg, state)
 

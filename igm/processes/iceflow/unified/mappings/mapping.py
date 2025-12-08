@@ -7,8 +7,7 @@ import tensorflow as tf
 from abc import ABC, abstractmethod
 from typing import Any, Tuple, Union, List
 
-from ..bcs import BoundaryConditions
-from ...vertical import VerticalDiscr
+from ..bcs import BoundaryCondition
 from igm.utils.math.precision import _normalize_precision
 
 TV = Union[tf.Tensor, tf.Variable]
@@ -16,9 +15,11 @@ TV = Union[tf.Tensor, tf.Variable]
 
 class Mapping(ABC):
     def __init__(
-        self, bcs: List[str], vertical_discr: VerticalDiscr, precision: str = "float32"
+        self,
+        bcs: List[BoundaryCondition],
+        precision: str = "float32",
     ) -> None:
-        self.apply_bcs = [BoundaryConditions[bc](vertical_discr.V_b) for bc in bcs]
+        self.apply_bcs = bcs
         self.precision = _normalize_precision(precision)
 
     def set_inputs(self, inputs: tf.Tensor) -> None:
@@ -37,27 +38,27 @@ class Mapping(ABC):
         return U, V
 
     @abstractmethod
-    def get_w(self) -> Any:
+    def get_theta(self) -> Any:
         pass
 
     @abstractmethod
-    def set_w(self, w: Any) -> None:
+    def set_theta(self, theta: Any) -> None:
         pass
 
     @abstractmethod
-    def copy_w(self, w: Any) -> Any:
+    def copy_theta(self, theta: Any) -> Any:
         pass
 
     @abstractmethod
-    def copy_w_flat(self, w_flat: tf.Tensor) -> tf.Tensor:
+    def copy_theta_flat(self, theta_flat: tf.Tensor) -> tf.Tensor:
         pass
 
     @abstractmethod
-    def flatten_w(self, w: Any) -> tf.Tensor:
+    def flatten_theta(self, theta: Any) -> tf.Tensor:
         pass
 
     @abstractmethod
-    def unflatten_w(self, w_flat: tf.Tensor) -> Any:
+    def unflatten_theta(self, theta_flat: tf.Tensor) -> Any:
         pass
 
     @abstractmethod

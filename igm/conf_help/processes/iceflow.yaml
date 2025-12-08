@@ -1,255 +1,259 @@
 method:
   Type: string
-  Description: "Type of method to determine the ice flow: emulated, solved, diagnostic, unified"
+  Description: "Type of method to determine the ice flow: emulated, solved, diagnostic, unified."
   Units: dimless
 force_max_velbar:
   Type: float
-  Description: "Upper-bound value for the velocities; applied if strictly positive"
+  Description: "Upper-bound value for the velocities; applied if strictly positive."
   Units: m y^{-1}
 physics:
   energy_components:
     Type: list
-    Description: "List of energy components to compute; the available components are: gravity, viscosity, sliding"
+    Description: "List of energy components to compute; the available components are: gravity, viscosity, sliding."
     Units: dimless
   sliding:
-    law: 
+    law:
       Type: string
-      Description: "Type of sliding law"
+      Description: "Type of sliding law."
       Units: dimless
     weertman:
       regu:
         Type: float
-        Description: "Regularization parameter for velocity magnitude"
+        Description: "Regularization parameter for velocity magnitude."
         Units: m y^{-1}
       exponent:
         Type: float
-        Description: "Weertman exponent"
-        Units: dimless 
+        Description: "Weertman exponent."
+        Units: dimless
     coulomb:
       regu:
         Type: float
-        Description: "Regularization parameter for velocity magnitude"
+        Description: "Regularization parameter for velocity magnitude."
         Units: m y^{-1}
       exponent:
         Type: float
-        Description: "Coulomb exponent"
-        Units: dimless 
+        Description: "Coulomb exponent."
+        Units: dimless
       mu:
         Type: float
-        Description: "Till coefficient"
+        Description: "Till coefficient."
         Units: dimless
     budd:
       regu:
         Type: float
-        Description: "Regularization parameter for velocity magnitude"
+        Description: "Regularization parameter for velocity magnitude."
         Units: m y^{-1}
       exponent:
         Type: float
-        Description: "Budd exponent"
+        Description: "Budd exponent."
         Units: dimless 
   gravity_cst:
     Type: float
-    Description: "Gravitational constant"
+    Description: "Gravitational constant."
     Units: m s^{-2}
   ice_density:
     Type: float
-    Description: "Density of ice"
+    Description: "Density of ice."
+    Units: kg m^{-3}
+  water_density:
+    Type: float
+    Description: "Density of water."
     Units: kg m^{-3}
   init_slidingco:
     Type: float
-    Description: "Initial value for the sliding coefficient"
+    Description: "Initial value for the sliding coefficient."
     Units: MPa y^{m} m^{-m}
   init_arrhenius:
     Type: float
-    Description: "Initial value for the Arrhenius factor in Glen's flow law"
+    Description: "Initial value for the Arrhenius factor in Glen's flow law."
     Units: MPa^{-n} y^{-1}
   enhancement_factor:
     Type: float
-    Description: "Enhancement factor in Glen's flow law: prefactor multiplying the arrhenius factor"
+    Description: "Enhancement factor in Glen's flow law: prefactor multiplying the arrhenius factor."
     Units: dimless
   exp_glen:
     Type: float
-    Description: "Glen's flow law exponent"
+    Description: "Glen's flow law exponent."
     Units: dimless
   exp_weertman:
     Type: float
-    Description: "Weertman's law exponent"
+    Description: "Weertman's law exponent."
     Units: dimless
   regu_glen:
     Type: float
-    Description: "Regularization parameter for Glen's flow law"
+    Description: "Regularization parameter for Glen's flow law."
     Units: dimless
   dim_arrhenius:
     Type: integer
-    Description: "Dimension of the Arrhenius factor; 2 for 2D, 3 for 3D"
+    Description: "Dimension of the Arrhenius factor; 2 for 2D, 3 for 3D."
     Units: dimless
   thr_ice_thk:
     Type: float
-    Description: "Minimal value for the ice thickness in the strain-rate computation"
+    Description: "Minimal value for the ice thickness in the strain-rate computation."
     Units: m
   min_sr:
     Type: float
-    Description: "Minimal value for the strain rate"
+    Description: "Minimal value for the strain rate."
     Units: y^{-1}
   max_sr:
     Type: float
-    Description: "Maximum value for the strain rate"
+    Description: "Maximum value for the strain rate."
     Units: y^{-1}
   force_negative_gravitational_energy:
     Type: boolean
-    Description: "Force the gravitational energy term to be negative"
+    Description: "Force the gravitational energy term to be negative."
     Units: dimless
   cf_eswn:
     Type: list
-    Description: "This forces calving front at the border of the domain in the side given in the list"
+    Description: "This forces calving front at the border of the domain in the side given in the list."
     Units: dimless
 numerics:
-  precision: 
+  precision:
     Type: string
-    Description: "Precision type for the fields: single, double"
+    Description: "Precision type for the fields: single, double."
     Units: dimless
   ord_grad_u:
     Type: string
-    Description: "Default type of norm used for the halt critera associated with the velocity"
+    Description: "Default type of norm used for the halt critera associated with the velocity."
     Units: dimless
-  ord_grad_w:
+  ord_grad_theta:
     Type: string
-    Description: "Default type of norm used for the halt critera associated with the weights"
+    Description: "Default type of norm used for the halt critera associated with the parameters."
     Units: dimless
   Nz:
     Type: integer
-    Description: "Number of grid points for the vertical discretization"
+    Description: "Number of grid points for the vertical discretization."
     Units: dimless
   vert_spacing:
     Type: float
-    Description: "Parameter controlling the discretization density to get more points near the bed than near the surface; a value 1.0 means uniform vertical spacing"
+    Description: "Parameter controlling the discretization density to get more points near the bed than near the surface; a value 1.0 means uniform vertical spacing."
     Units: dimless
   staggered_grid:
     Type: integer
-    Description: "Type of staggering for the horizontal discretization"
+    Description: "Type of staggering for the horizontal discretization."
     Units: dimless
   vert_basis:
     Type: string
-    Description: "Basis for the vertical discretization"
+    Description: "Basis for the vertical discretization."
     Units: dimless
 solver:
   step_size:
     Type: float
-    Description: "Step size for the optimizer"
+    Description: "Step size for the optimizer."
     Units: dimless
   nbitmax:
     Type: integer
-    Description: "Maximum number of iterations for the optimizer"
+    Description: "Maximum number of iterations for the optimizer."
     Units: dimless
   optimizer:
     Type: string
-    Description: "Type of optimizer"
+    Description: "Type of optimizer."
     Units: dimless
   print_cost:
     Type: boolean
-    Description: "Display the cost during the optimization"
+    Description: "Display the cost during the optimization."
     Units: dimless
   fieldin:
     Type: list
-    Description: "Input fields of the ice-flow solver"
+    Description: "Input fields of the ice-flow solver."
     Units: dimless
 emulator:
   fieldin:
     Type: list
-    Description: "Input fields of the ice-flow emulator"
+    Description: "Input fields of the ice-flow emulator."
     Units: dimless
   retrain_freq:
     Type: integer
-    Description: "Frequency at which the emulator is retrained"
+    Description: "Frequency at which the emulator is retrained."
     Units: dimless
   print_cost:
     Type: boolean
-    Description: "Display the cost during the optimization"
+    Description: "Display the cost during the optimization."
     Units: dimless
   lr:
     Type: float
-    Description: "Learning rate for the training of the emulator"
+    Description: "Learning rate for the training of the emulator."
     Units: dimless
   lr_init:
     Type: float
-    Description: "Initial learning rate for the training of the emulator"
+    Description: "Initial learning rate for the training of the emulator."
     Units: dimless
   lr_decay:
     Type: float
-    Description: "Decay learning-rate parameter for the training of the emulator"
+    Description: "Decay learning-rate parameter for the training of the emulator."
     Units: dimless
   warm_up_it:
     Type: integer
-    Description: "Number of iterations for a warm-up period, allowing intense initial training"
+    Description: "Number of iterations for a warm-up period, allowing intense initial training."
     Units: dimless
   nbit_init:
     Type: integer
-    Description: "Number of iterations done initially for the training of the emulator"
+    Description: "Number of iterations done initially for the training of the emulator."
     Units: dimless
   nbit:
     Type: integer
-    Description: "Number of iterations done at each time step for the training of the emulator"
+    Description: "Number of iterations done at each time step for the training of the emulator."
     Units: dimless
   framesizemax:
     Type: integer
-    Description: "Size of the patch used for training the emulator; this is useful for large size arrays as otherwise the GPU memory could be overloaded"
+    Description: "Size of the patch used for training the emulator; this is useful for large size arrays as otherwise the GPU memory could be overloaded."
     Units: dimless
   split_patch_method:
     Type: string
-    Description: "Method to split the patch for the emulator: sequential (usefull for large size arrays) or parallel"
+    Description: "Method to split the patch for the emulator: sequential (usefull for large size arrays) or parallel."
     Units: dimless
   pretrained:
     Type: boolean
-    Description: "Use a pretrained emulator instead of starting from scratch"
+    Description: "Use a pretrained emulator instead of starting from scratch."
     Units: dimless
   name:
     Type: string
-    Description: "Directory path of the pretrained ice-flow emulator; taken from the library if this is empty"
+    Description: "Directory path of the pretrained ice-flow emulator; taken from the library if this is empty."
     Units: dimless
   save_model:
     Type: boolean
-    Description: "Save the ice-flow emulator at the end of the simulation"
+    Description: "Save the ice-flow emulator at the end of the simulation."
     Units: dimless
   exclude_borders:
     Type: integer
-    Description: "Quick fix of the border issue; otherwise the emulator shows zero velocity at the border"
+    Description: "Quick fix of the border issue; otherwise the emulator shows zero velocity at the border."
     Units: dimless
   optimizer:
     Type: string
-    Description: "Type of optimizer for the emulator"
+    Description: "Type of optimizer for the emulator."
     Units: dimless
   optimizer_clipnorm:
     Type: float
-    Description: "Maximum value for the gradient of each weight"
+    Description: "Maximum value for the gradient of each weight."
     Units: dimless
   optimizer_epsilon:
     Type: float
-    Description: "Small constant for numerical stability of the Adam optimizer"
+    Description: "Small constant for numerical stability of the Adam optimizer."
     Units: dimless
   save_cost:
     Type: string
-    Description: "Name of the file containing the cost"
+    Description: "Name of the file containing the cost."
     Units: dimless
   output_directory:
     Type: string
-    Description: "Directory of the file containing the cost"
+    Description: "Directory of the file containing the cost."
     Units: dimless
   plot_sol:
     Type: boolean
-    Description: "Plot the solution of the emulator at each time step"
+    Description: "Plot the solution of the emulator at each time step."
     Units: dimless
   pertubate:
     Type: boolean
-    Description: "Perturb the input fiels during the training"
+    Description: "Perturb the input fiels during the training."
     Units: dimless
   network:
     architecture:
       Type: string
-      Description: "Type of network: cnn, unet"
+      Description: "Type of network: cnn, unet."
       Units: dimless
     multiple_window_size:
       Type: integer
-      Description: "For a U-Net, this requires the window size to be a multiple of 2 to the power N"
+      Description: "For a U-Net, this requires the window size to be a multiple of 2 to the power N."
       Units: dimless
     activation:
       Type: string
@@ -257,299 +261,299 @@ emulator:
       Units: dimless
     nb_layers:
       Type: integer
-      Description: "Number of layers in the network"
+      Description: "Number of layers in the network."
       Units: dimless
     nb_blocks:
       Type: integer
-      Description: "Number of block layers in the U-Net"
+      Description: "Number of block layers in the U-Net."
       Units: dimless
     nb_out_filter:
       Type: integer
-      Description: "Number of output filters in the network"
+      Description: "Number of output filters in the network."
       Units: dimless
     conv_ker_size:
       Type: integer
-      Description: "Size of the convolution kernel"
+      Description: "Size of the convolution kernel."
       Units: dimless
     dropout_rate:
       Type: float
-      Description: "Dropout rate in the CNN"
+      Description: "Dropout rate in the CNN."
       Units: dimless
     weight_initialization:
       Type: string
-      Description: "Initialization type for the network weights: glorot_uniform, he_normal, lecun_normal"
+      Description: "Initialization type for the network weights: glorot_uniform, he_normal, lecun_normal."
       Units: dimless
     cnn3d_for_vertical:
       Type: boolean
-      Description: "Apply a 3D CNN instead of a 2D one for each horizontal layer"
+      Description: "Apply a 3D CNN instead of a 2D one for each horizontal layer."
       Units: dimless
     batch_norm:
       Type: boolean
-      Description: "Apply a batch normalization layer"
+      Description: "Apply a batch normalization layer."
       Units: dimless
     l2_reg:
       Type: float
-      Description: "Amount of l2 regularization penalty"
+      Description: "Amount of l2 regularization penalty."
       Units: dimless
     separable:
       Type: boolean
-      Description: "Apply convolution layers that are separable"
+      Description: "Apply convolution layers that are separable."
       Units: dimless
     residual:
       Type: boolean
-      Description: "Apply residual layer"
+      Description: "Apply residual layer."
       Units: dimless
 diagnostic:
   save_freq:
     Type: integer
-    Description: "Frequency of the saving of the metrics"
+    Description: "Frequency of the saving of the metrics."
     Units: dimless
   filename_metrics:
     Type: string
-    Description: "Name of the file with the metrics"
+    Description: "Name of the file with the metrics."
     Units: dimless
 unified:
   mapping:
     Type: string
-    Description: "Type of mapping between the weights and the velocity"
+    Description: "Type of mapping between the weights and the velocity."
     Units: dimless
   bcs:
     Type: list
-    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we"
+    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we."
     Units: dimless
   optimizer:
     Type: list
-    Description: "Type of optimizer used to solve the ice flow"
+    Description: "Type of optimizer used to solve the ice flow."
     Units: dimless
   nbit:
     Type: integer
-    Description: "Number of iterations done to solve the ice flow"
+    Description: "Number of iterations done to solve the ice flow."
     Units: dimless
   nbit_init:
     Type: integer
-    Description: "Number of iterations done initially to solve the ice flow"
+    Description: "Number of iterations done initially to solve the ice flow."
     Units: dimless
   nbit_warmup:
     Type: integer
-    Description: "Number of iterations done for a warm-up period to solve the ice flow, allowing intense initial training"
+    Description: "Number of iterations done for a warm-up period to solve the ice flow, allowing intense initial training."
     Units: dimless
   retrain_freq:
     Type: integer
-    Description: "Frequency at which the ice flow is solved"
+    Description: "Frequency at which the ice flow is solved."
     Units: dimless
   adam:
     lr:
       Type: float
-      Description: "Learning rate for the Adam optimizer"
+      Description: "Learning rate for the Adam optimizer."
       Units: dimless
     lr_init:
       Type: float
-      Description: "Initial learning rate for the Adam optimizer"
+      Description: "Initial learning rate for the Adam optimizer."
       Units: dimless
     lr_decay:
       Type: float
-      Description: "Decay learning-rate parameter for the Adam optimizer"
+      Description: "Decay learning-rate parameter for the Adam optimizer."
       Units: dimless
     lr_decay_steps:
       Type: integer
-      Description: "Number of steps during which the decay learning rate is applied for the Adam optimizer"
+      Description: "Number of steps during which the decay learning rate is applied for the Adam optimizer."
       Units: dimless
     optimizer_clipnorm:
       Type: float
-      Description: "Maximum value for the gradient of each weight"
+      Description: "Maximum value for the gradient of each weight."
       Units: dimless
   lbfgs:
     memory:
       Type: integer
-      Description: "Number of saved iteration results for the L-BFGS optimizer"
+      Description: "Number of saved iteration results for the L-BFGS optimizer."
       Units: dimless
     alpha_min:
       Type: float
-      Description: "Minimal value for the step size in the line search"
+      Description: "Minimal value for the step size in the line search."
       Units: dimless
   sequential:
     stages:
       Type: list
-      Description: "List containing the optimizer configurations when using a sequential optimization approach"
+      Description: "List containing the optimizer configurations when using a sequential optimization approach."
       Units: dimless
   line_search:
     Type: string
-    Description: "Type of line-search method"
+    Description: "Type of line-search method."
     Units: dimless
   inputs:
     Type: list
-    Description: "Input fields of the mapping for the ice flow"
+    Description: "Input fields of the mapping for the ice flow."
     Units: dimless
   scaling:
-    method: 
+    method:
       Type: string
-      Description: "Type of method used for the scaling of the inputs"
+      Description: "Type of method used for the scaling of the inputs."
       Units: dimless
     manual:
-      inputs_scales: 
+      inputs_scales:
         thk:
           Type: float
-          Description: "Manual scale of the input thk"
+          Description: "Manual scale of the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual scale of the input usurf"
+          Description: "Manual scale of the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual scale of the input arrhenius"
+          Description: "Manual scale of the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual scale of the input slidingco"
+          Description: "Manual scale of the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual scale of the input dX"
+          Description: "Manual scale of the input dX."
           Units: m
-      inputs_variances: 
+      inputs_variances:
         thk:
           Type: float
-          Description: "Manual variance of the input thk"
+          Description: "Manual variance of the input thk."
           Units: m
         usurf:
           Type: float
-          Description: "Manual variance of the input usurf"
+          Description: "Manual variance of the input usurf."
           Units: m
         arrhenius:
           Type: float
-          Description: "Manual variance of the input arrhenius"
+          Description: "Manual variance of the input arrhenius."
           Units: MPa^{-n} y^{-1}
         slidingco:
           Type: float
-          Description: "Manual variance of the input slidingco"
+          Description: "Manual variance of the input slidingco."
           Units: MPa y^{m} m^{-m}
         dX:
           Type: float
-          Description: "Manual variance of the input dX"
+          Description: "Manual variance of the input dX."
           Units: m
   network:
     pretrained:
       Type: boolean
-      Description: "Use a pretrained network instead of starting from scratch"
+      Description: "Use a pretrained network instead of starting from scratch."
       Units: dimless
-    print_summary: 
+    print_summary:
       Type: boolean
-      Description: "Print a summary of the network"
+      Description: "Print a summary of the network."
       Units: dimless
     output_scale:
       Type: float
-      Description: "Scale of the outputs of the network"
+      Description: "Scale of the outputs of the network."
       Units: dimless
-    architecture: 
+    architecture:
       Type: string
-      Description: "Type of network"
+      Description: "Type of network."
       Units: dimless
   data_preparation:
-    patch_size: 
+    patch_size:
       Type: integer
-      Description: "Size of a patch"
+      Description: "Size of a patch."
       Units: dimless
     overlap:
       Type: float
-      Description: "Fraction of overlap between the patches"
+      Description: "Fraction of overlap between the patches."
       Units: dimless
-    batch_size: 
+    batch_size:
       Type: integer
-      Description: "Size of batch"
+      Description: "Size of batch."
       Units: dimless
     rotation_probability:
       Type: float
-      Description: "Probability of rotation"
+      Description: "Probability of rotation."
       Units: dimless
     flip_probability:
       Type: float
-      Description: "Probability of flip"
+      Description: "Probability of flip."
       Units: dimless
-    noise_type: 
+    noise_type:
       Type: string
-      Description: "Type of noise"
+      Description: "Type of noise."
       Units: dimless
     noise_scale:
       Type: float
-      Description: "Scale of the noise"
+      Description: "Scale of the noise."
       Units: dimless
     target_samples:
       Type: integer
-      Description: "Target for the number of samples"
+      Description: "Target for the number of samples."
       Units: dimless
   halt:
-    freq: 
+    freq:
       Type: integer
-      Description: "Frequency of evaluation of the halt criteria"
+      Description: "Frequency of evaluation of the halt criteria."
       Units: dimless
     success:
       Type: list
-      Description: "List of success criteria"
+      Description: "List of success criteria."
       Units: dimless
     failure:
       Type: list
-      Description: "List of failure criteria"
+      Description: "List of failure criteria."
       Units: dimless
-    criteria: 
+    criteria:
       rel_tol:
         tol:
           Type: float
-          Description: "Default tolerance for the relative-change criterion"
+          Description: "Default tolerance for the relative-change criterion."
           Units: dimless
-        ord: 
+        ord:
           Type: string
-          Description: "Default type of norm for the relative-change criterion"
+          Description: "Default type of norm for the relative-change criterion."
           Units: dimless
       abs_tol:
         tol:
           Type: float
-          Description: "Default tolerance for the absolute-change criterion"
+          Description: "Default tolerance for the absolute-change criterion."
           Units: dimless
         ord:
           Type: string
-          Description: "Default type of norm for the absolute-change criterion"
+          Description: "Default type of norm for the absolute-change criterion."
           Units: dimless
-      patience: 
+      patience:
         patience:
           Type: integer
-          Description: "Default number of iteration without improvement before halting"
+          Description: "Default number of iteration without improvement before halting."
           Units: dimless
       inf:
         Type: dict
-        Description: "Default parameters for the inf criterion"
+        Description: "Default parameters for the inf criterion."
         Units: dimless
       nan:
         Type: dict
-        Description: "Default parameters for the nan criterion"
+        Description: "Default parameters for the nan criterion."
         Units: dimless
-      metrics: 
-        w:
-          Type: dict
-          Description: "Default parameters for the weight metric"
-          Units: dimless
-        u:
-          Type: dict
-          Description: "Default parameters for the velocity metric"
-          Units: dimless
-        cost:
-          Type: dict
-          Description: "Default parameters for the cost metric"
-          Units: dimless
-        grad_u_norm:
-          Type: dict
-          Description: "Default parameters for the velocity-gradient-of-the-cost metric"
-          Units: dimless
-        grad_w_norm:
-          Type: dict
-          Description: "Default parameters for the weight-gradient-of-the-cost metric"
-          Units: dimless
+    metrics:
+      theta:
+        Type: dict
+        Description: "Default parameters for the parameter metric."
+        Units: dimless
+      u:
+        Type: dict
+        Description: "Default parameters for the velocity metric."
+        Units: dimless
+      cost:
+        Type: dict
+        Description: "Default parameters for the cost metric."
+        Units: dimless
+      grad_u_norm:
+        Type: dict
+        Description: "Default parameters for the velocity-gradient-of-the-cost metric."
+        Units: dimless
+      grad_theta_norm:
+        Type: dict
+        Description: "Default parameters for the parameter-gradient-of-the-cost metric."
+        Units: dimless
   display:
     print_cost:
       Type: boolean
-      Description: "Print the cost during the ice-flow optimization"
+      Description: "Print the cost during the ice-flow optimization."
       Units: dimless
     print_cost_freq:
       Type: integer
-      Description: "Frequency of printing the cost during the ice-flow optimization"
+      Description: "Frequency of printing the cost during the ice-flow optimization."
       Units: dimless

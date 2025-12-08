@@ -54,7 +54,7 @@ def update_particles(cfg, state):
         u, v, w, smb, thk, topg = \
             interpolate_particles_2d(state.U, state.V, WW, state.smb, state.thk, state.topg, indices)
 
-        if cfg.processes.iceflow.numerics.vert_basis.lower() in ["lagrange","sia"]:
+        if cfg.processes.iceflow.numerics.vert_basis.lower() in ["lagrange","molho"]:
             weights = get_weights_lagrange(
                 vert_spacing=cfg.processes.iceflow.numerics.vert_spacing,
                 Nz=cfg.processes.iceflow.numerics.Nz,

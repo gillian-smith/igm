@@ -6,11 +6,11 @@
 import tensorflow as tf
 from typing import Dict
 
+from ..sliding import SlidingComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
 from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
-from ..sliding import SlidingComponent
 
 
 class CoulombParams(tf.experimental.ExtensionType):
@@ -24,10 +24,9 @@ class CoulombParams(tf.experimental.ExtensionType):
 class Coulomb(SlidingComponent):
     """Sliding component implementing Coulomb's sliding law."""
 
-    name = "coulomb"
-    
     def __init__(self, params: CoulombParams):
         """Initialize Coulomb sliding component with parameters."""
+        self.name = "coulomb"
         self.params = params
 
     def cost(

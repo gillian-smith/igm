@@ -17,9 +17,13 @@ processes:
   iceflow:
     method: unified
     physics:
-      energy_components: [viscosity, gravity]
+      energy_components: [viscosity, gravity, sliding]
+      sliding:
+        law: weertman
+        weertman:
+          exponent: 1.0
     unified:
-      bcs: [frozen_bed, periodic_ns, periodic_we]
+      bcs: [periodic_ns, periodic_we]
       optimizer: lbfgs
       nbit_init: 2000
       line_search: armijo
@@ -30,11 +34,11 @@ processes:
         success:
           - criterion: rel_tol
             metric: cost
-            rel_tol: 
+            rel_tol:
               tol: 1e-8
           - criterion: rel_tol
             metric: u
-            rel_tol: 
+            rel_tol:
               tol: 1e-8
         failure:
           - criterion: nan
@@ -44,9 +48,8 @@ processes:
       display:
         print_cost: True
     numerics:
-      Nz: 10
-      vert_basis: Lagrange
-
+      Nz: 2
+      vert_basis: molho
 
 outputs:
   write_ncdf:

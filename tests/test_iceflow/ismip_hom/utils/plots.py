@@ -5,6 +5,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from .config import load_test_config
 
 
 def plot_comparison(
@@ -15,6 +16,13 @@ def plot_comparison(
     title: str,
     filename: str,
 ) -> None:
+    """Plot comparison between reference and IGM results."""
+    config = load_test_config()
+
+    # Only create plot if enabled in config
+    if not config["validation"].get("save_plots", True):
+        return
+
     plt.figure()
     plt.plot(x_ref, v_ref, "-", linewidth=1.5, label="Reference")
     plt.plot(x_igm, v_igm, "--", linewidth=1.5, label="IGM")
@@ -26,3 +34,4 @@ def plot_comparison(
     plt.legend()
     plt.grid(True)
     plt.savefig(filename)
+    plt.close()

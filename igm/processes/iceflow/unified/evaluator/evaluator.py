@@ -8,6 +8,8 @@ from typing import Any, Dict
 from omegaconf import DictConfig
 
 from igm.common.core import State
+from igm.utils.math.precision import _normalize_precision
+
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
     fieldin_to_X_3d,
@@ -22,12 +24,15 @@ from igm.processes.iceflow.utils.velocities import (
 
 
 class EvaluatorParams(tf.experimental.ExtensionType):
+    """Parameters for ice flow evaluator."""
+
     Nz: int
     force_max_velbar: float
     dim_arrhenius: int
 
 
 def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
+    """Extract evaluator parameters from configuration."""
 
     cfg_numerics = cfg.processes.iceflow.numerics
     cfg_physics = cfg.processes.iceflow.physics
@@ -40,6 +45,7 @@ def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
 
 def get_kwargs_from_state(state: State) -> Dict[str, Any]:
+    """Extract keyword arguments needed for evaluation from state."""
 
     return {
         "thk": state.thk,
@@ -51,6 +57,7 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
 
 
 def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
+    """Prepare input tensor from state variables for ice flow evaluation."""
 
     cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
@@ -64,6 +71,10 @@ def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
         inputs = tf.stack(inputs, axis=-1)
         inputs = fieldin_to_X_2d(inputs)
 
+    # not sure if this is needed but need to verify double precision in other places...
+    dtype = _normalize_precision(cfg.processes.iceflow.numerics.precision)
+    inputs = tf.cast(inputs, dtype)
+
     return inputs
 
 
@@ -71,6 +82,7 @@ def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
 def evaluator_iceflow(
     inputs: tf.Tensor, parameters: EvaluatorParams, **kwargs: Dict[str, Any]
 ) -> Dict[str, tf.Tensor]:
+    """Evaluate ice flow model to compute velocity fields and derived quantities."""
 
     # Compute velocity from mapping
     U, V = kwargs["mapping"].get_UV(inputs)
@@ -101,6 +113,7 @@ def evaluator_iceflow(
 
 
 def evaluate_iceflow(cfg: DictConfig, state: State) -> None:
+    """Evaluate ice flow model and update velocity state."""
 
     # Get inputs for mapping
     inputs = get_evaluator_inputs_from_state(cfg, state)

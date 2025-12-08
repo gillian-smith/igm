@@ -1,16 +1,11 @@
 from .optimizer import Optimizer
-from .optimizer_adam import OptimizerAdam
-from .optimizer_adam_DA import OptimizerAdamDataAssimilation
-from .optimizer_lbfgs import OptimizerLBFGS
-from .optimizer_lbfgs_bounds import OptimizerLBFGSBounds
-from .optimizer_lbfgs_DA import OptimizerLBFGSDataAssimilation
-from .optimizer_cg import OptimizerCG
-from .optimizer_sequential import OptimizerSequential
-from .interface import InterfaceOptimizer, Status
-from .interface_adam import InterfaceAdam
-from .interface_lbfgs import InterfaceLBFGS
-from .interface_cg import InterfaceCG
-from .interface_sequential import InterfaceSequential
+from .adam import OptimizerAdam
+from .adam_DA import OptimizerAdamDataAssimilation
+from .lbfgs import OptimizerLBFGS
+from .lbfgs_bounds import OptimizerLBFGSBounds
+from .lbfgs_DA import OptimizerLBFGSDataAssimilation
+from .cg import OptimizerCG
+from .sequential import OptimizerSequential
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -22,12 +17,4 @@ Optimizers = {
     "sequential": OptimizerSequential,
 }
 
-InterfaceOptimizers = {
-    "adam": InterfaceAdam,
-    "adam_da": InterfaceAdam,
-    "lbfgs": InterfaceLBFGS,
-    "lbfgs_bounds": InterfaceLBFGS,
-    "lbfgs_da": InterfaceLBFGS,
-    "cg": InterfaceCG,
-    "sequential": InterfaceSequential,
-}
+from .interfaces import InterfaceOptimizer, InterfaceOptimizers, Status

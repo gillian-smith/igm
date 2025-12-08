@@ -6,6 +6,7 @@
 import tensorflow as tf
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig
+
 from igm.utils.math.precision import _normalize_precision
 
 
@@ -43,12 +44,14 @@ class VerticalDiscr(ABC):
     V_bar: tf.Tensor
 
     def __init__(self, cfg: DictConfig) -> None:
+        """Initialize vertical discretization."""
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype = _normalize_precision(precision)
         self._compute_discr(cfg)
 
     @abstractmethod
     def _compute_discr(self, cfg: DictConfig) -> None:
+        """Compute discretization matrices."""
         raise NotImplementedError(
             "❌ The discretization is not implemented in this class."
         )

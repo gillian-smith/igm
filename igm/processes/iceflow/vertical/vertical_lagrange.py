@@ -12,8 +12,10 @@ from .vertical import VerticalDiscr
 
 
 class LagrangeDiscr(VerticalDiscr):
+    """Lagrange vertical discretization (P1 hat function)."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
+        """Compute Lagrange discretization matrices."""
         cfg_numerics = cfg.processes.iceflow.numerics
 
         Nz = cfg_numerics.Nz

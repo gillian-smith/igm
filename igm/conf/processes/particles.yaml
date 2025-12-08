@@ -1,10 +1,10 @@
 particles:
   seeding:
     method: accumulation
-    frequency: 50
+    frequency: 50.0
     density: 0.2
     tlast_init: -1.0e+5000
-    height: 20
+    height: 20.0
   tracking:
     method: 3d
     library: tensorflow

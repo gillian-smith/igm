@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import pytest
 
-from igm.processes.iceflow.unified.optimizers.optimizer_lbfgs import OptimizerLBFGS
+from igm.processes.iceflow.unified.optimizers.lbfgs import OptimizerLBFGS
 from .vector_mapping import VectorMapping, BoundedVectorMapping
 
 # Mark the whole module as slow

@@ -1,5 +1,5 @@
 clim_glacialindex:
-  update_freq: 100
+  update_freq: 100.0
   climate_0_file: data/climate.nc
   climate_1_file: data/climate1.nc
   signal_file: data/GI.dat

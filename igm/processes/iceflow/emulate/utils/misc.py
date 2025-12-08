@@ -18,8 +18,8 @@ def get_effective_pressure_precentage(thk, percentage=0.8) -> tf.Tensor:
 
 
 def get_emulator_path(cfg: DictConfig):
-    L = (cfg.processes.iceflow.numerics.vert_basis == "Legendre") * "e" + (
-        not cfg.processes.iceflow.numerics.vert_basis == "Legendre"
+    L = (cfg.processes.iceflow.numerics.vert_basis.lower() == "legendre") * "e" + (
+        not cfg.processes.iceflow.numerics.vert_basis.lower() == "legendre"
     ) * "a"
 
     dir_name = (
