@@ -6,11 +6,11 @@ hydra:
 
 defaults:
   - /user/conf/inputs@inputs.init_state: init_state
-  - override /inputs: 
+  - override /inputs:
     - init_state
-  - override /processes: 
+  - override /processes:
     - iceflow
-  - override /outputs: 
+  - override /outputs:
     - write_ncdf
 
 processes:
@@ -24,22 +24,17 @@ processes:
           exponent: 1.0
     unified:
       bcs: [periodic_ns, periodic_we]
-      optimizer: lbfgs
-      nbit_init: 2000
-      line_search: armijo
+      optimizer: adam
+      nbit_init: 10000
       network:
         pretrained: False
       halt:
         freq: 1
         success:
-          - criterion: rel_tol
+          - criterion: patience
             metric: cost
-            rel_tol:
-              tol: 1e-8
-          - criterion: rel_tol
-            metric: u
-            rel_tol:
-              tol: 1e-8
+            patience:
+              patience: 100
         failure:
           - criterion: nan
             metric: u

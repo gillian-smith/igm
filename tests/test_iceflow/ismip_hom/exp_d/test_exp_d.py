@@ -7,14 +7,14 @@ import pytest
 from tests.test_iceflow.ismip_hom.utils import run_experiment_test, get_unified_parameters
 
 
-@pytest.mark.parametrize("length,mapping,optimizer", get_unified_parameters("exp_b"))
-def test_exp_b_unified(
+@pytest.mark.parametrize("length,mapping,optimizer", get_unified_parameters("exp_d"))
+def test_exp_d_unified(
     monkeypatch: pytest.MonkeyPatch, length: int, mapping: str, optimizer: str
 ) -> None:
-    """Test ISMIP-HOM Experiment B with unified method."""
+    """Test ISMIP-HOM Experiment D with unified method."""
     run_experiment_test(
         monkeypatch,
-        experiment="exp_b",
+        experiment="exp_d",
         length=length,
         method="unified",
         mapping=mapping,

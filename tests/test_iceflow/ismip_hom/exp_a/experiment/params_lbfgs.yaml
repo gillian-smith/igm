@@ -44,8 +44,8 @@ processes:
       display:
         print_cost: True
     numerics:
-      Nz: 10
-      vert_basis: Lagrange
+      Nz: 2
+      vert_basis: molho
 
 
 outputs:

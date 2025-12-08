@@ -6,11 +6,11 @@ hydra:
 
 defaults:
   - /user/conf/inputs@inputs.init_state: init_state
-  - override /inputs: 
+  - override /inputs:
     - init_state
-  - override /processes: 
+  - override /processes:
     - iceflow
-  - override /outputs: 
+  - override /outputs:
     - write_ncdf
 
 processes:
@@ -25,7 +25,7 @@ processes:
     unified:
       bcs: [periodic_ns, periodic_we]
       optimizer: lbfgs
-      nbit_init: 2000
+      nbit_init: 10000
       line_search: armijo
       network:
         pretrained: False

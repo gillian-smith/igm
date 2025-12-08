@@ -17,9 +17,13 @@ processes:
   iceflow:
     method: unified
     physics:
-      energy_components: [viscosity, gravity]
+      energy_components: [viscosity, gravity, sliding]
+      sliding:
+        law: weertman
+        weertman:
+          exponent: 1.0
     unified:
-      bcs: [frozen_bed, periodic_ns, periodic_we]
+      bcs: [periodic_ns, periodic_we]
       optimizer: adam
       nbit_init: 10000
       network:
@@ -39,8 +43,8 @@ processes:
       display:
         print_cost: True
     numerics:
-      Nz: 10
-      vert_basis: Lagrange
+      Nz: 2
+      vert_basis: molho
 
 outputs:
   write_ncdf:
