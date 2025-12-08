@@ -85,19 +85,17 @@ def update_iceflow_emulator(
     warm_up = it <= cfg_emulator.warm_up_it
     run_it = cfg_emulator.retrain_freq > 0 and it % cfg_emulator.retrain_freq == 0
 
-    if not (initial or run_it or warm_up):
-        return
+    if initial or run_it or warm_up:
+        nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
+        lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
 
-    nbit = cfg_emulator.nbit_init if warm_up else cfg_emulator.nbit
-    lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
+        fieldin = fieldin_state_to_X(cfg, state)
+        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
 
-    fieldin = fieldin_state_to_X(cfg, state)
-    X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+        batch_size = X.shape[1]
 
-    batch_size = X.shape[1]
-
-    bag = get_emulator_bag(state, nbit, lr, batch_size)
-    state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
+        bag = get_emulator_bag(state, nbit, lr, batch_size)
+        state.cost_emulator = update_emulator(bag, X, state.iceflow.emulator_params)
 
     update_iceflow_emulated(cfg, state)
 
@@ -261,4 +259,3 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     # Update the emulator and evaluate it once
     update_iceflow_emulator(cfg, state, initial=True)
-    update_iceflow_emulated(cfg, state)
