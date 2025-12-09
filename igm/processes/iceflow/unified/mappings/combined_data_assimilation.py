@@ -341,14 +341,6 @@ class MappingCombinedDataAssimilation(Mapping):
             setattr(state, spec.name, phys_full_cast)
 
     # --------------------------------------------------------------------------
-    # Halt criterion
-    # --------------------------------------------------------------------------
-    def check_halt_criterion(
-        self, iteration: int, cost: tf.Tensor
-    ) -> Tuple[tf.Tensor, tf.Tensor]:
-        return tf.constant(False, tf.bool), tf.constant("", tf.string)
-
-    # --------------------------------------------------------------------------
     # Progress storage hooks
     # --------------------------------------------------------------------------
 

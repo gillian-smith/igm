@@ -58,10 +58,3 @@ class MappingIdentity(Mapping):
         U = tf.reshape(u_flat, self.shape)
         V = tf.reshape(v_flat, self.shape)
         return [U, V]
-
-    def check_halt_criterion(
-        self, iteration: int, cost: tf.Tensor
-    ) -> Tuple[tf.Tensor, tf.Tensor]:
-        halt = tf.constant(False, dtype=tf.bool)
-        halt_message = tf.constant("", dtype=tf.string)
-        return halt, halt_message

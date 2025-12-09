@@ -143,24 +143,18 @@ class OptimizerLBFGSDataAssimilation(OptimizerLBFGS):
         # Check stopping criteria
         should_check = tf.greater(iter, 0)
         
-        # Get halt criterion result (boolean and message)
-        halt, halt_message = self.map.check_halt_criterion(iter, cost)
-        
         converged = tf.logical_and(should_check, grad_norm < self.convergence_tolerance)
         max_iter_reached = tf.greater_equal(iter + 1, self.iter_max)  # Check if next iter would exceed max
         
-        should_stop = tf.logical_or(tf.logical_or(halt, converged), max_iter_reached)
+        should_stop = tf.logical_or(converged, max_iter_reached)
 
         # Finalize progress and show exit message when stopping
-        def finalize_with_reason(halt_val: tf.Tensor, converged_val: tf.Tensor, halt_msg: tf.Tensor) -> int:
+        def finalize_with_reason(converged_val: tf.Tensor) -> int:
             if self.print_cost:
                 self.progress.stop()
                 
-                # Use the passed boolean values (now accessible via .numpy())
-                if halt_val.numpy():
-                    msg = halt_msg.numpy().decode('utf-8') if halt_msg.numpy() else "Halt criterion met."
-                    self.console.print(f"🛑 [bold yellow]Optimization halted![/bold yellow] {msg}")
-                elif converged_val.numpy():
+                # Use the passed boolean value (now accessible via .numpy())
+                if converged_val.numpy():
                     self.console.print("✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold.")
                 else:  # max_iter_reached
                     self.console.print("🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached.")
@@ -168,10 +162,10 @@ class OptimizerLBFGSDataAssimilation(OptimizerLBFGS):
                 self.console.print()  # Add spacing
             return 0
 
-        # Call finalize when stopping - pass the boolean tensors and halt message as arguments
+        # Call finalize when stopping - pass the boolean tensor as argument
         tf.cond(
             should_stop,
-            lambda: tf.py_function(finalize_with_reason, [halt, converged, halt_message], tf.int32),
+            lambda: tf.py_function(finalize_with_reason, [converged], tf.int32),
             lambda: tf.constant(0)
         )
         

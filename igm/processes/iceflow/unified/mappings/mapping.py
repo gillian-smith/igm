@@ -61,10 +61,6 @@ class Mapping(ABC):
     def unflatten_theta(self, theta_flat: tf.Tensor) -> Any:
         pass
 
-    @abstractmethod
-    def check_halt_criterion(self, iteration: int, cost: tf.Tensor) -> tf.Tensor:
-        pass
-
     def on_minimize_start(self, iter_max: int) -> None:
         pass
 

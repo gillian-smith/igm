@@ -40,7 +40,6 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
     Adds:
       - storage & display of data/physics cost components
       - rich progress bar with the same look/feel as your LBFGS DA
-      - uses mapping.check_halt_criterion(iter, cost) for early halt
     """
 
     def __init__(
@@ -163,22 +162,18 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
 
         # stopping conditions
         should_check = tf.greater(iter, 0)
-        halt, halt_message = self.map.check_halt_criterion(iter, cost)
 
         converged = tf.logical_and(should_check, grad_norm < self.convergence_tolerance)
         max_iter_reached = tf.greater_equal(iter + 1, self.iter_max)
-        should_stop = tf.logical_or(tf.logical_or(halt, converged), max_iter_reached)
+        should_stop = tf.logical_or(converged, max_iter_reached)
 
-        def finalize_with_reason(halt_val: tf.Tensor, conv_val: tf.Tensor, halt_msg: tf.Tensor) -> int:
+        def finalize_with_reason(conv_val: tf.Tensor) -> int:
             if self.print_cost:
                 if self.progress is not None:
                     self.progress.stop()
                 if self.console is None:
                     return 0
-                if halt_val.numpy():
-                    msg = halt_msg.numpy().decode("utf-8") if halt_msg.numpy() else "Halt criterion met."
-                    self.console.print(f"🛑 [bold yellow]Optimization halted![/bold yellow] {msg}")
-                elif conv_val.numpy():
+                if conv_val.numpy():
                     self.console.print("✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold.")
                 else:
                     self.console.print("🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached.")
@@ -187,7 +182,7 @@ class OptimizerAdamDataAssimilation(OptimizerAdam):
 
         tf.cond(
             should_stop,
-            lambda: tf.py_function(finalize_with_reason, [halt, converged, halt_message], tf.int32),
+            lambda: tf.py_function(finalize_with_reason, [converged], tf.int32),
             lambda: tf.constant(0),
         )
 

@@ -300,37 +300,6 @@ class MappingDataAssimilation(Mapping):
             splits = tf.split(theta_flat, self._sizes)
             return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
-    # ------- Halt criterion  ------------------------
-
-    def check_halt_criterion(
-        self, iteration: int, cost: tf.Tensor
-    ) -> Tuple[tf.Tensor, tf.Tensor]:
-        """
-        Halt if the base (forward) cost increased by >10% relative to its value at
-        the start of the current minimize call. Returns (halt_bool, message).
-        """
-        reference = self.base_cost_reference.read_value()
-
-        def _set_reference() -> Tuple[tf.Tensor, tf.Tensor]:
-            self.base_cost_reference.assign(self.base_cost)
-            return tf.constant(False, dtype=tf.bool), tf.constant("", dtype=tf.string)
-
-        def _check_increase() -> Tuple[tf.Tensor, tf.Tensor]:
-            rel_increase = (self.base_cost - reference) / (
-                tf.abs(reference) + self._base_cost_eps
-            )
-            should_halt = tf.greater(rel_increase, self._base_cost_tol)
-            message = tf.cond(
-                should_halt,
-                lambda: tf.constant(
-                    "Base cost increased beyond threshold (10.0%)", dtype=tf.string
-                ),
-                lambda: tf.constant("", dtype=tf.string),
-            )
-            return should_halt, message
-
-        return tf.cond(tf.math.is_nan(reference), _set_reference, _check_increase)
-
     def on_minimize_start(self, iter_max: int) -> None:
         """
         Reset the base-cost reference used by the halt criterion.
