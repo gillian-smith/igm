@@ -29,7 +29,7 @@ class InterfaceSequential(InterfaceOptimizer):
         map: Mapping,
     ) -> Dict[str, Any]:
         # Lazy import to avoid circular imports
-        from . import Optimizers, InterfaceOptimizers
+        from .. import Optimizers, InterfaceOptimizers
 
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
