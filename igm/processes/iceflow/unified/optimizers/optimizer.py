@@ -15,7 +15,8 @@ from igm.utils.math.precision import _normalize_precision
 from igm.utils.math.norms import compute_norm
 
 import logging
-log = logging.getLogger("werkzeug") # for DASH POST requests...
+
+log = logging.getLogger("werkzeug")  # for DASH POST requests...
 log.setLevel(logging.ERROR)
 
 
@@ -56,6 +57,10 @@ class Optimizer(ABC):
         )
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+
+        if int(self.iter_max) == 0:
+            return tf.zeros([0], dtype=self.precision)
+
         criterion_names = self.halt.criterion_names if self.halt else []
         self.display.start(int(self.iter_max), criterion_names)
         self.map.on_minimize_start(int(self.iter_max))
@@ -120,7 +125,9 @@ class Optimizer(ABC):
         grad_u_norm: tf.Tensor,
         grad_theta_norm: tf.Tensor,
     ) -> None:
-        self.step_state = StepState(iter, [U, V], theta, cost, grad_u_norm, grad_theta_norm)
+        self.step_state = StepState(
+            iter, [U, V], theta, cost, grad_u_norm, grad_theta_norm
+        )
 
     def _check_stopping(self) -> tf.Tensor:
         """Check stopping criteria, update halt_state, and return status"""
