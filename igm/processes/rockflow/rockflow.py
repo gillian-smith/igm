@@ -16,7 +16,7 @@ def initialize(cfg, state):
 
 def update(cfg, state):
     slopsurfx, slopsurfy = grad_xy(
-        state.usurf, state.dx, state.dx, False, "extrapolate"
+        state.usurf, state.dX, state.dX, False, "extrapolate"
     )
 
     slop = getmag(slopsurfx, slopsurfy)

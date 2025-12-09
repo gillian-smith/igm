@@ -31,7 +31,7 @@ def compute_vertical_velocity_kinematic_v1(cfg, state):
     temd = levels[1:] - levels[:-1]
     dz = tf.stack([state.thk * z for z in temd], axis=0)
 
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
 
     sloplayx = [sloptopgx]
     sloplayy = [sloptopgy]
@@ -83,7 +83,7 @@ def compute_vertical_velocity_incompressibility_v1(cfg, state):
     dVdz = -dUdx - dVdy
 
     # get the basal vertical velocities
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
     wvelbase = state.U[0] * sloptopgx + state.V[0] * sloptopgy
 
     # get the vertical thickness layers

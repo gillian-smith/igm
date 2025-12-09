@@ -47,6 +47,7 @@ def initialize(cfg, state):
 
     state.phi = compute_phi(cfg, state)
 
+    # TODO: investigate other friction laws
     # update the sliding coefficient
     state.tauc, state.slidingco = compute_slidingco_tf(
         state.thk,
@@ -55,7 +56,7 @@ def initialize(cfg, state):
         cfg.processes.iceflow.physics.gravity_cst,
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
-        cfg.processes.iceflow.physics.exp_weertman,
+        cfg.processes.iceflow.physics.sliding.weertman.exponent,
         cfg.processes.enthalpy.uthreshold,
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,
@@ -162,8 +163,8 @@ def update(cfg, state):
         state.V / cfg.processes.enthalpy.spy,
         state.slidingco,
         state.topg,
-        state.dx,
-        cfg.processes.iceflow.physics.exp_weertman,
+        state.dX,
+        cfg.processes.iceflow.physics.sliding.weertman.exponent,
     )
 
     # compute the surface enthalpy
@@ -224,7 +225,7 @@ def update(cfg, state):
         cfg.processes.iceflow.physics.gravity_cst,
         cfg.processes.enthalpy.till_wat_max,
         state.phi,
-        cfg.processes.iceflow.physics.exp_weertman,
+        cfg.processes.iceflow.physics.sliding.weertman.exponent,
         cfg.processes.enthalpy.uthreshold,
         cfg.processes.enthalpy.tauc_min,
         cfg.processes.enthalpy.tauc_max,

@@ -45,13 +45,37 @@ def pad_xy(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
     return pad_y(pad_x(X, mode), mode)
 
 
-@tf.function()
 def grad_stag(
     X: tf.Tensor,
     dx: tf.Tensor,
     dy: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Compute spatial gradient on staggered grid: (..., Ny, Nx) -> (..., Ny-1, Nx-1)."""
+
+    X_is_2d = len(X.shape) == 2
+    if X_is_2d:
+        X = X[tf.newaxis, :, :]
+    if len(dx.shape) == 2:
+        dx = dx[tf.newaxis, :, :]
+    if len(dy.shape) == 2:
+        dy = dy[tf.newaxis, :, :]
+
+    dXdx, dXdy = _grad_stag_impl(X, dx, dy)
+
+    if X_is_2d:
+        dXdx = tf.squeeze(dXdx, axis=0)
+        dXdy = tf.squeeze(dXdy, axis=0)
+
+    return dXdx, dXdy
+
+
+@tf.function()
+def _grad_stag_impl(
+    X: tf.Tensor,
+    dx: tf.Tensor,
+    dy: tf.Tensor,
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Internal implementation - assumes 3D inputs."""
     dXdx = (X[..., :, 1:] - X[..., :, :-1]) / dx[0, :, 1:]
     dXdy = (X[..., 1:, :] - X[..., :-1, :]) / dy[0, 1:, :]
 
@@ -61,7 +85,6 @@ def grad_stag(
     return dXdx, dXdy
 
 
-@tf.function()
 def grad_unstag(
     X: tf.Tensor,
     dx: tf.Tensor,
@@ -69,6 +92,32 @@ def grad_unstag(
     mode: str = "symmetric",
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Compute spatial gradient on unstaggered grid: (..., Ny, Nx) -> (..., Ny, Nx)."""
+
+    X_is_2d = len(X.shape) == 2
+    if X_is_2d:
+        X = X[tf.newaxis, :, :]
+    if len(dx.shape) == 2:
+        dx = dx[tf.newaxis, :, :]
+    if len(dy.shape) == 2:
+        dy = dy[tf.newaxis, :, :]
+
+    dXdx, dXdy = _grad_unstag_impl(X, dx, dy, mode)
+
+    if X_is_2d:
+        dXdx = tf.squeeze(dXdx, axis=0)
+        dXdy = tf.squeeze(dXdy, axis=0)
+
+    return dXdx, dXdy
+
+
+@tf.function()
+def _grad_unstag_impl(
+    X: tf.Tensor,
+    dx: tf.Tensor,
+    dy: tf.Tensor,
+    mode: str = "symmetric",
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Internal implementation - assumes 3D inputs."""
     X_pad = pad_xy(X, mode)
     dX_pad = pad_xy(dx, mode)
     dY_pad = pad_xy(dy, mode)
