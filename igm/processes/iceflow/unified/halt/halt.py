@@ -62,6 +62,13 @@ class Halt:
             names.append(crit.name)
         return names
 
+    def reset_all(self) -> None:
+        """Reset all success and failure criteria."""
+        for crit in self.crit_success:
+            crit.reset()
+        for crit in self.crit_failure:
+            crit.reset()
+
     def check(self, iter: tf.Tensor, step_state: StepState):
         """Check halting criteria and return status with criterion values and satisfaction flags."""
         do_check = tf.equal(tf.math.mod(iter, self.freq), 0)
@@ -87,10 +94,7 @@ class Halt:
 
             # Determine status
             if failure:
-                for crit in self.crit_success:
-                    crit.reset()
-                for crit in self.crit_failure:
-                    crit.reset()
+                self.reset_all()
                 return (
                     tf.constant(HaltStatus.FAILURE.value),
                     success_values,
@@ -98,10 +102,7 @@ class Halt:
                 )
 
             if success:
-                for crit in self.crit_success:
-                    crit.reset()
-                for crit in self.crit_failure:
-                    crit.reset()
+                self.reset_all()
                 return (
                     tf.constant(HaltStatus.SUCCESS.value),
                     success_values,

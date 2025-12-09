@@ -56,6 +56,8 @@ class Optimizer(ABC):
         )
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+        if self.halt:
+            self.halt.reset_all()
         criterion_names = self.halt.criterion_names if self.halt else []
         self.display.start(int(self.iter_max), criterion_names)
         self.map.on_minimize_start(int(self.iter_max))

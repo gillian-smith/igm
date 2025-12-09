@@ -55,4 +55,4 @@ class CriterionRelTol(Criterion):
 
     def reset(self) -> None:
         """Reset relative tolerance criterion state."""
-        self.init = self.init.assign(False)
+        self.init.assign(False)
