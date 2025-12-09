@@ -2,16 +2,28 @@ import igm
 import tensorflow as tf
 import pytest
 import os
-  
+
 import numpy as np
 import matplotlib.pyplot as plt
 
+from igm.common.runner.configuration.loader import load_yaml_recursive
 from igm.processes.enthalpy import *
-from igm.processes.enthalpy.enthalpy import vertically_discretize_tf,TpmpEpmp_from_depth_tf
-from igm.processes.enthalpy.enthalpy import surf_enthalpy_from_temperature_tf, compute_enthalpy_basalmeltrate, temperature_from_enthalpy_tf
+from igm.processes.enthalpy.enthalpy import (
+    surf_enthalpy_from_temperature_tf,
+    compute_enthalpy_basalmeltrate,
+    temperature_from_enthalpy_tf,
+    TpmpEpmp_from_depth_tf,
+)
+from igm.processes.iceflow.utils.vertical_discretization import (
+    compute_levels,
+    compute_dz,
+    compute_depth,
+)
+
 
 # this file is avilable at https://github.com/WangYuzhe/PoLIM-Polythermal-Land-Ice-Model
 # verif = scipy.io.loadmat("sol_analytic/enthA_analy_result.mat")
+
 
 def test_enthalpy():
 
@@ -19,9 +31,9 @@ def test_enthalpy():
     dt = 200.0
 
     tim = np.arange(0, ttf, dt) + dt  # to put back to 300000
- 
-    cfg = igm.load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
- 
+
+    cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
+
     cfg.processes.iceflow.numerics.Nz = 50
     cfg.processes.iceflow.numerics.vert_spacing = 1
 
@@ -31,7 +43,12 @@ def test_enthalpy():
 
     thk = tf.Variable(1000 * tf.ones((1, 1)))
 
-    depth, dz = vertically_discretize_tf(thk, cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
+    # get the vertical discretization
+    levels = compute_levels(
+        cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing
+    )
+    dz = compute_dz(thk, levels)
+    depth = compute_depth(dz)
 
     strainheat = tf.Variable(tf.zeros((cfg.processes.iceflow.numerics.Nz, 1, 1)))
     frictheat = tf.Variable(0.0 * tf.ones((1, 1)))
@@ -39,7 +56,9 @@ def test_enthalpy():
     tillwat = tf.Variable(0.0 * tf.ones((1, 1)))
 
     # Initial enthalpy field
-    T = tf.Variable((-30.0 + 273.15) * tf.ones((cfg.processes.iceflow.numerics.Nz, 1, 1)))
+    T = tf.Variable(
+        (-30.0 + 273.15) * tf.ones((cfg.processes.iceflow.numerics.Nz, 1, 1))
+    )
     E = tf.Variable(cfg.processes.enthalpy.ci * (T - 223.15))
     omega = tf.Variable(tf.zeros_like(T))
     w = tf.Variable(tf.zeros_like(T))
@@ -67,7 +86,10 @@ def test_enthalpy():
         )
 
         surfenth = surf_enthalpy_from_temperature_tf(
-            surftemp, cfg.processes.enthalpy.melt_temp, cfg.processes.enthalpy.ci, cfg.processes.enthalpy.ref_temp
+            surftemp,
+            cfg.processes.enthalpy.melt_temp,
+            cfg.processes.enthalpy.ci,
+            cfg.processes.enthalpy.ref_temp,
         )
 
         E, basalMeltRate = compute_enthalpy_basalmeltrate(
@@ -94,7 +116,12 @@ def test_enthalpy():
         )
 
         T, omega = temperature_from_enthalpy_tf(
-            E, Tpmp, Epmp, cfg.processes.enthalpy.ci, cfg.processes.enthalpy.ref_temp, cfg.processes.enthalpy.Lh
+            E,
+            Tpmp,
+            Epmp,
+            cfg.processes.enthalpy.ci,
+            cfg.processes.enthalpy.ref_temp,
+            cfg.processes.enthalpy.Lh,
         )
 
         tillwat = tillwat + dt * (basalMeltRate - cfg.processes.enthalpy.drain_rate)
@@ -112,14 +139,14 @@ def test_enthalpy():
                 tillwat[0, 0].numpy(),
                 basalMeltRate[0, 0].numpy(),
             )
-        
+
     last_temp = np.stack(TB)[:, 0, 0][-1]
 
     print("Last temperature: ", last_temp)
 
     # this test should pass to validate enthaly module
     assert last_temp > -2
-            
+
     # activate this block to plot the results
     if False:
 
