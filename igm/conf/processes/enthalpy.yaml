@@ -1,23 +1,40 @@
 enthalpy:  
   water_density: 1000.0
   spy: 31556926.0
-  ki: 2.1
+  gas_constant: 8.314
   ci: 2009.0
+  ki: 2.1
   Lh: 3.34e+5
   KtdivKc: 1e-1
   claus_clape: 7.9e-8
   melt_temp: 273.15
   ref_temp: 223.15
+  min_temp: 243.15
+  temperature_offset_air_to_ice: 0.0
+  arrhenius_temp_threshold: 263.15
+  arrhenius_A_cold: 3.985e-13
+  arrhenius_A_warm: 1.916e+3
+  arrhenius_Q_cold: 60000.0
+  arrhenius_Q_warm: 139000.0
+  omega_enhancement_factor: 181.25
+  max_omega_enhancement: 0.01
+  till_void_ratio: 0.69
+  till_compressibility: 0.12
+  till_delta: 0.02
+  till_reference_pressure: 1000.0
   till_friction_angle: 30.0
   till_friction_angle_bed_min: null
   till_friction_angle_bed_max: null
   till_friction_angle_phi_min: 15.0
   till_friction_angle_phi_max: 45.0
   uthreshold: 100.0
+  tauc_min: 1.0e+5
+  tauc_max: 1.0e+10
   drain_rate: 0.001
   till_wat_max: 2.0
   drain_ice_column: True
+  drainage_omega_threshold_1: 0.01
+  drainage_omega_threshold_2: 0.02
+  drainage_omega_threshold_3: 0.03
+  target_water_fraction: 0.01
   default_bheatflx: 0.065
-  temperature_offset_air_to_ice: 0.0
-  tauc_min: 1.0e+5
-  tauc_max: 1.0e+10
