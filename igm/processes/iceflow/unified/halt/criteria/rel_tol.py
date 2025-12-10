@@ -39,7 +39,7 @@ class CriterionRelTol(Criterion):
             """Initialize previous metric value."""
             self.metric_value_prev.assign(metric_value)
             self.init.assign(True)
-            return tf.constant(False), tf.constant(np.nan)
+            return tf.constant(False), tf.constant(np.nan, self.dtype)
 
         def compute():
             """Compute relative change and check against tolerance."""

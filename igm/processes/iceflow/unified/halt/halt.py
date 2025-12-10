@@ -7,10 +7,11 @@ import numpy as np
 import tensorflow as tf
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .criteria import Criterion
 from .step_state import StepState
+from igm.utils.math.precision import _normalize_precision
 
 
 class HaltStatus(Enum):
@@ -48,11 +49,13 @@ class Halt:
         crit_success: Optional[List[Criterion]] = None,
         crit_failure: Optional[List[Criterion]] = None,
         freq: int = 1,
+        dtype: str = "float32",
     ):
         """Initialize halting manager."""
         self.crit_success = crit_success or []
         self.crit_failure = crit_failure or []
         self.freq = freq
+        self.dtype = _normalize_precision(dtype)
         self.criterion_names = self._build_criterion_names()
 
     def _build_criterion_names(self) -> List[str]:
@@ -69,7 +72,9 @@ class Halt:
         for crit in self.crit_failure:
             crit.reset()
 
-    def check(self, iter: tf.Tensor, step_state: StepState):
+    def check(
+        self, iter: tf.Tensor, step_state: StepState
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """Check halting criteria and return status with criterion values and satisfaction flags."""
         do_check = tf.equal(tf.math.mod(iter, self.freq), 0)
 
@@ -120,7 +125,7 @@ class Halt:
             n_success_crit = len(self.crit_success)
             return (
                 tf.constant(HaltStatus.CONTINUE.value),
-                [tf.constant(np.nan)] * n_success_crit,
+                [tf.constant(np.nan, self.dtype)] * n_success_crit,
                 [tf.constant(False)] * n_success_crit,
             )
 

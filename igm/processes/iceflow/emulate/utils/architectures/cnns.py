@@ -290,7 +290,7 @@ class CNNPatch(tf.keras.Model):
         n_layers = int(cfg.processes.iceflow.emulator.network.nb_layers)
         n_filters = cfg.processes.iceflow.emulator.network.nb_out_filter
 
-        for _ in range(n_layers):
+        for i in range(n_layers):
             layer = tf.keras.layers.Conv2D(
                 filters=n_filters,
                 kernel_size=(
@@ -300,9 +300,9 @@ class CNNPatch(tf.keras.Model):
                 padding="same",
                 dtype=self.dtype_model,
             )
-            activation = tf.keras.layers.Activation(
-                cfg.processes.iceflow.emulator.network.activation,
-                name=cfg.processes.iceflow.emulator.network.activation,
+            activation = DTypeActivation(
+                activation_name=cfg.processes.iceflow.emulator.network.activation,
+                name=f"{cfg.processes.iceflow.emulator.network.activation}_{i}",
                 dtype=self.dtype_model,
             )
             self.conv_layers.append(layer)
@@ -407,7 +407,7 @@ class CNNPeriodic(tf.keras.Model):
         n_layers = int(cfg.processes.iceflow.emulator.network.nb_layers)
         n_filters = cfg.processes.iceflow.emulator.network.nb_out_filter
 
-        for _ in range(n_layers):
+        for i in range(n_layers):
             layer = tf.keras.layers.Conv2D(
                 filters=n_filters,
                 kernel_size=(
@@ -422,7 +422,7 @@ class CNNPeriodic(tf.keras.Model):
             # Might be achievable with tf.keras.backend float64 or something
             activation = DTypeActivation(
                 activation_name=cfg.processes.iceflow.emulator.network.activation,
-                name=f"{cfg.processes.iceflow.emulator.network.activation}_{_}",
+                name=f"{cfg.processes.iceflow.emulator.network.activation}_{i}",
                 dtype=self.dtype_model,
             )
             # activation.compute_dtype = self.dtype_model
@@ -509,9 +509,9 @@ class CNNSkip(tf.keras.Model):
                 padding="same",
                 dtype=self.dtype_model,
             )
-            activation = tf.keras.layers.Activation(
-                cfg.processes.iceflow.emulator.network.activation,
-                name=cfg.processes.iceflow.emulator.network.activation,
+            activation = DTypeActivation(
+                activation_name=cfg.processes.iceflow.emulator.network.activation,
+                name=f"{cfg.processes.iceflow.emulator.network.activation}_{_}",
                 dtype=self.dtype_model,
             )
             self.conv_layers.append(layer)

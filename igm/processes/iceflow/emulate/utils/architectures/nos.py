@@ -82,6 +82,7 @@ class FNO(tf.keras.Model):
 
         return outputs
 
+
 # --------------------------------------------------------------------
 # SpectralConv2D: 2D Fourier layer (Li et al. FNO2d style)
 # --------------------------------------------------------------------
@@ -127,7 +128,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
                     f"SpectralConv2D: modes1={self.modes1} exceeds input height H={H}. "
                     f"modes1 must be <= H for proper spectral truncation."
                 )
-        
+
         if input_shape[3] is not None:  # Width known
             W = int(input_shape[3])
             W_r = W // 2 + 1  # rfft output size
@@ -196,7 +197,7 @@ class SpectralConv2D(tf.keras.layers.Layer):
         w_r = tf.shape(x_ft)[3]
 
         # Top modes
-        x_ft_top = x_ft[:, :, : self.modes1, : self.modes2]      # [B, C_in, m1, m2]
+        x_ft_top = x_ft[:, :, : self.modes1, : self.modes2]  # [B, C_in, m1, m2]
         out_ft_top = self._compl_mul2d(x_ft_top, self.w1_real, self.w1_imag)
 
         # Bottom modes
@@ -223,13 +224,17 @@ class SpectralConv2D(tf.keras.layers.Layer):
         out_ft = out_ft_top_full + out_ft_bottom_full  # [B, C_out, H, W_r]
 
         # Inverse rFFT back to real space
-        x_out = tf.signal.irfft2d(out_ft, fft_length=[height, width])  # [B, C_out, H, W]
+        x_out = tf.signal.irfft2d(
+            out_ft, fft_length=[height, width]
+        )  # [B, C_out, H, W]
         return x_out
 
 
 class FNO2(tf.keras.Model):
 
-    def __init__(self, cfg, nb_inputs, nb_outputs, input_normalizer=None, name="FNO2D", **kwargs):
+    def __init__(
+        self, cfg, nb_inputs, nb_outputs, input_normalizer=None, name="FNO2D", **kwargs
+    ):
         super().__init__(name=name, **kwargs)
 
         cfg_unified = cfg.processes.iceflow.unified
@@ -241,7 +246,7 @@ class FNO2(tf.keras.Model):
         padding = getattr(cfg_unified.network, "padding", 9)
         use_grid = getattr(cfg_unified.network, "use_grid", True)
 
-        Nz = cfg_numerics.Nz  
+        Nz = cfg_numerics.Nz
 
         self.modes1 = int(modes1)
         self.modes2 = int(modes2)
@@ -280,7 +285,7 @@ class FNO2(tf.keras.Model):
         self.fc1 = tf.keras.layers.Dense(128, dtype=tf.float32)
         self.fc2 = tf.keras.layers.Dense(self.output_channels, dtype=tf.float32)
 
-        # Dummy forward pass to build variables 
+        # Dummy forward pass to build variables
         dummy_H = max(16, self.modes1 + 1)
         dummy_W = max(16, 2 * self.modes2 + 2)
         dummy_input = tf.zeros((1, dummy_H, dummy_W, nb_inputs), dtype=tf.float32)
@@ -369,6 +374,6 @@ class FNO2(tf.keras.Model):
         # Per-pixel MLP head
         x = self.fc1(x)
         x = tf.nn.gelu(x)
-        x = self.fc2(x)                     # [B, H, W, output_channels]
+        x = self.fc2(x)  # [B, H, W, output_channels]
 
         return x
