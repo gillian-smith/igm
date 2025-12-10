@@ -23,7 +23,7 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             )
 
     @tf.function(reduce_retracing=True)
-    def _project(self, w: tf.Tensor, L: tf.Tensor, U: tf.Tensor) -> tf.Tensor:
+    def _project(self, theta: tf.Tensor, L: tf.Tensor, U: tf.Tensor) -> tf.Tensor:
         return tf.clip_by_value(theta, L, U)
 
     @tf.function(reduce_retracing=True)
@@ -88,8 +88,8 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             grad_flat = self.map.flatten_theta(grad)
 
             mask = self._get_mask(theta_alpha, grad_flat, L, U)
-            p_flat = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-            df = self._dot(grad_flat, p_flat)
+            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
+            df = self._dot(grad_flat, p_masked)
             df = tf.cast(df, grad_flat.dtype)
 
             self.map.set_theta(theta_backup)

@@ -69,3 +69,20 @@ class BoundedVectorMapping(VectorMapping):
     # This method is probed via hasattr(map, "get_box_bounds_flat")
     def get_box_bounds_flat(self):
         return self._L, self._U
+
+
+# --- Simple identity sampler for tests ---------------------------------------
+
+class IdentitySampler:
+    """
+    Mock sampler for optimizer tests.
+    Returns inputs wrapped in batch dimension [1, ...] to match expected
+    shape [M, B, H, W, C] where M=1 (single batch).
+    """
+    def __init__(self):
+        self.dynamic_augmentation = False
+    
+    def __call__(self, inputs: tf.Tensor) -> tf.Tensor:
+        # inputs is expected to be [B, H, W, C] or similar
+        # Return [1, B, H, W, C] to indicate single batch
+        return tf.expand_dims(inputs, axis=0)

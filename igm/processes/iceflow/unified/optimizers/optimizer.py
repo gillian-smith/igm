@@ -84,8 +84,12 @@ class Optimizer(ABC):
         grad_theta_norm = compute_norm(grad_theta_flat, ord=self.ord_grad_theta)
         # For (u,v)
         grad_u_x, grad_u_y = grad_u
-        grad_u_flat = tf.sqrt(tf.square(grad_u_x) + tf.square(grad_u_y))
-        grad_u_norm = compute_norm(grad_u_flat, ord=self.ord_grad_u)
+        # Handle case where grad_u is None (cost doesn't depend on U,V)
+        if grad_u_x is None or grad_u_y is None:
+            grad_u_norm = tf.constant(0.0, dtype=self.precision)
+        else:
+            grad_u_flat = tf.sqrt(tf.square(grad_u_x) + tf.square(grad_u_y))
+            grad_u_norm = compute_norm(grad_u_flat, ord=self.ord_grad_u)
         return grad_u_norm, grad_theta_norm
 
     @tf.function

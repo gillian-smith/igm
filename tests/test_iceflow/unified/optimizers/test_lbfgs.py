@@ -4,7 +4,8 @@ import tensorflow as tf
 import pytest
 
 from igm.processes.iceflow.unified.optimizers.lbfgs import OptimizerLBFGS
-from .vector_mapping import VectorMapping, BoundedVectorMapping
+from igm.processes.iceflow.unified.optimizers.lbfgs_bounds import OptimizerLBFGSBounds
+from .vector_mapping import VectorMapping, BoundedVectorMapping, IdentitySampler
 
 # Mark the whole module as slow
 pytestmark = pytest.mark.slow
@@ -49,6 +50,7 @@ def test_rosenbrock_unconstrained_converges_parametric(n, memory, alpha_min, ls_
         memory=memory,
         precision=tf.float32
     )
+    opt.sampler = IdentitySampler()
 
     costs = opt.minimize(_dummy_inputs_5d())
     final = float(costs[-1].numpy())
@@ -77,6 +79,7 @@ def test_rosenbrock_float64_support():
         memory=10,
         precision=tf.float64
     )
+    opt.sampler = IdentitySampler()
     costs = opt.minimize(_dummy_inputs_5d(tf.float64))
     assert float(costs[-1].numpy()) <= 1e-6
 
@@ -122,6 +125,7 @@ def test_quadratic_unconstrained_matches_closed_form(n):
         memory=10,
         precision=tf.float64
     )
+    opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))
 
     x_final = mapping.theta.numpy()
@@ -154,6 +158,7 @@ def test_quadratic_box_interior_solution(n):
         memory=10,
         precision=tf.float64
     )
+    opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))
 
     x_final = mapping.theta.numpy()
@@ -180,7 +185,7 @@ def test_quadratic_box_boundary_active_set_and_KKT():
     mapping.theta.assign(tf.zeros([n], tf.float64))
     cost_fn = _quadratic_cost(mapping, d, b)
 
-    opt = OptimizerLBFGS(
+    opt = OptimizerLBFGSBounds(
         cost_fn=cost_fn,
         map=mapping,
         print_cost=False,
@@ -190,6 +195,7 @@ def test_quadratic_box_boundary_active_set_and_KKT():
         memory=10,
         precision=tf.float64
     )
+    opt.sampler = IdentitySampler()
     opt.minimize(_dummy_inputs_5d(tf.float64))
 
     x = mapping.theta.numpy()
