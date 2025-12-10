@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 from .utils import (
     PeriodicBCAnsatz,
     PeriodicBCEnforcement,
@@ -40,7 +40,7 @@ class CNN(tf.keras.Model):
 
         # Store configuration
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
         self.use_skip = use_skip
         self.input_normalizer = None
 
@@ -280,7 +280,7 @@ class CNNPatch(tf.keras.Model):
     ):  # New parameter
         super(CNNPatch, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
         self.input_normalizer = input_normalizer
         self.use_skip = use_skip  # Store flag
 
@@ -371,7 +371,7 @@ class CNNPeriodic(tf.keras.Model):
     ):  # New parameter
         super(CNNPeriodic, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
 
         # Normalization layer (set later on)
         self.input_normalizer = None
@@ -489,7 +489,7 @@ class CNNSkip(tf.keras.Model):
     def __init__(self, cfg, nb_inputs, nb_outputs, use_skip=True):  # New parameter
         super(CNNSkip, self).__init__()
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
         self.input_normalizer = None
         self.use_skip = use_skip  # Store flag
 

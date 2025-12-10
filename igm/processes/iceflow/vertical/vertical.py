@@ -7,7 +7,7 @@ import tensorflow as tf
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig
 
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class VerticalDiscr(ABC):
@@ -46,7 +46,7 @@ class VerticalDiscr(ABC):
     def __init__(self, cfg: DictConfig) -> None:
         """Initialize vertical discretization."""
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype = _normalize_precision(precision)
+        self.dtype = normalize_precision(precision)
         self._compute_discr(cfg)
 
     @abstractmethod

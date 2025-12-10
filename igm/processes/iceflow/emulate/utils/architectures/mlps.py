@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class MLP(tf.keras.Model):
@@ -13,7 +13,7 @@ class MLP(tf.keras.Model):
         super(MLP, self).__init__()
 
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
 
         self.input_normalizer = None
 
@@ -62,7 +62,7 @@ class FourierMLP(tf.keras.Model):
         super(FourierMLP, self).__init__()
 
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
 
         self.input_normalizer = input_normalizer
         self.nb_inputs = nb_inputs

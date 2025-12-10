@@ -9,7 +9,7 @@ from typing import Tuple
 
 from ..metrics import Metric
 from ..step_state import StepState
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class Criterion(ABC):
@@ -22,7 +22,7 @@ class Criterion(ABC):
     ):
         """Initialize halting criterion."""
         self.metric = metric
-        self.dtype = _normalize_precision(dtype)
+        self.dtype = normalize_precision(dtype)
         self.name = "crit"
 
     @abstractmethod

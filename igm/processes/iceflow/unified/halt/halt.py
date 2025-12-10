@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 
 from .criteria import Criterion
 from .step_state import StepState
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class HaltStatus(Enum):
@@ -55,7 +55,7 @@ class Halt:
         self.crit_success = crit_success or []
         self.crit_failure = crit_failure or []
         self.freq = freq
-        self.dtype = _normalize_precision(dtype)
+        self.dtype = normalize_precision(dtype)
         self.criterion_names = self._build_criterion_names()
 
     def _build_criterion_names(self) -> List[str]:

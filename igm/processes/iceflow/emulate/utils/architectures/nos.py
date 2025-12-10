@@ -1,5 +1,5 @@
 import tensorflow as tf
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class FNO(tf.keras.Model):
@@ -11,7 +11,7 @@ class FNO(tf.keras.Model):
         super(FNO, self).__init__()
 
         precision = cfg.processes.iceflow.numerics.precision
-        self.dtype_model = _normalize_precision(precision)
+        self.dtype_model = normalize_precision(precision)
 
         self.input_normalizer = input_normalizer
 

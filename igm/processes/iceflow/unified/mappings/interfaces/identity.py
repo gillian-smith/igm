@@ -10,7 +10,7 @@ from typing import Any, Dict
 from .interface import InterfaceMapping
 from igm.common.core import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 
 class InterfaceIdentity(InterfaceMapping):
@@ -23,7 +23,7 @@ class InterfaceIdentity(InterfaceMapping):
         cfg_numerics = cfg.processes.iceflow.numerics
         Nz = cfg_numerics.Nz
 
-        dtype = _normalize_precision(cfg_numerics.precision)
+        dtype = normalize_precision(cfg_numerics.precision)
 
         U_guess = tf.zeros((1, Nz, Ny, Nx), dtype=dtype)
         V_guess = tf.zeros((1, Nz, Ny, Nx), dtype=dtype)

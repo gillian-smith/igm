@@ -11,7 +11,7 @@ from typing import Any, Callable, Optional, Tuple
 from .progress_optimizer import ProgressOptimizer
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus, HaltState, StepState, DebugState
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 from igm.utils.math.norms import compute_norm
 
 import logging
@@ -42,7 +42,7 @@ class Optimizer(ABC):
         self.step_state = None
         self.halt_state = None
         self.display = ProgressOptimizer(enabled=print_cost, freq=print_cost_freq)
-        self.precision = _normalize_precision(precision)
+        self.precision = normalize_precision(precision)
         self.ord_grad_u = ord_grad_u
         self.ord_grad_theta = ord_grad_theta
         self.debug_mode = debug_mode
@@ -60,7 +60,7 @@ class Optimizer(ABC):
 
         if int(self.iter_max) == 0:
             return tf.zeros([0], dtype=self.precision)
-        
+
         if self.halt:
             self.halt.reset_all()
 

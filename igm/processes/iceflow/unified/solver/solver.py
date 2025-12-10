@@ -14,7 +14,7 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_state_to_X,
 )
 
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.unified.mappings import Mappings
 from igm.processes.iceflow.emulate.utils.normalizations import FixedAffineLayer
 from igm.processes.iceflow.unified.mappings.normalizer import (
@@ -47,7 +47,7 @@ def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
     """Returns [N, H, W, C] patches (sampler handles batching/augmentation)."""
     X = fieldin_state_to_X(cfg, state)
 
-    # dtype = _normalize_precision(cfg.processes.iceflow.numerics.precision) # ! confirm double precision is working properly
+    # dtype = normalize_precision(cfg.processes.iceflow.numerics.precision) # ! confirm double precision is working properly
 
     # Create patches using the patching object
     patches = state.iceflow.patching.generate_patches(X)

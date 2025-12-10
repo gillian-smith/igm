@@ -8,7 +8,7 @@ from typing import Any, Dict
 from omegaconf import DictConfig
 
 from igm.common.core import State
-from igm.utils.math.precision import _normalize_precision
+from igm.utils.math.precision import normalize_precision
 
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_to_X_2d,
@@ -72,7 +72,7 @@ def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
         inputs = fieldin_to_X_2d(inputs)
 
     # not sure if this is needed but need to verify double precision in other places...
-    dtype = _normalize_precision(cfg.processes.iceflow.numerics.precision)
+    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
     inputs = tf.cast(inputs, dtype)
 
     return inputs
