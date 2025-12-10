@@ -24,7 +24,7 @@ from igm.processes.iceflow.utils.vertical_discretization import (
 # this file is avilable at https://github.com/WangYuzhe/PoLIM-Polythermal-Land-Ice-Model
 # verif = scipy.io.loadmat("sol_analytic/enthA_analy_result.mat")
 
-
+pytestmark = pytest.mark.slow
 def test_enthalpy():
 
     ttf = 150000.0  # 300000
