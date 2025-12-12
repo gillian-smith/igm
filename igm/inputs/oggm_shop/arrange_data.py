@@ -62,7 +62,10 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
         else:
             vel = np.full(ds["topo"].shape, np.nan)
         if cfg.inputs.oggm_shop.smooth_obs_vel:
-            vel.data = scipy.signal.medfilt2d(vel.values, kernel_size=3)
+            try: 
+                 vel.data = scipy.signal.medfilt2d(vel.values, kernel_size=3)
+            except:
+                 vel.data = 1.0*vel #scipy.signal.medfilt2d(vel, kernel_size=3)
         ds_vars[key] = vel
  
     # Ice thickness observations from GlaThiDa

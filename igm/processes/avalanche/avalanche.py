@@ -13,25 +13,27 @@ def initialize(cfg, state):
     
     state.tlast_avalanche = tf.Variable(cfg.processes.time.start, dtype=tf.float32)
 
-
 def update(cfg, state):
+
     if (state.t - state.tlast_avalanche) >= cfg.processes.avalanche.update_freq:
+        
         if hasattr(state, "logger"):
             state.logger.info("Update AVALANCHE at time : " + str(state.t.numpy()))
-
-
+ 
         H = state.thk
         Zb = state.topg
         Zi = Zb + H
         
         # the elevation difference of the cells that is considered to be stable
-        dHRepose = state.dx * tf.math.tan(
+        dHRepose = state.dx * tf.math.tan( 
             cfg.processes.avalanche.angleOfRepose * np.pi / 180.0
         )
         Ho = tf.maximum(H, 0)
 
         count = 0
-
+        # volume redistributed # for documentation if needed
+        # volumes = []
+         
         while count <=300:
             count += 1
             

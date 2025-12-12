@@ -15,6 +15,7 @@ from oggm import cfg, utils
 from oggm.cfg import G, SEC_IN_YEAR, SEC_IN_DAY
 
 import igm
+from igm.common import State, EmptyClass, load_yaml_as_cfg
 from oggm.core.sia2d import Model2D
 
 from igm.common import State

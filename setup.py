@@ -19,14 +19,15 @@ with open("README.md", "r") as f:
 
 setup(
     name="igm-model",
-    version="2.2.2",
+    version="3.0.1",
     author="Guillaume Jouvet",
     author_email="guillaume.jouvet@unil.ch",
     url="https://github.com/jouvetg/igm",
     license="gpl-3.0",
-    packages=find_packages(),
-    entry_points={"console_scripts": ["igm_run = igm.igm_run:main"]},
+    packages=find_packages(include=["igm", "igm.*"]),
+    include_package_data=True,
     package_data={"igm": package_files("igm/emulators")},
+    entry_points={"console_scripts": ["igm_run = igm.igm_run:main"]},
     description="IGM - a glacier evolution model",
     long_description=readme,
     long_description_content_type="text/markdown",

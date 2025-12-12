@@ -2,7 +2,7 @@ import igm
 import tensorflow as tf
 import pytest
 import numpy as np
-from make_fake_ncdf import write_ncdf
+from .make_fake_ncdf import write_ncdf
 import os
 
 from igm.common import State

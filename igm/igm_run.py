@@ -46,6 +46,7 @@ from hydra.core.hydra_config import HydraConfig
 import numpy as np
 from datetime import datetime
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
 
@@ -57,7 +58,6 @@ def main(cfg: DictConfig) -> None:
 
     state.start_time = datetime.now()
 
-
     if cfg.core.check_compat_params:
         check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
@@ -68,12 +68,11 @@ def main(cfg: DictConfig) -> None:
     gpus = tf.config.list_physical_devices("GPU")
     for gpu_instance in gpus:
         tf.config.experimental.set_memory_growth(gpu_instance, True)
-
     if gpus:
+        print([gpus[i] for i in cfg.core.hardware.visible_gpus])
+
         try:
-            selected_visible_gpus = [
-                gpus[i] for i in cfg.core.hardware.visible_gpus
-            ]
+            selected_visible_gpus = [gpus[i] for i in cfg.core.hardware.visible_gpus]
             tf.config.set_visible_devices(selected_visible_gpus, "GPU")
             logical_gpus = tf.config.list_logical_devices("GPU")
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
@@ -127,9 +126,7 @@ def main(cfg: DictConfig) -> None:
 
     with strategy.scope():
         initialize_modules(imported_processes_modules, cfg, state)
-        update_modules(
-            imported_processes_modules, imported_outputs_modules, cfg, state
-        )
+        update_modules(imported_processes_modules, imported_outputs_modules, cfg, state)
         finalize_modules(imported_processes_modules, cfg, state)
 
     if cfg.core.print_comp:
@@ -142,7 +139,6 @@ def main(cfg: DictConfig) -> None:
         return state.score
     else:
         return float("inf")
-
 
 
 if __name__ == "__main__":

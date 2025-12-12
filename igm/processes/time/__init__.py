@@ -1,5 +1,6 @@
 from .time import (
     initialize,
     finalize,
-    update
+    update,
+    compute_dt_from_cfl
 )

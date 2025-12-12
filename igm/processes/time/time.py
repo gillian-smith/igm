@@ -8,6 +8,21 @@ import matplotlib.pyplot as plt
 import datetime, time
 import tensorflow as tf
 
+def compute_dt_from_cfl(ubar, vbar, cfl, dx, step_max):
+    """Compute adaptive time step based on CFL condition"""
+    # compute maximum ice velocitiy magnitude 
+    velomax = tf.maximum(
+        tf.reduce_max(tf.abs(ubar)),
+        tf.reduce_max(tf.abs(vbar)),
+    )
+    # dt_target account for both cfl and dt_max
+    if (velomax > 0):
+        dt_target = tf.minimum( cfl * dx / velomax, step_max )
+    else:
+        dt_target = step_max
+
+    return dt_target
+
 def initialize(cfg, state):
 
     # Initialize the time with starting time
@@ -32,19 +47,11 @@ def update(cfg, state):
         )
 
     if (cfg.processes.time.cfl>0):
-        # compute maximum ice velocitiy magnitude 
-        velomax = tf.maximum(
-            tf.reduce_max(tf.abs(state.ubar)),
-            tf.reduce_max(tf.abs(state.vbar)),
+        state.dt_target = compute_dt_from_cfl(
+            state.ubar, state.vbar, 
+            cfg.processes.time.cfl, state.dx, 
+            cfg.processes.time.step_max
         )
-        # dt_target account for both cfl and dt_max
-        if (velomax > 0):
-            state.dt_target =  tf.minimum(
-                cfg.processes.time.cfl * state.dx / velomax, 
-                cfg.processes.time.step_max
-            )
-        else:
-            state.dt_target = cfg.processes.time.step_max
     else:
         state.dt_target = cfg.processes.time.step_max
 

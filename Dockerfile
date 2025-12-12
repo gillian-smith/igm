@@ -1,12 +1,12 @@
 # docker build --no-cache -t igm --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) .
 #
-FROM tensorflow/tensorflow:2.12.0-gpu
+FROM tensorflow/tensorflow:2.15.0.post1-gpu
 
 RUN apt-get update
 
 # Add user
-ARG USER_ID
-ARG GROUP_ID
+ARG USER_ID=1000
+ARG GROUP_ID=1000
 
 RUN addgroup --gid $GROUP_ID igmuser
 RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID igmuser
@@ -34,5 +34,3 @@ RUN pip install -e .
 WORKDIR /home/igmuser/
 
 RUN echo 'alias igm_run="python /home/igmuser/igm/igm/igm_run.py"' >> ~/.bashrc
-
-# CMD ["python", "/home/igmuser/igm/igm/igm_run.py"]
