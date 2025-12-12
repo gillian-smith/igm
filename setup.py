@@ -33,9 +33,10 @@ setup(
     long_description_content_type="text/markdown",
     install_requires=[
         "tensorflow[and-cuda]==2.15.1",
+        "tensorflow-probability==0.23.0",
         "matplotlib",
         "scipy",
-        "netCDF4==1.6.0",
+        "netCDF4",
         "xarray",
         "rasterio",
         "pyproj",
@@ -46,6 +47,9 @@ setup(
         "importlib_resources",
         "tqdm",
         "hydra-core",
-        "omegaconf"
+        "omegaconf",
+        "nvtx",
+        "typeguard",
+        "rich",
     ],
 )

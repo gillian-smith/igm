@@ -1,10 +1,16 @@
 data_assimilation:
+  store_freq: 100
   control_list:
   - thk
   cost_list:
   - velsurf
   - thk
   - icemask
+  variables:
+  - { name: thk, transform: identity }
+  - { name: slidingco, transform: identity }
+  - { name: arrhenius, transform: identity }
+  optimizer: ADAM
   optimization:
     nbitmin: 50
     nbitmax: 500

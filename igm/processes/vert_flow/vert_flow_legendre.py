@@ -1,31 +1,37 @@
 #!/usr/bin/env python3
 
-"""
-# Copyright (C) 2021-2025 IGM authors 
-Published under the GNU GPL (Version 3), check at the LICENSE file
-"""
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
 import tensorflow as tf
-from igm.processes.iceflow.energy.cost_shear import compute_horizontal_derivatives
-from igm.processes.iceflow.energy.utils import stag4h
-from igm.utils.gradient.compute_gradient import compute_gradient
-from igm.processes.iceflow.utils import get_velbase
+
+from igm.utils.grad.grad import grad_xy
+from igm.processes.iceflow.utils.velocities import get_velbase
+
 
 def compute_vertical_velocity_legendre(cfg, state):
 
-    sloptopgx, sloptopgy = compute_gradient(state.topg, state.dX, state.dX, staggered_grid=False)
+    vertical_discr = state.iceflow.vertical_discr
 
-    uvelbase, vvelbase = get_velbase(state.U, state.V, cfg.processes.iceflow.numerics.vert_basis) 
+    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
 
-    wvelbase = uvelbase * sloptopgx + vvelbase * sloptopgy # Lagrange basis
+    uvelbase, vvelbase = get_velbase(state.U, state.V, vertical_discr.V_b)
 
-    dUdx, dVdx, dUdy, dVdy = compute_horizontal_derivatives(state.U, state.V, state.dX[0,0], staggered_grid=False) # Legendre basis
- 
+    wvelbase = uvelbase * sloptopgx + vvelbase * sloptopgy  # Lagrange basis
+
+    dUdx, _ = grad_xy(state.U, state.dX, state.dX, False)
+    _, dVdy = grad_xy(state.V, state.dX, state.dX, False)
+
     # Lagrange basis
-    WLA = wvelbase[None,...] \
-        - tf.tensordot(state.Leg_I, dUdx + dVdy, axes=[[1], [0]]) \
-        * state.thk[None,...]
-    
+    WLA = (
+        wvelbase[None, ...]
+        - tf.tensordot(vertical_discr.V_q_int, dUdx + dVdy, axes=[[1], [0]])
+        * state.thk[None, ...]
+    )
+
     # Legendre basis
-    return tf.einsum('ji,jkl->ikl', state.Leg_P, WLA * state.dzeta[:,None,None])
+    return tf.einsum(
+        "ji,jkl->ikl",
+        vertical_discr.V_q,
+        WLA * state.dzeta[:, None, None],
+    )

@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
- 
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
-from igm.utils.gradient.compute_divflux import compute_divflux
+
+# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulated
+from igm.utils.grad.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
+# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model, match_fieldin_dimensions
+# from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
+
+from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
+
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_vel
 from ..utils import compute_flow_direction_for_anisotropic_smoothing_usurf
+
 
 def optimize_update(cfg, state, cost, i):
 
@@ -23,45 +30,62 @@ def optimize_update(cfg, state, cost, i):
 
     for f in cfg.processes.data_assimilation.control_list:
         if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
-            vars(state)[f+'_sc'] = tf.Variable( tf.sqrt(vars(state)[f] / sc[f]) ) 
+            vars(state)[f + "_sc"] = tf.Variable(tf.sqrt(vars(state)[f] / sc[f]))
         else:
-            vars(state)[f+'_sc'] = tf.Variable(vars(state)[f] / sc[f]) 
+            vars(state)[f + "_sc"] = tf.Variable(vars(state)[f] / sc[f])
 
     with tf.GradientTape() as t:
 
         if cfg.processes.data_assimilation.optimization.step_size_decay < 1:
-            state.optimizer.lr = cfg.processes.data_assimilation.optimization.step_size * (cfg.processes.data_assimilation.optimization.step_size_decay ** (i / 100))
+            state.optimizer.lr = (
+                cfg.processes.data_assimilation.optimization.step_size
+                * (
+                    cfg.processes.data_assimilation.optimization.step_size_decay
+                    ** (i / 100)
+                )
+            )
 
         # is necessary to remember all operation to derive the gradients w.r.t. control variables
         for f in cfg.processes.data_assimilation.control_list:
-            t.watch(vars(state)[f+'_sc'])
+            t.watch(vars(state)[f + "_sc"])
 
         for f in cfg.processes.data_assimilation.control_list:
-            if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
-                vars(state)[f] =  (vars(state)[f+'_sc']**2) * sc[f]
+            if cfg.processes.data_assimilation.fitting.log_slidingco & (
+                f == "slidingco"
+            ):
+                vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
             else:
-                vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
+                vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
 
         update_iceflow_emulated(cfg, state)
 
-        if not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor == 1:
-            if cfg.processes.data_assimilation.regularization.smooth_anisotropy_var == "vel":
+        if (
+            not cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
+            == 1
+        ):
+            if (
+                cfg.processes.data_assimilation.regularization.smooth_anisotropy_var
+                == "vel"
+            ):
                 compute_flow_direction_for_anisotropic_smoothing_vel(state)
-            elif cfg.processes.data_assimilation.regularization.smooth_anisotropy_var == "usurf":   
+            elif (
+                cfg.processes.data_assimilation.regularization.smooth_anisotropy_var
+                == "usurf"
+            ):
                 compute_flow_direction_for_anisotropic_smoothing_usurf(state)
- 
+
             # import matplotlib.pyplot as plt
             # fig, axs = plt.subplots(1, 1, figsize=(16,32))
             # plt.quiver(state.flowdirx[::2,::2], state.flowdiry[::2,::2])
             # axs.axis("equal")
             # plt.savefig("flow_directions.png", bbox_inches='tight', dpi=200)
             # plt.close()
-                
+
         cost_total = total_cost(cfg, state, cost, i)
 
-        var_to_opti = [ ]
+        var_to_opti = []
         for f in cfg.processes.data_assimilation.control_list:
-            var_to_opti.append(vars(state)[f+'_sc'])
+            var_to_opti.append(vars(state)[f + "_sc"])
 
         # Compute gradient of COST w.r.t. X
         grads = tf.Variable(t.gradient(cost_total, var_to_opti))
@@ -87,13 +111,18 @@ def optimize_update(cfg, state, cost, i):
 
         # get back optimized variables in the pool of state.variables
         for f in cfg.processes.data_assimilation.control_list:
-            if cfg.processes.data_assimilation.fitting.log_slidingco & (f == "slidingco"):
-                vars(state)[f] =  (vars(state)[f+'_sc']**2) * sc[f]
+            if cfg.processes.data_assimilation.fitting.log_slidingco & (
+                f == "slidingco"
+            ):
+                vars(state)[f] = (vars(state)[f + "_sc"] ** 2) * sc[f]
             else:
-                vars(state)[f] = vars(state)[f+'_sc'] * sc[f]
+                vars(state)[f] = vars(state)[f + "_sc"] * sc[f]
 
         # add reprojection step to force obstacle constraints
-        if "reproject" in cfg.processes.data_assimilation.optimization.obstacle_constraint:
+        if (
+            "reproject"
+            in cfg.processes.data_assimilation.optimization.obstacle_constraint
+        ):
 
             if "icemask" in cfg.processes.data_assimilation.cost_list:
                 state.thk = tf.where(state.icemaskobs > 0.5, state.thk, 0)
@@ -106,9 +135,13 @@ def optimize_update(cfg, state, cost, i):
 
             if "arrhenius" in cfg.processes.data_assimilation.control_list:
                 # Here we assume a minimum value of 1.0 for the arrhenius factor (should not be hard-coded)
-                state.arrhenius = tf.where(state.arrhenius < 1.0, 1.0, state.arrhenius) 
+                state.arrhenius = tf.where(state.arrhenius < 1.0, 1.0, state.arrhenius)
 
         state.divflux = compute_divflux(
-            state.ubar, state.vbar, state.thk, state.dx, state.dx, 
-            method=cfg.processes.data_assimilation.divflux.method
+            state.ubar,
+            state.vbar,
+            state.thk,
+            state.dx,
+            state.dx,
+            method=cfg.processes.data_assimilation.divflux.method,
         )

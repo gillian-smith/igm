@@ -6,11 +6,12 @@ core:
 
   # Logging
   logging: False
-  logging_level: 30
+  tf_logging_level: WARNING
+  igm_logging_level: WARNING
 
   # Hardware
   hardware:
-    gpu_info: True
+    gpu_info: False
     visible_gpus: [0]
     strategy: none
 
@@ -18,7 +19,7 @@ core:
   print_params: False
   print_comp: False
   print_info: True
-  print_imported_modules: True
+  print_imported_modules: False
   check_compat_params: True
   
   # Custom Modules

@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from igm.utils.math.getmag import getmag
-from igm.utils.gradient.compute_gradient_tf import compute_gradient_tf
+from igm.utils.grad.grad import grad_xy
+
 
 def initialize(cfg, state):
     pass
 
+
 def update(cfg, state):
-    slopsurfx, slopsurfy = compute_gradient_tf(state.usurf, state.dx, state.dx)
+    slopsurfx, slopsurfy = grad_xy(
+        state.usurf, state.dX, state.dX, False, "extrapolate"
+    )
 
     slop = getmag(slopsurfx, slopsurfy)
 
@@ -26,14 +30,17 @@ def update(cfg, state):
 
     thkexp = tf.repeat(tf.expand_dims(state.thk, axis=0), state.U.shape[0], axis=0)
 
-    if cfg.processes.iceflow.numerics.vert_basis in ["Lagrange","SIA"]:
+    if cfg.processes.iceflow.numerics.vert_basis.lower() in ["lagrange", "molho"]:
         state.U = tf.where(thkexp > 0, state.U, dirx)
         state.V = tf.where(thkexp > 0, state.V, diry)
-    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
-        state.U = tf.where(thkexp > 0, state.U, 
-                           tf.concat([dirx[None,...] , 0.0*state.U[1:]], axis=0))
-        state.V = tf.where(thkexp > 0, state.V, 
-                           tf.concat([diry[None,...] , 0.0*state.V[1:]], axis=0))
+    elif cfg.processes.iceflow.numerics.vert_basis.lower() == "legendre":
+        state.U = tf.where(
+            thkexp > 0, state.U, tf.concat([dirx[None, ...], 0.0 * state.U[1:]], axis=0)
+        )
+        state.V = tf.where(
+            thkexp > 0, state.V, tf.concat([diry[None, ...], 0.0 * state.V[1:]], axis=0)
+        )
+
 
 def finalize(cfg, state):
     pass

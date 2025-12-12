@@ -16,11 +16,11 @@ from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *
 from ..iceflow.energy.energy import *
 
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV, UV_to_Y
+from igm.processes.iceflow.utils.misc import X_to_fieldin, Y_to_UV, UV_to_Y
 
-from igm.processes.iceflow.vert_disc import define_vertical_weight, compute_levels, compute_zeta_dzeta
+from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight, compute_levels, compute_zeta_dzeta
 from igm.processes.iceflow.energy.utils import gauss_points_and_weights, legendre_basis
- 
+from igm.processes.iceflow.vertical import VerticalDiscrs
  
 def initialize(cfg, state):
     state.direct_name = (
@@ -72,19 +72,9 @@ def initialize(cfg, state):
         if cfg.processes.pretraining.min_coarsen < cfg.processes.pretraining.max_coarsen:
             state.PAR.append([p, it, midva2, midvs2, cfg.processes.pretraining.min_coarsen + 1])
 
-    if cfg.processes.iceflow.numerics.vert_basis == "Lagrange":
-        levels = compute_levels(cfg.processes.iceflow.numerics.Nz, cfg.processes.iceflow.numerics.vert_spacing)
-        state.zeta, state.dzeta = compute_zeta_dzeta(levels)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
-    elif cfg.processes.iceflow.numerics.vert_basis == "Legendre":
-        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=cfg.processes.iceflow.numerics.Nz)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = legendre_basis(state.zeta,order=state.zeta.shape[0]) 
-    elif cfg.processes.iceflow.numerics.vert_basis == "SIA":
-        assert cfg.processes.iceflow.numerics.Nz == 2 
-        state.zeta, state.dzeta = gauss_points_and_weights(ord_gauss=5)
-        state.Leg_P, state.Leg_dPdz, state.Leg_I = None, None, None
-    else:
-        raise ValueError(f"Unknown vertical basis: {cfg.processes.iceflow.numerics.vert_basis}")
+    vertical_basis = cfg.processes.iceflow.numerics.vert_basis.lower()
+    vertical_discr = VerticalDiscrs[vertical_basis](cfg)
+    state.iceflow.vertical_discr = vertical_discr
 
     state.it = 0
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np 
-import matplotlib.pyplot as plt 
-import tensorflow as tf 
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
 from netCDF4 import Dataset
 
 from igm.utils.math.getmag import getmag
@@ -46,7 +46,10 @@ def initialize(cfg, state):
         "km MPa$^{-3}$ a$^{-1}$",
     ]
     state.var_info_ncdf_ex["meantemp"] = ["Mean anual surface temperatures", "°C"]
-    state.var_info_ncdf_ex["meanprec"] = ["Mean anual precipitation", "Kg m^(-2) y^(-1)"]
+    state.var_info_ncdf_ex["meanprec"] = [
+        "Mean anual precipitation",
+        "Kg m^(-2) y^(-1)",
+    ]
     state.var_info_ncdf_ex["velsurfobs_mag"] = ["Obs. surf. speed of ice", "m/y"]
     state.var_info_ncdf_ex["weight_particles"] = ["weight_particles", "no"]
 
@@ -76,7 +79,7 @@ def run(cfg, state):
             E.units = "yr"
             E.long_name = "time"
             E.axis = "T"
-            E[0] = str(getattr(state, 't', tf.constant(0)).numpy())
+            E[0] = str(getattr(state, "t", tf.constant(0)).numpy())
 
             nc.createDimension("y", len(state.y))
             E = nc.createVariable("y", np.dtype("float32").char, ("y",))
@@ -92,19 +95,19 @@ def run(cfg, state):
             E.axis = "X"
             E[:] = state.x.numpy()
 
-            if hasattr(state, 'pyproj_srs'):
+            if hasattr(state, "pyproj_srs"):
                 nc.pyproj_srs = state.pyproj_srs
 
-            if hasattr(cfg.processes,'iceflow'):
-               if "Nz" in cfg.processes.iceflow:
-                   nc.createDimension("z", cfg.processes.iceflow.numerics.Nz)
-                   E = nc.createVariable("z", np.dtype("float32").char, ("z",))
-                   E.units = "m"
-                   E.long_name = "z"
-                   E.axis = "Z"
-                   E[:] = np.arange(
-                       cfg.processes.iceflow.numerics.Nz
-                   )  # TODO: fix this, that's not what we want
+            if hasattr(cfg.processes, "iceflow"):
+                if "Nz" in cfg.processes.iceflow:
+                    nc.createDimension("z", cfg.processes.iceflow.numerics.Nz)
+                    E = nc.createVariable("z", np.dtype("float32").char, ("z",))
+                    E.units = "m"
+                    E.long_name = "z"
+                    E.axis = "Z"
+                    E[:] = np.arange(
+                        cfg.processes.iceflow.numerics.Nz
+                    )  # TODO: fix this, that's not what we want
 
             for var in cfg.outputs.write_ncdf.vars_to_save:
                 if hasattr(state, var):
@@ -129,7 +132,7 @@ def run(cfg, state):
                     "Write NCDF ex file at time : " + str(state.t.numpy())
                 )
 
-            nc = Dataset(cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4" )
+            nc = Dataset(cfg.outputs.write_ncdf.output_file, "a", format="NETCDF4")
 
             d = nc.variables["time"][:].shape[0]
             nc.variables["time"][d] = state.t.numpy()
@@ -142,4 +145,3 @@ def run(cfg, state):
                         nc.variables[var][d, :, :, :] = vars(state)[var].numpy()
 
             nc.close()
-

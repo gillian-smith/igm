@@ -1,11 +1,11 @@
 format:
   Type: string
   Units: dimless
-  Description: "Format of the texture image (png, tif, or tiff)"
+  Description: "Format of the texture image (png, tif, or tiff)."
 model_path:
   Type: file path
   Units: dimless
-  Description: "Name of the folder for the texture model (tf format)"
+  Description: "Name of the folder for the texture model (tf format)."
 verbosity:
   Type: integer
   Units: dimless

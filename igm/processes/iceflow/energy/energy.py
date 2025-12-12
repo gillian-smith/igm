@@ -1,30 +1,109 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021-2025 IGM authors 
+# Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np 
-import tensorflow as tf  
+import tensorflow as tf
+from typing import Dict, Tuple, List
 
-from igm.processes.iceflow.utils import X_to_fieldin, Y_to_UV 
-import igm.processes.iceflow.energy as energy
+from .components import EnergyComponent
+from igm.processes.iceflow.vertical import VerticalDiscr
+from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin, Y_to_UV
 
-def iceflow_energy(cfg, U, V, fieldin, vert_disc):
 
-    energy_list = []
-    for component in cfg.processes.iceflow.physics.energy_components:
-        func = getattr(energy, f"cost_{component}")
-        if cfg.processes.iceflow.numerics.staggered_grid in [1,2]:
-            energy_list.append(func(cfg, U, V, fieldin, vert_disc, 1))
-        if cfg.processes.iceflow.numerics.staggered_grid in [0,2]:
-            energy_list.append(func(cfg, U, V, fieldin, vert_disc, 0))
+def iceflow_energy(
+    U: tf.Tensor,
+    V: tf.Tensor,
+    fieldin: Dict[str, tf.Tensor],
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+    staggered_grid: int,
+    batch_size: int,
+    Ny: int,
+    Nx: int,
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
 
-    return energy_list
+    if staggered_grid == 2:
+        energy_tensor_length = 2 * len(energy_components)
+    else:
+        energy_tensor_length = len(energy_components)
 
-def iceflow_energy_XY(cfg, X, Y, vert_disc):
-    
-    U, V = Y_to_UV(cfg, Y)
+    # Define element shapes for TensorArray with static values
+    staggered_shape = (batch_size, Ny - 1, Nx - 1)
+    nonstaggered_shape = (batch_size, Ny, Nx)
 
-    fieldin = X_to_fieldin(cfg, X)
+    dtype = U.dtype
 
-    return iceflow_energy(cfg, U, V, fieldin, vert_disc)
+    energy_tensor_staggered = tf.TensorArray(
+        dtype=dtype, size=energy_tensor_length, element_shape=staggered_shape
+    )
+    energy_tensor_nonstaggered = tf.TensorArray(
+        dtype=dtype, size=energy_tensor_length, element_shape=nonstaggered_shape
+    )  # do not make this dynamic for some reason... (slice dimension issue with XLA)
+
+    i = 0
+    for component in energy_components:
+        if staggered_grid in [1, 2]:
+            output = component.cost(U, V, fieldin, vert_disc, 1)
+            energy_tensor_staggered = energy_tensor_staggered.write(i, output)
+            i += 1
+        if staggered_grid in [0, 2]:
+            output = component.cost(U, V, fieldin, vert_disc, 0)
+            energy_tensor_nonstaggered = energy_tensor_nonstaggered.write(i, output)
+            i += 1
+
+    energy_tensor_nonstaggered = energy_tensor_nonstaggered.stack()
+    energy_tensor_staggered = energy_tensor_staggered.stack()
+
+    return energy_tensor_nonstaggered, energy_tensor_staggered
+
+
+@tf.function()
+def iceflow_energy_XY(
+    Nz: int,
+    dim_arrhenius: int,
+    staggered_grid: int,
+    fieldin_names: List[str],
+    X: tf.Tensor,
+    Y: tf.Tensor,
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+    batch_size: int,
+    Ny: int,
+    Nx: int,
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
+
+    U, V = Y_to_UV(Nz, Y)
+    fieldin = X_to_fieldin(
+        X=X, fieldin_names=fieldin_names, dim_arrhenius=dim_arrhenius, Nz=Nz
+    )
+
+    return iceflow_energy(
+        U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
+    )
+
+
+@tf.function()
+def iceflow_energy_UV(
+    Nz: int,
+    dim_arrhenius: int,
+    staggered_grid: int,
+    inputs_names: List[str],
+    inputs: tf.Tensor,
+    U: tf.Tensor,
+    V: tf.Tensor,
+    vert_disc: VerticalDiscr,
+    energy_components: List[EnergyComponent],
+) -> Tuple[tf.TensorArray, tf.TensorArray]:
+
+    fieldin = X_to_fieldin(
+        X=inputs, fieldin_names=inputs_names, dim_arrhenius=dim_arrhenius, Nz=Nz
+    )
+
+    Ny = inputs.shape[1]
+    Nx = inputs.shape[2]
+    batch_size = inputs.shape[0]
+
+    return iceflow_energy(
+        U, V, fieldin, vert_disc, energy_components, staggered_grid, batch_size, Ny, Nx
+    )

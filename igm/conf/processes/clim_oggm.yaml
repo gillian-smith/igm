@@ -1,5 +1,5 @@
 clim_oggm:
-  update_freq: 1
+  update_freq: 1.0
   file: file.txt
   clim_trend_array:
     - ["time", "delta_temp", "prec_scal"]

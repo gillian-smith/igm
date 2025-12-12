@@ -1,10 +1,10 @@
 """
-    This class overrides the oggm.core.sia2d.Model2D class to use the ice flow model
-    implemented in the IGM package. The ice flow model is called at each time step
-    to compute the ice velocity and the ice thickness evolution. 
-    The ice flow model is called through the python wrapper of the IGM package.
-    
-    Code written by: Julien Jehl, Fabien Maussion, and Guillaume Jouvet
+This class overrides the oggm.core.sia2d.Model2D class to use the ice flow model
+implemented in the IGM package. The ice flow model is called at each time step
+to compute the ice velocity and the ice thickness evolution.
+The ice flow model is called through the python wrapper of the IGM package.
+
+Code written by: Julien Jehl, Fabien Maussion, and Guillaume Jouvet
 """
 
 import numpy as np
@@ -17,6 +17,10 @@ from oggm.cfg import G, SEC_IN_YEAR, SEC_IN_DAY
 import igm
 from igm.common import State, EmptyClass, load_yaml_as_cfg
 from oggm.core.sia2d import Model2D
+
+from igm.common import State
+from igm.common.runner.configuration.utils import load_yaml_recursive
+
 
 class IGM_Model2D(Model2D):
     def filter_ice_border(ice_thick):
@@ -77,9 +81,7 @@ class IGM_Model2D(Model2D):
         """
 
         self.state = State()
-
-        self.cfg = EmptyClass()
-        self.cfg.processes = load_yaml_as_cfg(os.path.join("..", "..", "..", "conf","processes","iceflow.yaml"))
+        self.cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
         # Parameter
         self.cfl = 0.25
@@ -123,7 +125,7 @@ class IGM_Model2D(Model2D):
 
         # retrurn the divergence of the flux using upwind fluxes
         divflux = (
-            igm.utils.gradient.compute_divflux.compute_divflux(
+            igm.utils.grad.compute_divflux.compute_divflux(
                 self.state.ubar,
                 self.state.vbar,
                 self.state.thk,
