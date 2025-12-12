@@ -22,7 +22,10 @@ from igm.processes.iceflow.utils.data_preprocessing import (
     prepare_X,
 )
 
-from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X, compute_PAD
+from igm.processes.iceflow.utils.data_preprocessing import (
+    fieldin_state_to_X,
+    compute_PAD,
+)
 from igm.processes.iceflow.energy.utils import get_energy_components
 from .emulated import update_iceflow_emulated
 
@@ -90,7 +93,12 @@ def update_iceflow_emulator(
         lr = cfg_emulator.lr_init if warm_up else cfg_emulator.lr
 
         fieldin = fieldin_state_to_X(cfg, state)
-        X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+        X = prepare_X(
+            cfg,
+            fieldin,
+            pertubate=cfg.processes.iceflow.emulator.pertubate,
+            split_into_patches=True,
+        )
 
         batch_size = X.shape[1]
 
@@ -143,8 +151,8 @@ def update_emulator(
                     vert_disc=bag["vert_disc"],
                     energy_components=bag["energy_components"],
                     batch_size=bag["batch_size"],
-                    Ny=Ny,
-                    Nx=Nx,
+                    Ny=Ny - 2 * iz,
+                    Nx=Nx - 2 * iz,
                 )
 
                 energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
@@ -156,7 +164,6 @@ def update_emulator(
                     energy_mean_nonstaggered, axis=0
                 ) + tf.reduce_sum(energy_mean_staggered, axis=0)
                 cost_emulator += total_energy
-
 
             gradients = tape.gradient(
                 total_energy, bag["iceflow_model"].trainable_variables
@@ -192,7 +199,12 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     # need to do this dummy call to prepare_X to get the dimensions right
     fieldin = fieldin_state_to_X(cfg, state)
-    X = prepare_X(cfg, fieldin, pertubate=cfg.processes.iceflow.emulator.pertubate, split_into_patches=True)
+    X = prepare_X(
+        cfg,
+        fieldin,
+        pertubate=cfg.processes.iceflow.emulator.pertubate,
+        split_into_patches=True,
+    )
 
     Nx = X.shape[-2]
     Ny = X.shape[-3]
