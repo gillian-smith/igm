@@ -11,7 +11,7 @@ from . import (
     BoundaryConditions,
     InterfaceBoundaryConditions,
 )
-from igm.common.core import State
+from igm.common import State
 
 
 def init_bcs(

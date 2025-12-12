@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 from typing import Any, Dict
 
 from .interface import InterfaceBoundaryCondition
-from igm.common.core import State
+from igm.common import State
 
 
 class InterfacePeriodicWE(InterfaceBoundaryCondition):

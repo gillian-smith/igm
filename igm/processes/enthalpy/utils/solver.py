@@ -8,7 +8,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from .advection import compute_upwind_advection
-from igm.common.core import State
+from igm.common import State
 
 
 @tf.function

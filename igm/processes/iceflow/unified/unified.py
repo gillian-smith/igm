@@ -5,7 +5,7 @@
 
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from .bcs import BoundaryConditions
 from igm.common import print_model_with_inputs, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings

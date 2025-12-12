@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 from typing import Dict, Any
 import tensorflow as tf
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.utils.data_preprocessing import (
     Y_to_UV,
     prepare_X,

@@ -8,7 +8,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
 
-from igm.common.core import State
+from igm.common import State
 
 from hydra.core.hydra_config import HydraConfig
 import os

@@ -6,7 +6,7 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 
 
 def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:

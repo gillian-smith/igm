@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 import tensorflow as tf
 from typing import List, Tuple
 
-from igm.common.core import State
+from igm.common import State
 
 from ..optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import (

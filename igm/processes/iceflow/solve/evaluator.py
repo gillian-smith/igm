@@ -7,7 +7,7 @@ import tensorflow as tf
 from typing import Any, Dict
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
     get_velsurf,

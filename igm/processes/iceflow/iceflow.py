@@ -6,7 +6,7 @@
 
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.emulate.emulator import (
     initialize_iceflow_emulator,
     update_iceflow_emulator,

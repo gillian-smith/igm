@@ -7,7 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Callable
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
 from igm.processes.iceflow.data_preparation.config import PreparationParams
@@ -55,6 +55,7 @@ def get_cost_fn(
         return total_energy
 
     return cost_fn
+
 
 def _print_data_preparation_summary(
     prep: PreparationParams,
@@ -115,7 +116,7 @@ def _print_data_preparation_summary(
     # - no effective augmentations,
     # - no up/down-sampling (total == num_patches == target_samples)
     no_patching = (num_patches == 1) and (Hp == ih) and (Wp == iw)
-    no_sampling_change = (total == num_patches == int(prep.target_samples))
+    no_sampling_change = total == num_patches == int(prep.target_samples)
 
     if no_patching and (not has_augs) and no_sampling_change:
         _print_skip_message(

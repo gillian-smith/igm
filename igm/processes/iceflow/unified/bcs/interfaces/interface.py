@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-from igm.common.core import State
+from igm.common import State
 
 
 class InterfaceBoundaryCondition(ABC):

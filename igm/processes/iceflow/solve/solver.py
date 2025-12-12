@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy
 
 

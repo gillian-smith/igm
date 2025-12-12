@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 
 import igm
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,

@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 
 
 def compute_sliding_coefficient(

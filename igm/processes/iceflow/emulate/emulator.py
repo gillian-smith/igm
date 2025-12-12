@@ -9,7 +9,7 @@ import tensorflow as tf
 import warnings
 
 import igm
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_XY
 from igm.processes.iceflow.emulate import EmulatedParams
 from igm.processes.iceflow.emulate.emulated import get_emulated_params_args

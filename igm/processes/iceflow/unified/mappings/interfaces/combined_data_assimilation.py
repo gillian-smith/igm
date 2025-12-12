@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from .interface import InterfaceMapping
 from ..network import MappingNetwork

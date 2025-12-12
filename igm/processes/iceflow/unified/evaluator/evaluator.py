@@ -7,7 +7,7 @@ import tensorflow as tf
 from typing import Any, Dict
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from igm.utils.math.precision import normalize_precision
 
 from igm.processes.iceflow.utils.data_preprocessing import (

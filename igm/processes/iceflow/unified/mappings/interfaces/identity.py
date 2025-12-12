@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 from typing import Any, Dict
 
 from .interface import InterfaceMapping
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.utils.math.precision import normalize_precision
 

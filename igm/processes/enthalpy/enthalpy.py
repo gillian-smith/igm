@@ -6,7 +6,7 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,

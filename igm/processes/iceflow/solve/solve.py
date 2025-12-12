@@ -6,7 +6,7 @@
 from omegaconf import DictConfig
 import tensorflow as tf
 
-from igm.common.core import State
+from igm.common import State
 from igm.processes.iceflow.energy.utils import get_energy_components
 
 from .evaluator import evaluate_iceflow, EvaluatorParams, get_evaluator_params_args
