@@ -130,15 +130,17 @@ def X_to_fieldin(
     """Converts the input tensor X to a dictionary of fieldin variables."""
 
     fieldin = {}
-    for i, name in enumerate(fieldin_names):
-        if name.lower() == "arrhenius":
-            if dim_arrhenius == 3:
-                field = tf.experimental.numpy.moveaxis(X[..., i : i + Nz], [-1], [1])
-            else:
-                field = X[..., i]
+    idx = 0
+
+    for name in fieldin_names:
+        if name.lower() == "arrhenius" and dim_arrhenius == 3:
+            fieldin[name] = tf.experimental.numpy.moveaxis(
+                X[..., idx : idx + Nz], [-1], [1]
+            )
+            idx += Nz
         else:
-            field = X[..., i]
-        fieldin[name] = field
+            fieldin[name] = X[..., idx]
+            idx += 1
 
     return fieldin
 
