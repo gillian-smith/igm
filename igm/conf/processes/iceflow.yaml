@@ -1,5 +1,6 @@
 iceflow:
   method: emulated
+  do_pretraining: false
   force_max_velbar: 0.0
   physics:
     energy_components: [viscosity, gravity, sliding]
