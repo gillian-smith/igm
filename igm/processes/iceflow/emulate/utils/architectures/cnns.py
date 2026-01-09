@@ -240,6 +240,8 @@ class CNN(tf.keras.Model):
                 x = upsample(x)
 
             # Reshape back to 2D
+            # TO DO: CHECK IF THIS IS CORRECT
+            # Why is it only taking the first two channels?
             x = tf.transpose(
                 tf.concat([x[:, :, :, :, 0], x[:, :, :, :, 1]], axis=1),
                 perm=[0, 2, 3, 1],
