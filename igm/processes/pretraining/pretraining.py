@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Tuple, List
+import matplotlib.pyplot as plt
+import random
 
 import numpy as np
 import tensorflow as tf
@@ -20,13 +22,18 @@ def initialize(cfg, state):
     cfg_iceflow = cfg.processes.iceflow
     Nz = cfg_iceflow.numerics.Nz
     tfrecord_root = Path('/home/srosier/work/synthetic_glaciers/tfrecords/set1/')
-    out_dir = Path('/home/srosier/work/synthetic_glaciers/trained_models/')
+    out_dir = Path(cfg_pretraining.experiment_name)
     meta = load_metadata(tfrecord_root)
 
     shapes = meta["example_shapes_by_nz"][str(Nz)]
     H, W, Cx = shapes["x"]
 
     shard_files = list_shards(tfrecord_root, Nz)
+
+    # shuffle shard files to remove any possible ordering bias
+    rng = random.Random(getattr(cfg_pretraining, "split_seed", 0))
+    rng.shuffle(shard_files)
+
     train_ds, val_ds = make_datasets(
         shard_files=shard_files,
         H=H, W=W, Nz=Nz,
@@ -35,40 +42,41 @@ def initialize(cfg, state):
         val_fraction=0.1,
     )
 
-    # Input normalization (stats persisted in the saved model)
-    normalizer = tf.keras.layers.Normalization(axis=-1, name="x_norm")
-    # Adapt on a bounded sample to keep “first run” practical; adjust as needed.
-    norm_adapt = train_ds.unbatch().map(lambda x, y: x).take(5000).batch(256)
-    normalizer.adapt(norm_adapt)
+    # # Input normalization (stats persisted in the saved model)
+    # normalizer = tf.keras.layers.Normalization(axis=-1, name="x_norm")
+    # # Adapt on a bounded sample to keep “first run” practical; adjust as needed.
+    # norm_adapt = train_ds.unbatch().map(lambda x, y: x).take(5000).batch(256)
+    # normalizer.adapt(norm_adapt)
 
     # Initialize mapping
     mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
     mapping = Mappings["network"](**mapping_args)
     state.iceflow.mapping = mapping
 
-    opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+    opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
 
     train_loss = tf.keras.metrics.Mean(name="train_loss")
     val_loss = tf.keras.metrics.Mean(name="val_loss")
 
-    @tf.function
-    def loss_fn(x_batch: tf.Tensor, y_batch: tf.Tensor) -> tf.Tensor:
-        # Forward with BCs (via mapping)
-        U_pred, V_pred = mapping.get_UV(x_batch)
+    def make_loss_fn(mapping, cfg):
+        lt = cfg.processes.pretraining.loss_type.lower()
+        delta = float(getattr(cfg.processes.pretraining, "huber_delta", 50.0))
+        huber = tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)
 
-        # Targets
-        U_true = y_batch[..., 0]  # (B,Nz,H,W)
-        V_true = y_batch[..., 1]  # (B,Nz,H,W)
-        # Mask ice-free where thk <= 0 (prevents learning garbage off-ice)
-        thk = x_batch[..., 0]  # (B,H,W)
-        m2d = tf.cast(thk > 0.0, tf.float32)
-        m = m2d[:, None, :, :]  # (B,1,H,W) -> broadcast to Nz
-        denom = tf.reduce_sum(m) * tf.cast(Nz, tf.float32) + 1e-12
+        @tf.function
+        def loss_fn(x, y):
+            U, V = mapping.get_UV(x)
+            Ut, Vt = y[..., 0], y[..., 1]
+            if lt == "huber":
+                return tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
+            if lt == "mse":
+                return tf.reduce_mean(tf.square(U - Ut) + tf.square(V - Vt))
+            raise ValueError(f"loss_type must be 'mse' or 'huber', got {lt!r}")
 
-        du2 = tf.square(U_pred - U_true) * m
-        dv2 = tf.square(V_pred - V_true) * m
-        return (tf.reduce_sum(du2) + tf.reduce_sum(dv2)) / denom
-    
+        return loss_fn
+
+    loss_fn = make_loss_fn(mapping, cfg)
+
     @tf.function
     def train_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
         with tf.GradientTape() as tape:
@@ -86,6 +94,50 @@ def initialize(cfg, state):
     ckpt = tf.train.Checkpoint(step=tf.Variable(0), optimizer=opt, model=state.iceflow_model)
     ckpt_mgr = tf.train.CheckpointManager(ckpt, str(out_dir / "checkpoints"), max_to_keep=3)
 
+    val_vis_ds = val_ds.unbatch().shuffle(4096, reshuffle_each_iteration=True)\
+                    .batch(cfg_pretraining.batch_size, drop_remainder=True)
+    val_vis_it = iter(val_vis_ds.repeat())
+
+    fig_dir = out_dir / "figures"
+    train_hist = []
+    val_hist = []
+    for epoch in range(cfg_pretraining.epochs):
+        train_loss.reset_state()
+        val_loss.reset_state()
+
+        # Train
+        for x_b, y_b in train_ds:
+            train_step(x_b, y_b)
+            ckpt.step.assign_add(1)
+    
+        # Validate
+        itv = iter(val_ds)
+        for _ in range(50):
+            x_b, y_b = next(itv)
+            val_step(x_b, y_b)
+
+        print(f"[epoch {epoch+1}/{cfg_pretraining.epochs}] train_loss={train_loss.result().numpy():.6e} "
+              f"val_loss={val_loss.result().numpy():.6e}")
+        
+        tr = float(train_loss.result().numpy())
+        va = float(val_loss.result().numpy())
+        train_hist.append(tr)
+        val_hist.append(va)
+
+        # Save loss curve
+        save_loss_plot(train_hist, val_hist, fig_dir / "loss_curve.png")
+
+        # Save a random surface speed comparison from validation
+        x_vis, y_vis = next(val_vis_it)
+        save_speed_compare(mapping, x_vis, y_vis, Nz, fig_dir / f"speed_compare_epoch{epoch+1:04d}.png")
+
+
+        ckpt_mgr.save()
+
+    k = min(5, len(val_hist))
+    avg_last5 = float(np.mean(val_hist[-k:]))
+    state.score = avg_last5
+        
 def update(cfg, state):
     pass
 
@@ -151,3 +203,70 @@ def make_datasets(
         return ds
 
     return ds_from(train_files, True), ds_from(val_files, False)
+
+def save_loss_plot(train_hist, val_hist, fig_path: Path) -> None:
+    fig_path.parent.mkdir(parents=True, exist_ok=True)
+    fig = plt.figure(figsize=(6, 4))
+    plt.plot(np.arange(1, len(train_hist) + 1), train_hist, label="train")
+    plt.plot(np.arange(1, len(val_hist) + 1), val_hist, label="val")
+    plt.xlabel("epoch")
+    plt.ylabel("loss")
+    plt.yscale("log")  # usually helpful for MSE-like losses
+    plt.grid(True, which="both", alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    fig.savefig(fig_path, dpi=150)
+    plt.close(fig)
+
+
+def save_speed_compare(mapping, x_b, y_b, Nz: int, fig_path: Path) -> None:
+    """
+    Saves a 3-panel image: true surface speed, predicted surface speed, difference.
+    Assumes 'surface' is the last vertical level (Nz-1). If your convention is opposite, change k=0.
+    """
+    fig_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # pick one random sample from the batch
+    b = int(np.random.randint(0, x_b.shape[0]))
+    k = Nz - 1  # surface level assumption
+
+    # Forward (BCs applied to predictions via mapping)
+    U_pred, V_pred = mapping.get_UV(x_b)
+    U_pred = U_pred.numpy()
+    V_pred = V_pred.numpy()
+
+    # Targets
+    U_true = y_b[..., 0].numpy()
+    V_true = y_b[..., 1].numpy()
+
+    sp_true = np.sqrt(U_true[b, k] ** 2 + V_true[b, k] ** 2)
+    sp_pred = np.sqrt(U_pred[b, k] ** 2 + V_pred[b, k] ** 2)
+    sp_diff = sp_pred - sp_true
+
+    # shared scaling for true/pred (robust upper bound)
+    vmax = np.nanpercentile(np.concatenate([sp_true.ravel(), sp_pred.ravel()]), 99)
+    vmax = float(vmax) if np.isfinite(vmax) and vmax > 0 else None
+
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+    im0 = axs[0].imshow(sp_true, origin="lower", vmin=0, vmax=vmax)
+    axs[0].set_title("true surface speed")
+    plt.colorbar(im0, ax=axs[0], fraction=0.046, pad=0.04)
+
+    im1 = axs[1].imshow(sp_pred, origin="lower", vmin=0, vmax=vmax)
+    axs[1].set_title("pred surface speed")
+    plt.colorbar(im1, ax=axs[1], fraction=0.046, pad=0.04)
+
+    # difference plot: symmetric bounds
+    dmax = np.nanpercentile(np.abs(sp_diff.ravel()), 99)
+    dmax = float(dmax) if np.isfinite(dmax) and dmax > 0 else None
+    im2 = axs[2].imshow(sp_diff, origin="lower", vmin=-dmax, vmax=dmax)
+    axs[2].set_title("pred - true")
+    plt.colorbar(im2, ax=axs[2], fraction=0.046, pad=0.04)
+
+    for ax in axs:
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    plt.tight_layout()
+    fig.savefig(fig_path, dpi=150)
+    plt.close(fig)
