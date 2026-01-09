@@ -223,7 +223,7 @@ class CNN(tf.keras.Model):
                 and i % 2 == 1
                 and x.shape[-1] == residual_in.shape[-1]
             ):
-                x = tf.keras.layers.Add()([x, residual_in])
+                x = x + residual_in
 
         # Add skip connection from input to pre-output
         if self.use_skip:
