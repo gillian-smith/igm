@@ -141,33 +141,15 @@ def assemble_enthalpy_system(
     U = U - s
 
     # Bottom boundary condition
-    # For Neumann BC (BCB==1): Keep M[0], U[0] from diffusion, modify R[0]
-    # For Dirichlet BC (BCB==0): Set M[0]=1, U[0]=0, R[0]=VB
-
-    # Apply Dirichlet BC coefficients where BCB == 0
     M = tf.concat(
-        [tf.where(BCB == 0, tf.ones_like(BCB), M[0])[None, :, :], M[1:]],
+        [tf.where(BCB == 1, -tf.ones_like(BCB), tf.ones_like(BCB))[None, :, :], M[1:]],
         axis=0,
     )
     U = tf.concat(
-        [tf.where(BCB == 0, tf.zeros_like(BCB), U[0])[None, :, :], U[1:]],
+        [tf.where(BCB == 1, tf.ones_like(BCB), tf.zeros_like(BCB))[None, :, :], U[1:]],
         axis=0,
     )
-
-    # For Neumann BC: Add geothermal heat flux as source term
-    # Heat flux qgeo adds energy at rate: qgeo / (rho * dz) [W/kg]
-    # Over timestep dt: ΔE = dt * qgeo / (rho * dz)
-    # VB = -(c_ice/k_ice) * qgeo, so qgeo = -VB * k_ice / c_ice
-    # Therefore: ΔE = -dt * VB * k_ice / (c_ice * rho * dz)
-    # But this simplifies using s = dt * K / dz² where K = k_ice/(rho*c_ice):
-    # ΔE = -s * VB * dz * (k_ice/(rho*c_ice)) / (k_ice/(rho*c_ice)) = -s * VB * dz
-    # For Dirichlet BC: Set RHS to boundary value
-    heat_flux_contribution = -s[0] * VB * dz[0]
-    R_neumann = R[0] + heat_flux_contribution
-    R = tf.concat(
-        [tf.where(BCB == 0, VB, R_neumann)[None, :, :], R[1:]],
-        axis=0,
-    )
+    R = tf.concat([tf.where(BCB == 1, VB * dz[0], VB)[None, :, :], R[1:]], axis=0)
 
     # Surface boundary condition
     M = tf.concat([M[:-1], tf.ones_like(BCB)[None, :, :]], axis=0)
@@ -207,9 +189,9 @@ def solve_enthalpy_equation(
         state: State object (for U, V, dx)
         E: Current enthalpy [J/kg]
         E_pmp: Pressure melting point enthalpy [J/kg]
-        dt: Time step [s]
+        dt: Time step [year]
         dz: Layer thickness [m]
-        Wc: Corrected vertical velocity [m/s]
+        Wc: Corrected vertical velocity [m/year]
         E_s: Surface enthalpy [J/kg]
         basal_heat_flux: Basal heat flux [W/m²]
         strain_heat: Strain heating rate [W/m³]
@@ -221,15 +203,10 @@ def solve_enthalpy_equation(
     """
     spy = 31556926.0
 
-    Wc = _compute_corrected_vertical_velocity(state)
+    Wc = _compute_corrected_vertical_velocity(cfg, state)
 
     # Horizontal advection (explicit)
-    E = E - dt * compute_upwind_advection(
-        state.U / spy,
-        state.V / spy,
-        E,
-        state.dx,
-    )
+    E = E - dt * compute_upwind_advection(state.U, state.V, E, state.dx)
 
     # Solve vertical diffusion-advection (implicit)
     E, basal_melt_rate = _solve_vertical_enthalpy(
@@ -246,17 +223,40 @@ def solve_enthalpy_equation(
         h_water_till,
     )
 
-    basal_melt_rate = tf.clip_by_value(basal_melt_rate, 0.0, 1e10)
+    # Apply basal refreezing constraint if needed
+    allow_basal_refreezing = cfg.processes.enthalpy.solver.allow_basal_refreezing
+    if not allow_basal_refreezing:
+        # Prevent refreezing: basal_melt_rate >= 0
+        basal_melt_rate = tf.maximum(basal_melt_rate, 0.0)
 
     return E, basal_melt_rate
 
 
-def _compute_corrected_vertical_velocity(state: State) -> tf.Tensor:
-    """Compute vertical velocity corrected for melting rate."""
-    if hasattr(state, "W"):
-        return state.W - tf.expand_dims(state.basal_melt_rate, axis=0)
+def _compute_corrected_vertical_velocity(cfg: DictConfig, state: State) -> tf.Tensor:
+    """Compute vertical velocity corrected for melting rate.
+
+    Args:
+        cfg: Configuration object
+        state: State object
+
+    Returns:
+        Corrected vertical velocity [m/year] if correct_w_for_melt is True,
+        otherwise returns existing W or zeros
+    """
+    correct_w_for_melt = cfg.processes.enthalpy.solver.correct_w_for_melt
+
+    if correct_w_for_melt:
+        # Apply correction for basal melt rate
+        if hasattr(state, "W"):
+            return state.W - tf.expand_dims(state.basal_melt_rate, axis=0)
+        else:
+            return tf.zeros_like(state.U) - tf.expand_dims(state.basal_melt_rate, axis=0)
     else:
-        return tf.zeros_like(state.U) - tf.expand_dims(state.basal_melt_rate, axis=0)
+        # Return uncorrected vertical velocity
+        if hasattr(state, "W"):
+            return state.W
+        else:
+            return tf.zeros_like(state.U)
 
 
 def _solve_vertical_enthalpy(
@@ -335,7 +335,7 @@ def _solve_vertical_enthalpy(
 
     # Assemble and solve system
     L, M, U, R = assemble_enthalpy_system(
-        E, dt, tf.maximum(dz, h_min), w, K, f, BCB, VB, VS
+        E, dt * spy, tf.maximum(dz, h_min), w, K, f, BCB, VB, VS
     )
 
     E = solve_tridiagonal_system(L, M, U, R)
@@ -409,9 +409,7 @@ def _apply_drainage(
     CD = omega > target_water_fraction
 
     # Drainage fraction
-    fraction_drained = (
-        drainageFunc(omega, threshold_1, threshold_2, threshold_3) * dt / spy
-    )
+    fraction_drained = drainageFunc(omega, threshold_1, threshold_2, threshold_3) * dt
     fraction_drained = tf.minimum(fraction_drained, omega - target_water_fraction)
 
     # Drained water thickness
@@ -424,9 +422,7 @@ def _apply_drainage(
     H_total_drained = tf.reduce_sum(H_drained, axis=0)  # [m]
 
     # Add to basal melt rate
-    basal_melt_rate = (
-        basal_melt_rate + (spy / dt) * (ice_density / water_density) * H_total_drained
-    )
+    basal_melt_rate += (ice_density / water_density) * H_total_drained / dt
 
     return E, basal_melt_rate
 
@@ -444,13 +440,13 @@ def compute_upwind_advection(
     Computes: U·∂E/∂x + V·∂E/∂y
 
     Args:
-        U: X-velocity [m/s]
-        V: Y-velocity [m/s]
+        U: X-velocity [m/year]
+        V: Y-velocity [m/year]
         E: Field to advect (e.g., enthalpy) [any units]
         dx: Horizontal grid spacing [m]
 
     Returns:
-        Advection rate [E·s⁻¹]
+        Advection rate [E·year⁻¹]
     """
     # Extend E with symmetric boundary conditions
     Ex = tf.pad(E, [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")  # shape: (nz, ny, nx+2)

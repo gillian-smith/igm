@@ -2,6 +2,9 @@ enthalpy:
   numerics: 
     Nz: 10
     vert_spacing: 4.0
+  solver:
+    allow_basal_refreezing: True
+    correct_w_for_melt: True
   thermal:
     T_min: 243.15
     T_pmp_ref: 273.15

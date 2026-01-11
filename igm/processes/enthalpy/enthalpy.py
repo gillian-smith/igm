@@ -15,13 +15,7 @@ from .temperature import compute_temperature
 from .till.hydro import compute_hydro, update_hydro
 from .till.friction import compute_friction
 from .utils import checks, initialize_enthalpy_fields
-from .vertical import initialize_vertical_discr, VerticalDiscr
-
-
-class Enthalpy:
-    """Container for the enthalpy related states."""
-
-    pass
+from .vertical import initialize_vertical_discr
 
 
 def initialize(cfg: DictConfig, state: State) -> None:
