@@ -3,11 +3,12 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-from typing import Tuple
 import tensorflow as tf
+
+from typing import Tuple
+
 from omegaconf import DictConfig
 
-from .advection import compute_upwind_advection
 from igm.common import State
 
 
@@ -140,15 +141,33 @@ def assemble_enthalpy_system(
     U = U - s
 
     # Bottom boundary condition
+    # For Neumann BC (BCB==1): Keep M[0], U[0] from diffusion, modify R[0]
+    # For Dirichlet BC (BCB==0): Set M[0]=1, U[0]=0, R[0]=VB
+
+    # Apply Dirichlet BC coefficients where BCB == 0
     M = tf.concat(
-        [tf.where(BCB == 1, -tf.ones_like(BCB), tf.ones_like(BCB))[None, :, :], M[1:]],
+        [tf.where(BCB == 0, tf.ones_like(BCB), M[0])[None, :, :], M[1:]],
         axis=0,
     )
     U = tf.concat(
-        [tf.where(BCB == 1, tf.ones_like(BCB), tf.zeros_like(BCB))[None, :, :], U[1:]],
+        [tf.where(BCB == 0, tf.zeros_like(BCB), U[0])[None, :, :], U[1:]],
         axis=0,
     )
-    R = tf.concat([tf.where(BCB == 1, VB * dz[0], VB)[None, :, :], R[1:]], axis=0)
+
+    # For Neumann BC: Add geothermal heat flux as source term
+    # Heat flux qgeo adds energy at rate: qgeo / (rho * dz) [W/kg]
+    # Over timestep dt: ΔE = dt * qgeo / (rho * dz)
+    # VB = -(c_ice/k_ice) * qgeo, so qgeo = -VB * k_ice / c_ice
+    # Therefore: ΔE = -dt * VB * k_ice / (c_ice * rho * dz)
+    # But this simplifies using s = dt * K / dz² where K = k_ice/(rho*c_ice):
+    # ΔE = -s * VB * dz * (k_ice/(rho*c_ice)) / (k_ice/(rho*c_ice)) = -s * VB * dz
+    # For Dirichlet BC: Set RHS to boundary value
+    heat_flux_contribution = -s[0] * VB * dz[0]
+    R_neumann = R[0] + heat_flux_contribution
+    R = tf.concat(
+        [tf.where(BCB == 0, VB, R_neumann)[None, :, :], R[1:]],
+        axis=0,
+    )
 
     # Surface boundary condition
     M = tf.concat([M[:-1], tf.ones_like(BCB)[None, :, :]], axis=0)
@@ -171,15 +190,14 @@ def solve_enthalpy_equation(
     cfg: DictConfig,
     state: State,
     E: tf.Tensor,
-    Epmp: tf.Tensor,
+    E_pmp: tf.Tensor,
     dt: tf.Tensor,
     dz: tf.Tensor,
-    Wc: tf.Tensor,
-    surfenth: tf.Tensor,
-    bheatflx: tf.Tensor,
-    strainheat: tf.Tensor,
-    frictheat: tf.Tensor,
-    tillwat: tf.Tensor,
+    E_s: tf.Tensor,
+    basal_heat_flux: tf.Tensor,
+    strain_heat: tf.Tensor,
+    frictional_heat: tf.Tensor,
+    h_water_till: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """
     Solve enthalpy equation and compute basal melt rate.
@@ -188,82 +206,117 @@ def solve_enthalpy_equation(
         cfg: Configuration object
         state: State object (for U, V, dx)
         E: Current enthalpy [J/kg]
-        Epmp: Pressure melting point enthalpy [J/kg]
+        E_pmp: Pressure melting point enthalpy [J/kg]
         dt: Time step [s]
         dz: Layer thickness [m]
         Wc: Corrected vertical velocity [m/s]
-        surfenth: Surface enthalpy [J/kg]
-        bheatflx: Basal heat flux [W/m²]
-        strainheat: Strain heating rate [W/m³]
-        frictheat: Friction heating rate [W/m²]
-        tillwat: Till water content [m]
+        E_s: Surface enthalpy [J/kg]
+        basal_heat_flux: Basal heat flux [W/m²]
+        strain_heat: Strain heating rate [W/m³]
+        frictional_heat: Friction heating rate [W/m²]
+        h_water_till: Till water content [m]
 
     Returns:
-        Tuple of (E [J/kg], basalMeltRate [m/y])
+        Tuple of (E [J/kg], basal_melt_rate [m/y])
     """
-    cfg_enthalpy = cfg.processes.enthalpy
+    spy = 31556926.0
+
+    Wc = _compute_corrected_vertical_velocity(state)
 
     # Horizontal advection (explicit)
     E = E - dt * compute_upwind_advection(
-        state.U / cfg_enthalpy.spy,
-        state.V / cfg_enthalpy.spy,
+        state.U / spy,
+        state.V / spy,
         E,
         state.dx,
     )
 
     # Solve vertical diffusion-advection (implicit)
-    E, basalMeltRate = _solve_vertical_enthalpy(
-        cfg, E, Epmp, dt, dz, Wc, surfenth, bheatflx, strainheat, frictheat, tillwat
+    E, basal_melt_rate = _solve_vertical_enthalpy(
+        cfg,
+        E,
+        E_pmp,
+        dt,
+        dz,
+        Wc,
+        E_s,
+        basal_heat_flux,
+        strain_heat,
+        frictional_heat,
+        h_water_till,
     )
 
-    return E, basalMeltRate
+    basal_melt_rate = tf.clip_by_value(basal_melt_rate, 0.0, 1e10)
+
+    return E, basal_melt_rate
+
+
+def _compute_corrected_vertical_velocity(state: State) -> tf.Tensor:
+    """Compute vertical velocity corrected for melting rate."""
+    if hasattr(state, "W"):
+        return state.W - tf.expand_dims(state.basal_melt_rate, axis=0)
+    else:
+        return tf.zeros_like(state.U) - tf.expand_dims(state.basal_melt_rate, axis=0)
 
 
 def _solve_vertical_enthalpy(
     cfg: DictConfig,
     E: tf.Tensor,
-    Epmp: tf.Tensor,
+    E_pmp: tf.Tensor,
     dt: tf.Tensor,
     dz: tf.Tensor,
     w: tf.Tensor,
-    surfenth: tf.Tensor,
-    bheatflx: tf.Tensor,
-    strainheat: tf.Tensor,
-    frictheat: tf.Tensor,
-    tillwat: tf.Tensor,
+    E_s: tf.Tensor,
+    basal_heat_flux: tf.Tensor,
+    strain_heat: tf.Tensor,
+    frictional_heat: tf.Tensor,
+    h_water_till: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
     """Solve vertical enthalpy equation with appropriate boundary conditions."""
-    cfg_enthalpy = cfg.processes.enthalpy
+
+    spy = 31556926.0
+
+    cfg_thermal = cfg.processes.enthalpy.thermal
+    cfg_drainage = cfg.processes.enthalpy.drainage
     cfg_physics = cfg.processes.iceflow.physics
 
     nz, ny, nx = E.shape
 
     # Material properties
-    ki = cfg_enthalpy.ki
+
     ice_density = cfg_physics.ice_density
-    water_density = cfg_enthalpy.water_density
-    ci = cfg_enthalpy.ci
-    ref_temp = cfg_enthalpy.ref_temp
-    Lh = cfg_enthalpy.Lh
-    spy = cfg_enthalpy.spy
-    KtdivKc = cfg_enthalpy.KtdivKc
-    thr = cfg_physics.thr_ice_thk
-    min_temp = cfg_enthalpy.min_temp
+    h_min = cfg_physics.thr_ice_thk
+
+    k_ice = cfg_thermal.k_ice
+    c_ice = cfg_thermal.c_ice
+    L_ice = cfg_thermal.L_ice
+    T_ref = cfg_thermal.T_ref
+    T_min = cfg_thermal.T_min
+    K_ratio = cfg_thermal.K_ratio
+
+    water_density = cfg_drainage.water_density
+    drain_ice_column = cfg_drainage.drain_ice_column
+    omega_target = cfg_drainage.omega_target
+    omega_threshold_1 = cfg_drainage.omega_threshold_1
+    omega_threshold_2 = cfg_drainage.omega_threshold_2
+    omega_threshold_3 = cfg_drainage.omega_threshold_3
 
     # Thermal diffusivity
-    PKc = ki / (ice_density * ci)  # [m²/s]
-    f = strainheat / ice_density  # [W/kg]
+    PKc = k_ice / (ice_density * c_ice)  # [m²/s]
+    f = strain_heat / ice_density  # [W/kg]
 
     # Enhanced diffusivity in temperate ice
     K = PKc * tf.ones_like(dz)
-    K = tf.where((E[:-1] + E[1:]) / 2.0 >= (Epmp[:-1] + Epmp[1:]) / 2.0, K * KtdivKc, K)
+    K = tf.where(
+        (E[:-1] + E[1:]) / 2.0 >= (E_pmp[:-1] + E_pmp[1:]) / 2.0, K * K_ratio, K
+    )
 
     # Boundary conditions
-    VS = surfenth
+    VS = E_s
 
-    COLD_BASE = (E[0] < Epmp[0]) | (tillwat <= 0)
-    DRY_ICE = tillwat <= 0
-    COLD_ICE = E[1] < Epmp[1]
+    COLD_BASE = (E[0] < E_pmp[0]) | (h_water_till <= 0)
+    DRY_ICE = h_water_till <= 0
+    COLD_ICE = E[1] < E_pmp[1]
 
     # BC flags: 1=Neumann, 0=Dirichlet
     BCB = tf.where(
@@ -274,66 +327,69 @@ def _solve_vertical_enthalpy(
 
     VB = tf.where(
         COLD_BASE,
-        tf.where(DRY_ICE, -(ci / ki) * (bheatflx + frictheat), Epmp[0]),
-        tf.where(COLD_ICE, Epmp[0], 0.0),
+        tf.where(
+            DRY_ICE, -(c_ice / k_ice) * (basal_heat_flux + frictional_heat), E_pmp[0]
+        ),
+        tf.where(COLD_ICE, E_pmp[0], 0.0),
     )
 
     # Assemble and solve system
     L, M, U, R = assemble_enthalpy_system(
-        E, dt, tf.maximum(dz, thr), w, K, f, BCB, VB, VS
+        E, dt, tf.maximum(dz, h_min), w, K, f, BCB, VB, VS
     )
+
     E = solve_tridiagonal_system(L, M, U, R)
 
     # Enforce bounds
-    Emin = ci * (min_temp - ref_temp)
+    Emin = c_ice * (T_min - T_ref)
     E = tf.maximum(E, Emin)
 
-    Emax = Epmp + Lh  # omega = 1
+    Emax = E_pmp + L_ice  # omega = 1
     E = tf.minimum(E, Emax)
 
     # Compute basal heat flux
     flux = tf.where(
-        E[1] < Epmp[1],
-        -(ki / ci) * (E[1] - E[0]) / tf.maximum(dz[0], thr),
-        -KtdivKc * (ki / ci) * (E[1] - E[0]) / tf.maximum(dz[0], thr),
+        E[1] < E_pmp[1],
+        -(k_ice / c_ice) * (E[1] - E[0]) / tf.maximum(dz[0], h_min),
+        -K_ratio * (k_ice / c_ice) * (E[1] - E[0]) / tf.maximum(dz[0], h_min),
     )
 
     # Basal melt rate [m/y]
-    basalMeltRate = tf.where(
-        (E[0] < Epmp[0]) & (tillwat <= 0),
+    basal_melt_rate = tf.where(
+        (E[0] < E_pmp[0]) & (h_water_till <= 0),
         tf.zeros((ny, nx)),
-        spy * (bheatflx + frictheat - flux) / (water_density * Lh),
+        spy * (basal_heat_flux + frictional_heat - flux) / (water_density * L_ice),
     )
 
     # Drainage along ice column
-    if (dt > 0) and cfg_enthalpy.drain_ice_column:
-        E, basalMeltRate = _apply_drainage(
+    if (dt > 0) and drain_ice_column:
+        E, basal_melt_rate = _apply_drainage(
             E,
-            Epmp,
+            E_pmp,
             dt,
             dz,
-            basalMeltRate,
-            Lh,
+            basal_melt_rate,
+            L_ice,
             ice_density,
             water_density,
             spy,
-            cfg_enthalpy.target_water_fraction,
-            cfg_enthalpy.drainage_omega_threshold_1,
-            cfg_enthalpy.drainage_omega_threshold_2,
-            cfg_enthalpy.drainage_omega_threshold_3,
+            omega_target,
+            omega_threshold_1,
+            omega_threshold_2,
+            omega_threshold_3,
         )
 
-    return E, basalMeltRate
+    return E, basal_melt_rate
 
 
 @tf.function
 def _apply_drainage(
     E: tf.Tensor,
-    Epmp: tf.Tensor,
+    E_pmp: tf.Tensor,
     dt: tf.Tensor,
     dz: tf.Tensor,
-    basalMeltRate: tf.Tensor,
-    Lh: float,
+    basal_melt_rate: tf.Tensor,
+    L_ice: float,
     ice_density: float,
     water_density: float,
     spy: float,
@@ -347,7 +403,7 @@ def _apply_drainage(
     DZ = tf.concat([dz[0:1], dz[:-1] + dz[1:], dz[-1:]], axis=0) / 2.0
 
     # Water content
-    omega = tf.maximum((E - Epmp) / Lh, 0.0)
+    omega = tf.maximum((E - E_pmp) / L_ice, 0.0)
 
     # Identify cells to drain
     CD = omega > target_water_fraction
@@ -362,14 +418,56 @@ def _apply_drainage(
     H_drained = tf.where(CD, fraction_drained * DZ, 0.0)  # [m]
 
     # Update enthalpy
-    E = tf.where(CD, E - fraction_drained * Lh, E)
+    E = tf.where(CD, E - fraction_drained * L_ice, E)
 
     # Total drained water
     H_total_drained = tf.reduce_sum(H_drained, axis=0)  # [m]
 
     # Add to basal melt rate
-    basalMeltRate = (
-        basalMeltRate + (spy / dt) * (ice_density / water_density) * H_total_drained
+    basal_melt_rate = (
+        basal_melt_rate + (spy / dt) * (ice_density / water_density) * H_total_drained
     )
 
-    return E, basalMeltRate
+    return E, basal_melt_rate
+
+
+@tf.function
+def compute_upwind_advection(
+    U: tf.Tensor,
+    V: tf.Tensor,
+    E: tf.Tensor,
+    dx: float,
+) -> tf.Tensor:
+    """
+    Compute horizontal advection using upwind scheme.
+
+    Computes: U·∂E/∂x + V·∂E/∂y
+
+    Args:
+        U: X-velocity [m/s]
+        V: Y-velocity [m/s]
+        E: Field to advect (e.g., enthalpy) [any units]
+        dx: Horizontal grid spacing [m]
+
+    Returns:
+        Advection rate [E·s⁻¹]
+    """
+    # Extend E with symmetric boundary conditions
+    Ex = tf.pad(E, [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")  # shape: (nz, ny, nx+2)
+    Ey = tf.pad(E, [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")  # shape: (nz, ny+2, nx)
+
+    # Upwind differences in x-direction
+    Rx = U * tf.where(
+        U > 0,
+        (Ex[:, :, 1:-1] - Ex[:, :, :-2]) / dx,  # Forward difference
+        (Ex[:, :, 2:] - Ex[:, :, 1:-1]) / dx,  # Backward difference
+    )
+
+    # Upwind differences in y-direction
+    Ry = V * tf.where(
+        V > 0,
+        (Ey[:, 1:-1, :] - Ey[:, :-2, :]) / dx,  # Forward difference
+        (Ey[:, 2:, :] - Ey[:, 1:-1, :]) / dx,  # Backward difference
+    )
+
+    return Rx + Ry
