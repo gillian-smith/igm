@@ -250,7 +250,9 @@ def _compute_corrected_vertical_velocity(cfg: DictConfig, state: State) -> tf.Te
         if hasattr(state, "W"):
             return state.W - tf.expand_dims(state.basal_melt_rate, axis=0)
         else:
-            return tf.zeros_like(state.U) - tf.expand_dims(state.basal_melt_rate, axis=0)
+            return tf.zeros_like(state.U) - tf.expand_dims(
+                state.basal_melt_rate, axis=0
+            )
     else:
         # Return uncorrected vertical velocity
         if hasattr(state, "W"):
@@ -335,7 +337,7 @@ def _solve_vertical_enthalpy(
 
     # Assemble and solve system
     L, M, U, R = assemble_enthalpy_system(
-        E, dt * spy, tf.maximum(dz, h_min), w, K, f, BCB, VB, VS
+        E, dt * spy, tf.maximum(dz, h_min), w / spy, K, f, BCB, VB, VS
     )
 
     E = solve_tridiagonal_system(L, M, U, R)

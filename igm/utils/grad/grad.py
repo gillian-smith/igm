@@ -40,6 +40,21 @@ def pad_y(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
 
 
 @tf.function
+def pad_z(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
+    """Pad tensor by one cell in z-direction."""
+    if mode == "periodic":
+        X_l = X[..., -1:, :, :]
+        X_r = X[..., 0:1, :, :]
+    elif mode == "extrapolate":
+        X_l = 2.0 * X[..., 0:1, :, :] - 1.0 * X[..., 1:2, :, :]
+        X_r = 2.0 * X[..., -1:, :, :] - 1.0 * X[..., -2:-1, :, :]
+    else:
+        X_l = X[..., 0:1, :, :]
+        X_r = X[..., -1:, :, :]
+    return tf.concat([X_l, X, X_r], axis=-3)
+
+
+@tf.function
 def pad_xy(X: tf.Tensor, mode: str = "symmetric") -> tf.Tensor:
     """Pad tensor by one cell in both x and y directions."""
     return pad_y(pad_x(X, mode), mode)

@@ -7,7 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
-from igm.utils.grad.grad import grad_xy
+from igm.utils.grad.grad import grad_xy, pad_x, pad_y, pad_z
 
 
 def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
@@ -31,6 +31,9 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     )
 
 
+# TODO: correct for coordinate-following coordinates?
+
+
 @tf.function
 def compute_strain_heat_tf(
     U: tf.Tensor,
@@ -40,6 +43,8 @@ def compute_strain_heat_tf(
     dz: tf.Tensor,
     n: tf.Tensor,
     h_min: tf.Tensor,
+    mode_pad_xy: str = "symmetric",
+    mode_pad_z: str = "extrapolate",
 ) -> tf.Tensor:
 
     spy = 31556926.0
@@ -47,17 +52,17 @@ def compute_strain_heat_tf(
     U_si = U / spy
     V_si = V / spy
 
-    # Pad velocities symmetrically
-    Ui = tf.pad(U_si, [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
-    Uj = tf.pad(U_si, [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
-    Uk = tf.pad(U_si, [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+    # Pad velocities in x, y, z directions
+    Ui = pad_x(U_si, mode=mode_pad_xy)
+    Uj = pad_y(U_si, mode=mode_pad_xy)
+    Uk = pad_z(U_si, mode=mode_pad_z)
 
-    Vi = tf.pad(V_si, [[0, 0], [0, 0], [1, 1]], "SYMMETRIC")
-    Vj = tf.pad(V_si, [[0, 0], [1, 1], [0, 0]], "SYMMETRIC")
-    Vk = tf.pad(V_si, [[1, 1], [0, 0], [0, 0]], "SYMMETRIC")
+    Vi = pad_x(V_si, mode=mode_pad_xy)
+    Vj = pad_y(V_si, mode=mode_pad_xy)
+    Vk = pad_z(V_si, mode=mode_pad_z)
 
-    # Vertical spacing for derivatives
-    DZ2 = tf.concat([dz[0:1], dz[:-1] + dz[1:], dz[-1:]], axis=0)
+    dz_padded = pad_z(dz, mode="symmetric")
+    DZ2 = dz_padded[:-1, :, :] + dz_padded[1:, :, :]
 
     # Compute strain rate components
     Exx = (Ui[:, :, 2:] - Ui[:, :, :-2]) / (2 * dx)
@@ -68,6 +73,8 @@ def compute_strain_heat_tf(
         (Vi[:, :, 2:] - Vi[:, :, :-2]) / (2 * dx)
         + (Uj[:, 2:, :] - Uj[:, :-2, :]) / (2 * dx)
     )
+
+    # Vertical shear strain rates
     Exz = 0.5 * (Uk[2:, :, :] - Uk[:-2, :, :]) / tf.maximum(DZ2, h_min)
     Eyz = 0.5 * (Vk[2:, :, :] - Vk[:-2, :, :]) / tf.maximum(DZ2, h_min)
 
@@ -76,23 +83,20 @@ def compute_strain_heat_tf(
         0.5 * (Exx**2 + Eyy**2 + Ezz**2 + 2 * (Exy**2 + Exz**2 + Eyz**2))
     )
 
-    # Set to zero where layers are too thin
-    strainrate = tf.where(DZ2 > 1, strainrate, 0.0)
-
     # Convert arrhenius units: MPa⁻³ y⁻¹ to Pa⁻³ s⁻¹
     unit_conversion = 1e18 * spy
 
     dim_arrhenius = arrhenius.ndim
 
-    if dim_arrhenius == 2:
-        arrhenius_expanded = tf.expand_dims(arrhenius, axis=0)
-        return (arrhenius_expanded / unit_conversion) ** (-1.0 / n) * strainrate ** (
-            1.0 + 1.0 / n
-        )
-    else:
-        return (arrhenius / unit_conversion) ** (-1.0 / n) * strainrate ** (
-            1.0 + 1.0 / n
-        )
+    arrhenius_expanded = (
+        tf.expand_dims(arrhenius, axis=0) if dim_arrhenius == 2 else arrhenius
+    )
+
+    return (
+        2.0
+        * (arrhenius_expanded / unit_conversion) ** (-1.0 / n)
+        * strainrate ** (1.0 + 1.0 / n)
+    )
 
 
 def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
