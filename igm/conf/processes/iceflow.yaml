@@ -129,6 +129,7 @@ iceflow:
       debug_mode: false
       debug_freq: 100
       pretrained: true
+      pretrained_path: ""
       print_summary: false
       output_scale: 1.0
       architecture: CNN

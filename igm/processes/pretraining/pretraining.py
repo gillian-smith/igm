@@ -14,6 +14,7 @@ import numpy as np
 import tensorflow as tf
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
+from igm.processes.iceflow.emulate.utils.artifacts import save_emulator_artifact
 
 
  
@@ -133,6 +134,21 @@ def initialize(cfg, state):
 
 
         ckpt_mgr.save()
+
+    # after training is done
+    artifact_dir = Path(cfg.processes.pretraining.out_dir) / cfg.processes.pretraining.experiment_name
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    # inputs must match cfg.processes.iceflow.unified.inputs exactly
+    inputs = list(cfg.processes.iceflow.unified.inputs)
+
+    save_emulator_artifact(
+        artifact_dir=artifact_dir,
+        cfg=cfg,
+        model=state.iceflow_model,
+        inputs=inputs,
+    )
+    print(f"[export] saved emulator artifact to {artifact_dir}")
 
     k = min(5, len(val_hist))
     avg_last5 = float(np.mean(val_hist[-k:]))
