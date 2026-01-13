@@ -3,16 +3,18 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+
 from .utils import compute_zeta, compute_dzeta, compute_depth, compute_weights
 
 
 class VerticalDiscr:
-    """Container for vertical discretization fields."""
-
-    pass
+    depth: tf.Tensor
+    weights: tf.Tensor
+    dzeta: tf.Tensor
 
 
 def initialize_vertical_discr(cfg: DictConfig, state: State) -> None:
@@ -29,7 +31,6 @@ def initialize_vertical_discr(cfg: DictConfig, state: State) -> None:
     depth = depth[..., None, None]
     weights = weights[..., None, None]
 
-    # Create vertical discretization object
     vertical_discr = VerticalDiscr()
     vertical_discr.depth = depth
     vertical_discr.weights = weights

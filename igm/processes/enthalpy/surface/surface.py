@@ -7,6 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+
 from .utils import compute_T_s_tf
 from ..temperature.utils import compute_E_cold_tf
 

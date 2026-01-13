@@ -7,6 +7,7 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from igm.common import State
+
 from .utils import compute_strain_heat, compute_friction_heat
 
 
