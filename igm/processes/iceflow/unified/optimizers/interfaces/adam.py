@@ -87,4 +87,4 @@ class InterfaceAdam(InterfaceOptimizer):
             iter_max=iter_max, lr=lr, lr_decay=lr_decay, lr_decay_steps=lr_decay_steps
         )
 
-        return True
+        return iter_max > 0

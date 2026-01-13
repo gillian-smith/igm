@@ -69,4 +69,4 @@ class InterfaceLBFGS(InterfaceOptimizer):
 
         optimizer.update_parameters(iter_max=iter_max, alpha_min=alpha_min)
 
-        return True
+        return iter_max > 0
