@@ -13,7 +13,15 @@ from ..temperature.utils import compute_E_cold_tf
 
 
 def compute_surface(cfg: DictConfig, state: State) -> None:
+    """
+    Compute surface temperature and enthalpy boundary conditions.
 
+    Derives the ice surface temperature from air temperature (with offset),
+    capped at the pressure melting point, and computes the corresponding
+    surface enthalpy.
+
+    Updates state.T_s (K) and state.E_s (J kg^-1).
+    """
     cfg_thermal = cfg.processes.enthalpy.thermal
     cfg_surface = cfg.processes.enthalpy.surface
 

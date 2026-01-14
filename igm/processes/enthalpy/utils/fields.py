@@ -10,12 +10,24 @@ from igm.common import State
 
 
 class Enthalpy:
+    """Container class for enthalpy-related auxiliary data and discretization info."""
+
     pass
 
 
 def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
-    """Initialize enthalpy fields."""
+    """
+    Initialize enthalpy-related fields with default values.
 
+    Sets up 2D and 3D fields required for the enthalpy model if they do not
+    already exist in state. Initializes temperature at the pressure melting point,
+    zero water content, and default values for till hydrology and friction.
+
+    Initializes state.enthalpy, state.basal_melt_rate (m yr^-1), state.T (K),
+    state.T_pmp (K), state.omega (-), state.E (J kg^-1), state.E_pmp (J kg^-1),
+    state.h_water_till (m), state.basal_heat_flux (W m^-2), state.N (Pa),
+    state.phi (°), and state.tauc (Pa).
+    """
     cfg_thermal = cfg.processes.enthalpy.thermal
     cfg_friction = cfg.processes.enthalpy.till.friction
     cfg_hydro = cfg.processes.enthalpy.till.hydro
@@ -35,6 +47,10 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
         T_pmp_ref = cfg_thermal.T_pmp_ref
         state.T = T_pmp_ref * tf.ones(shape_3d)
 
+    if not hasattr(state, "T_pmp"):
+        T_pmp_ref = cfg_thermal.T_pmp_ref
+        state.T_pmp = T_pmp_ref * tf.ones(shape_3d)
+
     if not hasattr(state, "omega"):
         state.omega = tf.zeros(shape_3d)
 
@@ -43,6 +59,9 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
         T_pmp_ref = cfg_thermal.T_pmp_ref
         T_ref = cfg_thermal.T_ref
         state.E = c_ice * (T_pmp_ref - T_ref) * tf.ones(shape_3d)
+
+    if not hasattr(state, "E_pmp"):
+        state.E_pmp = tf.zeros(shape_3d)
 
     if not hasattr(state, "h_water_till"):
         state.h_water_till = tf.zeros(shape_2d)

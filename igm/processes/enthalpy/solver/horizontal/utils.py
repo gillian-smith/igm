@@ -17,7 +17,20 @@ def compute_advection_upwind(
     mode_pad_xy: str = "symmetric",
 ) -> tf.Tensor:
     """
-    Compute horizontal advection using upwind scheme.
+    TensorFlow function to compute horizontal advection using upwind scheme.
+
+    Calculates the advective flux divergence using a first-order upwind
+    differencing scheme for numerical stability.
+
+    Args:
+        U: Horizontal velocity in x-direction (m yr^-1).
+        V: Horizontal velocity in y-direction (m yr^-1).
+        E: Enthalpy field (J kg^-1).
+        dx: Horizontal grid spacing (m).
+        mode_pad_xy: Padding mode for horizontal boundaries.
+
+    Returns:
+        Advective rate of change of enthalpy (J kg^-1 yr^-1).
     """
     # Extend E
     Ex = pad_x(E, mode_pad_xy)

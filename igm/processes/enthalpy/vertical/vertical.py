@@ -12,13 +12,20 @@ from .utils import compute_zeta, compute_dzeta, compute_depth, compute_weights
 
 
 class VerticalDiscr:
+    """Container class for vertical discretization data."""
+
     depth: tf.Tensor
     weights: tf.Tensor
     dzeta: tf.Tensor
 
 
 def initialize_vertical_discr(cfg: DictConfig, state: State) -> None:
+    """
+    Initialize vertical discretization for the enthalpy model.
 
+    Computes and stores vertical coordinate spacing, depth, and integration
+    weights in state.enthalpy.vertical_discr.
+    """
     cfg_numerics = cfg.processes.enthalpy.numerics
     Nz = cfg_numerics.Nz
 

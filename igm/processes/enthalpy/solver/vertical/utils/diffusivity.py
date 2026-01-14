@@ -15,7 +15,23 @@ def compute_diffusivity(
     c_ice: tf.Tensor,
     K_ratio: tf.Tensor,
 ) -> tf.Tensor:
+    """
+    TensorFlow function to compute thermal diffusivity at layer interfaces.
 
+    Calculates diffusivity at midpoints between vertical levels, using a
+    reduced value in temperate ice regions.
+
+    Args:
+        E: Enthalpy field (J kg^-1).
+        E_pmp: Pressure melting point enthalpy (J kg^-1).
+        k_ice: Thermal conductivity of ice (W m^-1 K^-1).
+        rho_ice: Ice density (kg m^-3).
+        c_ice: Specific heat capacity of ice (J kg^-1 K^-1).
+        K_ratio: Diffusivity ratio for temperate ice (-).
+
+    Returns:
+        Thermal diffusivity at layer interfaces (m^2 s^-1).
+    """
     K_factor = k_ice / (rho_ice * c_ice)
 
     E_mid = (E[:-1] + E[1:]) / 2.0

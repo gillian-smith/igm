@@ -11,7 +11,15 @@ from .utils import compute_fraction_drained
 
 
 def update_drainage(cfg: DictConfig, state: State) -> None:
+    """
+    Update enthalpy field by draining excess water from the ice column.
 
+    Removes water content exceeding threshold values and adds the drained
+    water to the basal melt rate. Skips drainage if dt is zero or drainage
+    is disabled in configuration.
+
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    """
     cfg_physics = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
     cfg_drainage = cfg.processes.enthalpy.drainage

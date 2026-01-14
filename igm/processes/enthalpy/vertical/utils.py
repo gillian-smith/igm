@@ -51,6 +51,7 @@ def compute_dzeta(zeta: tf.Tensor) -> tf.Tensor:
 
 @tf.function()
 def compute_depth(dzeta: tf.Tensor) -> tf.Tensor:
+    """Compute normalized depth below ice surface at each level."""
     zero = tf.zeros((1,), dtype=dzeta.dtype)
     D = tf.concat([dzeta, zero], axis=0)
     return tf.math.cumsum(D, axis=0, reverse=True)
@@ -58,12 +59,7 @@ def compute_depth(dzeta: tf.Tensor) -> tf.Tensor:
 
 @tf.function()
 def compute_weights(dzeta: tf.Tensor) -> tf.Tensor:
-    """Compute integration weights for vertical quadrature (midpoint rule).
-
-    For Nz layers with Nz-1 spacings (dzeta), compute Nz weights where:
-    - Surface and bed layers get half their adjacent spacing
-    - Interior layers get average of adjacent spacings
-    """
+    """Compute integration weights for vertical quadrature (midpoint rule)."""
     Nz = dzeta.shape[0] + 1  # dzeta has Nz-1 elements
 
     if Nz == 1:

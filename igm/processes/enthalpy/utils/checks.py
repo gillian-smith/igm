@@ -9,7 +9,16 @@ from igm.common import State
 
 
 def checks(cfg: DictConfig, state: State) -> None:
+    """
+    Validate configuration compatibility for the enthalpy module.
 
+    Ensures that the iceflow module is enabled with compatible settings,
+    including Weertman sliding law and matching vertical discretization
+    parameters between iceflow and enthalpy modules.
+
+    Raises:
+        ValueError: If configuration requirements are not met.
+    """
     if "iceflow" not in cfg.processes:
         raise ValueError("The 'iceflow' module is required for the 'enthalpy' module.")
 

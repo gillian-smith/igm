@@ -17,7 +17,15 @@ from .utils.velocity import correct_vertical_velocity
 
 
 def update_vertical(cfg: DictConfig, state: State) -> None:
+    """
+    Update enthalpy field for vertical advection-diffusion over a time step.
 
+    Solves the 1D vertical enthalpy equation implicitly using a finite difference
+    scheme with upwind advection. Handles boundary conditions at the surface and
+    base, enforces enthalpy bounds, and computes the basal melt rate.
+
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    """
     cfg_thermal = cfg.processes.enthalpy.thermal
     cfg_drainage = cfg.processes.enthalpy.drainage
     cfg_physics = cfg.processes.iceflow.physics

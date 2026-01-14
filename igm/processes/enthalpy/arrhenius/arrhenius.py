@@ -12,7 +12,15 @@ from .utils import compute_arrhenius_3d
 
 
 def compute_arrhenius(cfg: DictConfig, state: State) -> None:
+    """
+    Compute the Arrhenius factor for ice flow, accounting for temperature and water content.
 
+    Calculates the 3D Arrhenius factor scaled by an enhancement factor, then computes
+    a vertically-averaged value. Depending on configuration, stores either only the
+    averaged value (2D) or both the full 3D field and its vertical average.
+
+    Updates state.arrhenius (MPa^-n yr^-1) and optionally state.arrhenius_avg (MPa^-n yr^-1).
+    """
     cfg_physics = cfg.processes.iceflow.physics
     enhancement_factor = cfg_physics.enhancement_factor
 

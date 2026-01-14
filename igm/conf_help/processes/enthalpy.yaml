@@ -1,156 +1,185 @@
-water_density:
-  Type: float
-  Description: "Water density constant."
-  Units: kg m^{-3}
-spy:
-  Type: float
-  Description: "Number of seconds per year (for unit conversions)."
-  Units: s y^{-1}
-gas_constant:
-  Type: float
-  Description: "Universal gas constant for Arrhenius law."
-  Units: J mol^{-1} K^{-1}
-ci:
-  Type: float
-  Description: "Specific heat capacity of ice [@Aschwanden2012]."
-  Units: J kg^{-1} K^{-1}
-ki:
-  Type: float
-  Description: "Thermal conductivity of cold ice [@Aschwanden2012]."
-  Units: W m^{-1} K^{-1}
-Lh:
-  Type: float
-  Description: "Latent heat of fusion [@Aschwanden2012]."
-  Units: J kg^{-1}
-KtdivKc:
-  Type: float
-  Description: "Ratio of temperate vs cold ice thermal diffusivity [@Aschwanden2012]."
-  Units: dimless
-claus_clape:
-  Type: float
-  Description: "Clausius-Clapeyron constant for pressure melting [@Aschwanden2012]."
-  Units: K Pa^{-1}
-melt_temp:
-  Type: float
-  Description: "Melting point temperature at standard pressure [@Aschwanden2012]."
-  Units: K
-ref_temp:
-  Type: float
-  Description: "Reference temperature for enthalpy calculations [@Aschwanden2012]."
-  Units: K
-min_temp:
-  Type: float
-  Description: "Minimum temperature bound for enthalpy solver."
-  Units: K
-temperature_offset_air_to_ice:
-  Type: float
-  Description: "Offset between air temperature and ice surface temperature."
-  Units: K
-arrhenius_temp_threshold:
-  Type: float
-  Description: "Temperature threshold separating cold and warm ice regimes in Arrhenius law."
-  Units: K
-arrhenius_A_cold:
-  Type: float
-  Description: "Pre-exponential factor for cold ice (T < threshold) [@Paterson1994]."
-  Units: s^{-1} Pa^{-3}
-arrhenius_A_warm:
-  Type: float
-  Description: "Pre-exponential factor for warm ice (T >= threshold) [@Paterson1994]."
-  Units: s^{-1} Pa^{-3}
-arrhenius_Q_cold:
-  Type: float
-  Description: "Activation energy for cold ice (T < threshold) [@Paterson1994]."
-  Units: J mol^{-1}
-arrhenius_Q_warm:
-  Type: float
-  Description: "Activation energy for warm ice (T >= threshold) [@Paterson1994]."
-  Units: J mol^{-1}
-omega_enhancement_factor:
-  Type: float
-  Description: "Enhancement factor for water content effect on ice softness."
-  Units: dimless
-max_omega_enhancement:
-  Type: float
-  Description: "Maximum water fraction for enhancement calculation."
-  Units: dimless
-till_void_ratio:
-  Type: float
-  Description: "Void ratio at reference effective pressure [@Tulaczyk2000]."
-  Units: dimless
-till_compressibility:
-  Type: float
-  Description: "Till compressibility coefficient [@Tulaczyk2000]."
-  Units: dimless
-till_delta:
-  Type: float
-  Description: "Transition parameter for effective pressure calculation [@Bueler2009]."
-  Units: dimless
-till_reference_pressure:
-  Type: float
-  Description: "Reference effective pressure for till mechanics [@Bueler2009]."
-  Units: Pa
-till_friction_angle:
-  Type: float
-  Description: "Till friction angle in Mohr-Coulomb friction law (uniform case)."
-  Units: degree
-till_friction_angle_bed_min:
-  Type: float
-  Description: "Bed elevation for minimum friction angle (spatially variable case)."
-  Units: m
-till_friction_angle_bed_max:
-  Type: float
-  Description: "Bed elevation for maximum friction angle (spatially variable case)."
-  Units: m
-till_friction_angle_phi_min:
-  Type: float
-  Description: "Minimum till friction angle (spatially variable case)."
-  Units: degree
-till_friction_angle_phi_max:
-  Type: float
-  Description: "Maximum till friction angle (spatially variable case)."
-  Units: degree
-uthreshold:
-  Type: float
-  Description: "Threshold velocity for sliding coefficient calculation."
-  Units: m y^{-1}
-tauc_min:
-  Type: float
-  Description: "Minimum basal yield stress."
-  Units: Pa
-tauc_max:
-  Type: float
-  Description: "Maximum basal yield stress."
-  Units: Pa
-drain_rate:
-  Type: float
-  Description: "Till water drainage rate [@Bueler2015]."
-  Units: m y^{-1}
-till_wat_max:
-  Type: float
-  Description: "Maximum till water thickness [@Bueler2015]."
-  Units: m
-drain_ice_column:
-  Type: boolean
-  Description: "Enable water drainage through ice column (transforms water content beyond threshold into basal melt)."
-  Units: dimless
-drainage_omega_threshold_1:
-  Type: float
-  Description: "First water fraction threshold for drainage function."
-  Units: dimless
-drainage_omega_threshold_2:
-  Type: float
-  Description: "Second water fraction threshold for drainage function."
-  Units: dimless
-drainage_omega_threshold_3:
-  Type: float
-  Description: "Third water fraction threshold for drainage function."
-  Units: dimless
-target_water_fraction:
-  Type: float
-  Description: "Target water fraction after drainage in ice column."
-  Units: dimless
-default_bheatflx:
-  Type: float
-  Description: "Default geothermal heat flux (used when not specified in state)."
-  Units: W m^{-2}
+numerics:
+  Nz:
+    Type: integer
+    Description: "Number of vertical layers for the enthalpy discretization."
+    Units: dimless
+  vert_spacing:
+    Type: float
+    Description: "Parameter controlling the vertical spacing; 1.0 means uniform, larger values concentrate points near the bed."
+    Units: dimless
+solver:
+  allow_basal_refreezing:
+    Type: boolean
+    Description: "Allow negative basal melt rates (refreezing)."
+    Units: dimless
+  correct_w_for_melt:
+    Type: boolean
+    Description: "Correct vertical velocity for basal melting."
+    Units: dimless
+  override_basal_at_pmp:
+    Type: boolean
+    Description: "Force basal enthalpy to be at pressure-melting point."
+    Units: dimless
+thermal:
+  T_min:
+    Type: float
+    Description: "Minimum temperature bound for enthalpy solver."
+    Units: K
+  T_pmp_ref:
+    Type: float
+    Description: "Reference pressure melting point temperature."
+    Units: K
+  T_ref:
+    Type: float
+    Description: "Reference temperature for enthalpy calculations."
+    Units: K
+  c_ice:
+    Type: float
+    Description: "Specific heat capacity of ice."
+    Units: J kg^{-1} K^{-1}
+  L_ice:
+    Type: float
+    Description: "Latent heat of fusion for ice."
+    Units: J kg^{-1}
+  k_ice:
+    Type: float
+    Description: "Thermal conductivity of ice."
+    Units: W m^{-1} K^{-1}
+  K_ratio:
+    Type: float
+    Description: "Ratio of temperate to cold ice thermal diffusivity."
+    Units: dimless
+  basal_heat_flux_ref:
+    Type: float
+    Description: "Reference geothermal heat flux (used when not specified in state)."
+    Units: W m^{-2}
+  beta:
+    Type: float
+    Description: "Clausius-Clapeyron constant."
+    Units: K Pa^{-1}
+surface:
+  T_offset:
+    Type: float
+    Description: "Temperature offset for surface conditions."
+    Units: °C
+arrhenius:
+  A_cold:
+    Type: float
+    Description: "Pre-exponential factor for cold ice."
+    Units: Pa^{-n} s^{-1}
+  A_warm:
+    Type: float
+    Description: "Pre-exponential factor for warm ice."
+    Units: Pa^{-n} s^{-1}
+  Q_cold:
+    Type: float
+    Description: "Activation energy for cold ice."
+    Units: J mol^{-1}
+  Q_warm:
+    Type: float
+    Description: "Activation energy for warm ice."
+    Units: J mol^{-1}
+  T_threshold:
+    Type: float
+    Description: "Temperature threshold between cold and warm regimes."
+    Units: K
+  omega_coef:
+    Type: float
+    Description: "Water content enhancement coefficient."
+    Units: dimless
+  omega_max:
+    Type: float
+    Description: "Maximum water content for enhancement."
+    Units: dimless
+  R:
+    Type: float
+    Description: "Universal gas constant."
+    Units: J mol^{-1} K^{-1}
+till:
+  friction:
+    phi:
+      Type: float
+      Description: "Till friction angle (uniform case)."
+      Units: °
+    phi_min:
+      Type: float
+      Description: "Friction angle at bed_min."
+      Units: °
+    phi_max:
+      Type: float
+      Description: "Friction angle at bed_max."
+      Units: °
+    bed_min:
+      Type: float
+      Description: "Minimum bed elevation for interpolation."
+      Units: m
+    bed_max:
+      Type: float
+      Description: "Maximum bed elevation for interpolation."
+      Units: m
+    tauc_min:
+      Type: float
+      Description: "Minimum yield stress."
+      Units: Pa
+    tauc_max:
+      Type: float
+      Description: "Maximum yield stress."
+      Units: Pa
+    tauc_ice_free:
+      Type: float
+      Description: "Yield stress for ice-free areas."
+      Units: Pa
+    u_ref:
+      Type: float
+      Description: "Reference sliding velocity."
+      Units: m yr^{-1}
+  hydro:
+    h_water_till_max:
+      Type: float
+      Description: "Maximum till water layer thickness."
+      Units: m
+    N_ref:
+      Type: float
+      Description: "Reference effective pressure."
+      Units: Pa
+    e_ref:
+      Type: float
+      Description: "Reference void ratio."
+      Units: dimless
+    C_c:
+      Type: float
+      Description: "Till compressibility coefficient."
+      Units: dimless
+    delta:
+      Type: float
+      Description: "Minimum effective pressure fraction."
+      Units: dimless
+    drainage_rate:
+      Type: float
+      Description: "Till drainage rate."
+      Units: m yr^{-1}
+drainage:
+  water_density:
+    Type: float
+    Description: "Water density constant."
+    Units: kg m^{-3}
+  drain_ice_column:
+    Type: boolean
+    Description: "Enable water drainage through ice column."
+    Units: dimless
+  omega_target:
+    Type: float
+    Description: "Target water content after drainage."
+    Units: dimless
+  omega_threshold_1:
+    Type: float
+    Description: "First water content threshold."
+    Units: dimless
+  omega_threshold_2:
+    Type: float
+    Description: "Second water content threshold."
+    Units: dimless
+  omega_threshold_3:
+    Type: float
+    Description: "Third water content threshold."
+    Units: dimless

@@ -14,7 +14,14 @@ from .drainage import update_drainage
 
 
 def update_enthalpy(cfg: DictConfig, state: State) -> None:
+    """
+    Update the enthalpy field over a time step.
 
+    Performs the complete enthalpy evolution including horizontal advection
+    (explicit), vertical advection-diffusion (implicit), and water drainage.
+
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    """
     # Horizontal advection (explicit)
     update_horizontal(cfg, state)
 

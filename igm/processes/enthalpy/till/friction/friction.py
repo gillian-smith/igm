@@ -11,6 +11,14 @@ from .utils import compute_phi, compute_tauc, compute_slidingco
 
 
 def compute_friction(cfg: DictConfig, state: State) -> None:
+    """
+    Compute basal friction parameters for the till model.
+
+    Calculates the till friction angle, yield stress, and sliding coefficient
+    based on bed topography and effective pressure.
+
+    Updates state.phi (°), state.tauc (Pa), and state.slidingco (MPa m^-1/m yr^1/m).
+    """
     state.phi = compute_phi(cfg, state)
     state.tauc = compute_tauc(cfg, state)
     state.slidingco = compute_slidingco(cfg, state)

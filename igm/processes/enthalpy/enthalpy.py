@@ -12,8 +12,8 @@ from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
 from .temperature import compute_temperature, compute_pmp
-from .till.hydro import compute_hydro, update_hydro
 from .till.friction import compute_friction
+from .till.hydro import compute_hydro, update_hydro
 from .utils import checks, initialize_enthalpy_fields
 from .vertical import initialize_vertical_discr
 
@@ -47,7 +47,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 
 def update(cfg: DictConfig, state: State) -> None:
-    """Update enthalpy and related thermal fields."""
+    """Update enthalpy and related fields."""
     if hasattr(state, "logger"):
         state.logger.info(f"Update ENTHALPY at time: {state.t.numpy()}")
 

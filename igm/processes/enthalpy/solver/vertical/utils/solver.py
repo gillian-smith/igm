@@ -14,16 +14,19 @@ def solve_tridiagonal_system(
     R: tf.Tensor,
 ) -> tf.Tensor:
     """
-    Solve tridiagonal system using Thomas Algorithm (TDMA).
+    TensorFlow function to solve tridiagonal system using Thomas Algorithm (TDMA).
+
+    Performs forward elimination and backward substitution to solve the
+    tridiagonal linear system arising from the implicit enthalpy discretization.
 
     Args:
-        L: Lower diagonal [nz-1, ny, nx]
-        M: Main diagonal [nz, ny, nx]
-        U: Upper diagonal [nz-1, ny, nx]
-        R: Right-hand side [nz, ny, nx]
+        L: Lower diagonal coefficients (nz-1, ny, nx).
+        M: Main diagonal coefficients (nz, ny, nx).
+        U: Upper diagonal coefficients (nz-1, ny, nx).
+        R: Right-hand side vector (nz, ny, nx).
 
     Returns:
-        Solution [nz, ny, nx]
+        Solution vector (nz, ny, nx).
     """
     nz = tf.shape(M)[0]
 

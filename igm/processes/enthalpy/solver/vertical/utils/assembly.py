@@ -20,23 +20,24 @@ def assemble_system(
     VS: tf.Tensor,
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     """
-    Assemble finite difference system for enthalpy equation.
+    TensorFlow function to assemble finite difference system for enthalpy equation.
 
-    Solves: dE/dt + w·dE/dz = K·d²E/dz² + f
+    Discretizes the 1D vertical enthalpy equation: dE/dt + w·dE/dz = K·d²E/dz² + f
+    using implicit time stepping and upwind advection.
 
     Args:
-        E: Current enthalpy [J/kg]
-        dt: Time step [s]
-        dz: Layer thickness [m]
-        w: Vertical velocity [m/s]
-        K: Thermal diffusivity [m²/s]
-        f: Source term [W/kg]
-        BCB: Bottom BC flag (1=Neumann, 0=Dirichlet)
-        VB: Bottom BC value
-        VS: Surface BC value
+        E: Current enthalpy field (J kg^-1).
+        dt: Time step (s).
+        dz: Vertical layer thickness (m).
+        w: Vertical velocity field (m s^-1).
+        K: Thermal diffusivity field (m^2 s^-1).
+        f: Volumetric source term (W kg^-1).
+        BCB: Bottom boundary condition flag (1=Neumann, 0=Dirichlet) (-).
+        VB: Bottom boundary condition value (J kg^-1 or J kg^-1 m^-1).
+        VS: Surface boundary condition value (J kg^-1).
 
     Returns:
-        Tuple of (L, M, U, R) - tridiagonal system components
+        Tuple of tridiagonal system components (L, M, U, R).
     """
     nz, ny, nx = E.shape
     s = dt * K / (dz * dz)  # Diffusion coefficient

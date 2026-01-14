@@ -11,7 +11,14 @@ from .utils import compute_pmp_tf, compute_T_tf, compute_omega_tf
 
 
 def compute_temperature(cfg: DictConfig, state: State) -> None:
+    """
+    Compute temperature and water content fields from enthalpy.
 
+    Converts the enthalpy field to temperature and water content using
+    the pressure melting point as the threshold between cold and temperate ice.
+
+    Updates state.T (K), state.omega (-), state.T_b (K), and state.T_s (K).
+    """
     cfg_thermal = cfg.processes.enthalpy.thermal
 
     c_ice = cfg_thermal.c_ice
@@ -26,7 +33,14 @@ def compute_temperature(cfg: DictConfig, state: State) -> None:
 
 
 def compute_pmp(cfg: DictConfig, state: State) -> None:
+    """
+    Compute the pressure melting point temperature and enthalpy fields.
 
+    Calculates the pressure-dependent melting point throughout the ice column
+    using the Clausius-Clapeyron relation.
+
+    Updates state.T_pmp (K) and state.E_pmp (J kg^-1).
+    """
     cfg_physics = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
 

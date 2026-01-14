@@ -10,5 +10,12 @@ from .utils import compute_advection_upwind
 
 
 def update_horizontal(cfg: DictConfig, state: State) -> None:
+    """
+    Update enthalpy field for horizontal advection over a time step.
 
+    Applies an upwind advection scheme to transport enthalpy horizontally
+    with the ice velocity field.
+
+    Updates state.E (J kg^-1).
+    """
     state.E -= state.dt * compute_advection_upwind(state.U, state.V, state.E, state.dx)
