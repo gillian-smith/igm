@@ -11,7 +11,7 @@ from .arrhenius import compute_arrhenius
 from .dissipation import compute_dissipation
 from .solver import update_enthalpy
 from .surface import compute_surface
-from .temperature import compute_temperature
+from .temperature import compute_temperature, compute_pmp
 from .till.hydro import compute_hydro, update_hydro
 from .till.friction import compute_friction
 from .utils import checks, initialize_enthalpy_fields
@@ -29,6 +29,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
     # Initialize vertical discretization
     initialize_vertical_discr(cfg, state)
+
+    # Compute T_pmp, E_pmp
+    compute_pmp(cfg, state)
 
     # Compute (T, omega) from E
     compute_temperature(cfg, state)
@@ -52,6 +55,9 @@ def update(cfg: DictConfig, state: State) -> None:
 
     # Compute T_s, E_s
     compute_surface(cfg, state)
+
+    # Compute T_pmp, E_pmp
+    compute_pmp(cfg, state)
 
     # Compute strain_heat, frictional_heat
     compute_dissipation(cfg, state)

@@ -8,7 +8,6 @@ from omegaconf import DictConfig
 from igm.common import State
 
 from .utils import compute_fraction_drained
-from ...temperature.utils import compute_pmp_tf
 
 
 def update_drainage(cfg: DictConfig, state: State) -> None:
@@ -18,12 +17,7 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
     cfg_drainage = cfg.processes.enthalpy.drainage
 
     rho_ice = cfg_physics.ice_density
-    g = cfg_physics.gravity_cst
 
-    beta = cfg_thermal.beta
-    c_ice = cfg_thermal.c_ice
-    T_pmp_ref = cfg_thermal.T_pmp_ref
-    T_ref = cfg_thermal.T_ref
     L_ice = cfg_thermal.L_ice
 
     rho_water = cfg_drainage.water_density
@@ -36,15 +30,12 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
     if (state.dt == 0.0) or not drain_ice_column:
         return
 
-    depth_ice = state.enthalpy.vertical_discr.depth * state.thk[None, ...]
     dzeta = state.enthalpy.vertical_discr.dzeta
     dz = dzeta * state.thk[None, ...]
 
-    _, E_pmp = compute_pmp_tf(rho_ice, g, depth_ice, beta, c_ice, T_pmp_ref, T_ref)
-
     fraction_drained, h_drained = compute_fraction_drained(
         state.E,
-        E_pmp,
+        state.E_pmp,
         L_ice,
         omega_target,
         omega_threshold_1,
