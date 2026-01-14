@@ -5,6 +5,7 @@ enthalpy:
   solver:
     allow_basal_refreezing: True
     correct_w_for_melt: True
+    override_basal_at_pmp: False
   thermal:
     T_min: 243.15
     T_pmp_ref: 273.15

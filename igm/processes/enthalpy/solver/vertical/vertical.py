@@ -35,6 +35,7 @@ def update_vertical(cfg: DictConfig, state: State) -> None:
     T_min = cfg_thermal.T_min
     K_ratio = cfg_thermal.K_ratio
     correct_w_for_melt = cfg_solver.correct_w_for_melt
+    override_basal_at_pmp = cfg_solver.override_basal_at_pmp
 
     dzeta = state.enthalpy.vertical_discr.dzeta
     dz = dzeta * state.thk[None, ...]
@@ -55,6 +56,11 @@ def update_vertical(cfg: DictConfig, state: State) -> None:
     BCB, VB, VS = compute_bc(
         state.E, state.E_pmp, state.E_s, state.h_water_till, dEdz_dry
     )
+
+    if override_basal_at_pmp:
+        BCB = tf.zeros_like(state.E_s)
+        VB = state.E_pmp[0]
+        VS = state.E_s
 
     # Assemble system
     spy = 31556926.0
