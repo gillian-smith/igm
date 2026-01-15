@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
+from typing import Callable, Tuple
 
 from .vertical import VerticalDiscr
 from .utils import compute_matrices, compute_gauss_quad
@@ -14,8 +15,10 @@ from .utils_legendre import compute_basis, compute_basis_grad, compute_basis_int
 class LegendreDiscr(VerticalDiscr):
     """Legendre vertical discretization."""
 
-    def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute Legendre discretization matrices."""
+    def _compute_discr(
+        self, cfg: DictConfig
+    ) -> Tuple[Callable[[tf.Tensor], tf.Tensor], ...]:
+        """Compute Legendre discretization matrices. Returns basis functions."""
         cfg_numerics = cfg.processes.iceflow.numerics
 
         Nz = cfg_numerics.Nz
@@ -42,3 +45,5 @@ class LegendreDiscr(VerticalDiscr):
         self.V_b = tf.cast(V_b, self.dtype)
         self.V_s = tf.cast(V_s, self.dtype)
         self.V_bar = tf.cast(V_bar, self.dtype)
+
+        return basis_fct

@@ -285,9 +285,6 @@ def _cost(
     # Ice stiffness parameter
     B = tf.constant(2.0, dtype=dtype) * tf.pow(A, tf.constant(-1.0, dtype=dtype) / n)
 
-    if len(B.shape) == 3:
-        B = B[:, None, :, :]
-
     # Effective exponent
     p = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / n
 
@@ -308,10 +305,9 @@ def _cost(
         B = stag4h(B)
 
     # Retrieve ice stiffness at quadrature points
-    if B.shape[-3] > 1:
-        B_q = tf.einsum("ij,bjkl->bikl", V_q, B)
-    else:
-        B_q = B
+    if len(B.shape) == 3:
+        B = B[:, None, :, :]
+    B_q = B
 
     # Retrieve velocity gradients at quadrature points
     dudx_q = tf.einsum("ij,bjkl->bikl", V_q, dUdx)

@@ -9,12 +9,6 @@ from omegaconf import DictConfig
 from igm.common import State
 
 
-class Enthalpy:
-    """Container class for enthalpy-related auxiliary data and discretization info."""
-
-    pass
-
-
 def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     """
     Initialize enthalpy-related fields with default values.
@@ -23,8 +17,8 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     already exist in state. Initializes temperature at the pressure melting point,
     zero water content, and default values for till hydrology and friction.
 
-    Initializes state.enthalpy, state.basal_melt_rate (m yr^-1), state.T (K),
-    state.T_pmp (K), state.omega (-), state.E (J kg^-1), state.E_pmp (J kg^-1),
+    Initializes state.basal_melt_rate (m yr^-1), state.T (K), state.T_pmp (K),
+    state.omega (-), state.E (J kg^-1), state.E_pmp (J kg^-1),
     state.h_water_till (m), state.basal_heat_flux (W m^-2), state.N (Pa),
     state.phi (°), and state.tauc (Pa).
     """
@@ -36,9 +30,6 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     Nx = state.thk.shape[1]
     shape_2d = (Ny, Nx)
     shape_3d = (Nz, Ny, Nx)
-
-    if not hasattr(state, "enthalpy"):
-        state.enthalpy = Enthalpy()
 
     if not hasattr(state, "basal_melt_rate"):
         state.basal_melt_rate = tf.zeros(shape_2d)
@@ -81,3 +72,16 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     if not hasattr(state, "tauc"):
         tauc = cfg_friction.tauc_ice_free
         state.tauc = tauc * tf.ones(shape_2d)
+
+    # Fallback: initialize vertical discretization for testing purposes.
+    # In principle, the iceflow module should provide this.
+    if not hasattr(state, "iceflow"):
+        from igm.processes.iceflow.iceflow import Iceflow
+        from igm.processes.iceflow.vertical import VerticalDiscrs
+
+        state.iceflow = Iceflow()
+        cfg_numerics = cfg.processes.iceflow.numerics
+
+        vertical_basis = cfg_numerics.vert_basis.lower()
+        vertical_discr = VerticalDiscrs[vertical_basis](cfg)
+        state.iceflow.vertical_discr = vertical_discr

@@ -25,12 +25,14 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     n = cfg_physics.exp_glen
     h_min = cfg_physics.thr_ice_thk
 
-    dzeta = state.enthalpy.vertical_discr.dzeta
+    dzeta = state.iceflow.vertical_discr.enthalpy.dzeta
+    V_U_to_E = state.iceflow.vertical_discr.enthalpy.V_U_to_E
     dz = dzeta * state.thk[None, ...]
 
     return compute_strain_heat_tf(
         state.U,
         state.V,
+        V_U_to_E,
         state.arrhenius,
         state.dx,
         dz,
@@ -46,6 +48,7 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
 def compute_strain_heat_tf(
     U: tf.Tensor,
     V: tf.Tensor,
+    V_U_to_E: tf.Tensor,
     arrhenius: tf.Tensor,
     dx: tf.Tensor,
     dz: tf.Tensor,
@@ -60,6 +63,7 @@ def compute_strain_heat_tf(
     Args:
         U: Horizontal velocity in x-direction (m yr^-1).
         V: Horizontal velocity in y-direction (m yr^-1).
+        V_U_to_E: Map velocity DOFs to values at enthalpy nodes (Ndof_E, Ndof_U).
         arrhenius: Arrhenius factor field (MPa^-n yr^-1).
         dx: Horizontal grid spacing (m).
         dz: Vertical grid spacing field (m).
@@ -73,8 +77,8 @@ def compute_strain_heat_tf(
     """
     spy = 31556926.0
 
-    U_si = U / spy
-    V_si = V / spy
+    U_si = tf.einsum("ij,jkl->ikl", V_U_to_E, U) / spy
+    V_si = tf.einsum("ij,jkl->ikl", V_U_to_E, V) / spy
 
     # Pad velocities in x, y, z directions
     Ui = pad_x(U_si, mode=mode_pad_xy)

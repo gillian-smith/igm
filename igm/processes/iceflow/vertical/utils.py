@@ -62,6 +62,14 @@ def compute_zetas(
     return zeta, zeta_mid, dzeta
 
 
+@tf.function()
+def compute_depth(dzeta: tf.Tensor) -> tf.Tensor:
+    """Compute normalized depth below top surface at each level."""
+    zero = tf.zeros((1,), dtype=dzeta.dtype)
+    D = tf.concat([dzeta, zero], axis=0)
+    return tf.math.cumsum(D, axis=0, reverse=True)
+
+
 def compute_gauss_quad(
     order: int, dtype: tf.DType = tf.float32
 ) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -75,6 +83,38 @@ def compute_gauss_quad(
     w_quad_tf = tf.constant(w_quad, dtype=dtype)
 
     return x_quad_tf, w_quad_tf
+
+
+def compute_midpoint_quad(
+    zeta: tf.Tensor, dzeta: tf.Tensor, dtype: tf.DType = tf.float32
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Compute midpoint quadrature points and weights on [0,1]."""
+    x_quad = tf.cast(compute_zeta_mid(zeta), dtype)
+    w_quad = tf.cast(dzeta, dtype)
+
+    return x_quad, w_quad
+
+
+def compute_trap_quad(
+    zeta: tf.Tensor, dzeta: tf.Tensor, dtype: tf.DType = tf.float32
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Compute trapezoidal quadrature points and weights on [0,1]."""
+    x_quad = tf.cast(zeta, dtype)
+    Nz = zeta.shape[0]
+
+    if Nz == 1:
+        w_quad = tf.ones((1,), dtype=dtype)
+    elif Nz == 2:
+        w_quad = tf.concat([dzeta[:1] / 2.0, dzeta[-1:] / 2.0], axis=0)
+    else:
+        w_surface = dzeta[:1] / 2.0
+        w_interior = (dzeta[:-1] + dzeta[1:]) / 2.0
+        w_bed = dzeta[-1:] / 2.0
+        w_quad = tf.concat([w_surface, w_interior, w_bed], axis=0)
+
+    w_quad = tf.cast(w_quad, dtype)
+
+    return x_quad, w_quad
 
 
 def compute_basis_vector(

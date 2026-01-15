@@ -18,4 +18,7 @@ def update_horizontal(cfg: DictConfig, state: State) -> None:
 
     Updates state.E (J kg^-1).
     """
-    state.E -= state.dt * compute_advection_upwind(state.U, state.V, state.E, state.dx)
+    V_U_to_E = state.iceflow.vertical_discr.enthalpy.V_U_to_E
+    state.E -= state.dt * compute_advection_upwind(
+        state.U, state.V, V_U_to_E, state.E, state.dx
+    )

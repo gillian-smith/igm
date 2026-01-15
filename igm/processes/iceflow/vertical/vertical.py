@@ -6,8 +6,11 @@
 import tensorflow as tf
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig
+from typing import Callable, Optional, Tuple
 
 from igm.utils.math.precision import normalize_precision
+
+from .enthalpy import VerticalDiscrEnthalpy, compute_discr_enthalpy
 
 
 class VerticalDiscr(ABC):
@@ -18,8 +21,8 @@ class VerticalDiscr(ABC):
     ----------
     w : tf.Tensor
         Quadrature weights, shape (Nq,).
-    zeta: tf.Tensor
-        Quadrature point in reference element [0, 1], shape (Nq,).
+    zeta : tf.Tensor
+        Quadrature points in reference element [0, 1], shape (Nq,).
     V_q : tf.Tensor
         Map DOFs → values at quadrature points, shape (Nq, Ndof).
     V_q_grad : tf.Tensor
@@ -32,6 +35,8 @@ class VerticalDiscr(ABC):
         Map DOFs → surface value (zeta=1), shape (Ndof,).
     V_bar : tf.Tensor
         Map DOFs → vertical average, shape (Ndof,).
+    enthalpy : Optional[VerticalDiscrEnthalpy]
+        Enthalpy vertical discretization and coupling matrices (if enthalpy is enabled).
     """
 
     w: tf.Tensor
@@ -42,16 +47,24 @@ class VerticalDiscr(ABC):
     V_b: tf.Tensor
     V_s: tf.Tensor
     V_bar: tf.Tensor
+    enthalpy: Optional[VerticalDiscrEnthalpy]
 
     def __init__(self, cfg: DictConfig) -> None:
         """Initialize vertical discretization."""
         precision = cfg.processes.iceflow.numerics.precision
         self.dtype = normalize_precision(precision)
-        self._compute_discr(cfg)
+        basis_fct = self._compute_discr(cfg)
+
+        if "enthalpy" in cfg.processes:
+            self.enthalpy = compute_discr_enthalpy(
+                cfg, self.zeta, basis_fct, self.dtype
+            )
 
     @abstractmethod
-    def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute discretization matrices."""
+    def _compute_discr(
+        self, cfg: DictConfig
+    ) -> Tuple[Callable[[tf.Tensor], tf.Tensor], ...]:
+        """Compute discretization matrices. Returns basis functions."""
         raise NotImplementedError(
             "❌ The discretization is not implemented in this class."
         )

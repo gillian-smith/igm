@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
+from typing import Callable, Tuple
 
 from .utils import compute_matrices, compute_gauss_quad
 from .utils_molho import (
@@ -21,8 +22,10 @@ from .vertical import VerticalDiscr
 class MOLHODiscr(VerticalDiscr):
     """MOno-Layer Higher-Order (MOLHO) vertical discretization (two layers)."""
 
-    def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute MOLHO discretization matrices."""
+    def _compute_discr(
+        self, cfg: DictConfig
+    ) -> Tuple[Callable[[tf.Tensor], tf.Tensor], ...]:
+        """Compute MOLHO discretization matrices. Returns basis functions."""
 
         cfg_numerics = cfg.processes.iceflow.numerics
         cfg_physics = cfg.processes.iceflow.physics
@@ -64,3 +67,5 @@ class MOLHODiscr(VerticalDiscr):
         self.V_b = tf.cast(V_b, self.dtype)
         self.V_s = tf.cast(V_s, self.dtype)
         self.V_bar = tf.cast(V_bar, self.dtype)
+
+        return basis_fct

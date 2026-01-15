@@ -45,11 +45,13 @@ def update_vertical(cfg: DictConfig, state: State) -> None:
     correct_w_for_melt = cfg_solver.correct_w_for_melt
     override_basal_at_pmp = cfg_solver.override_basal_at_pmp
 
-    dzeta = state.enthalpy.vertical_discr.dzeta
+    dzeta = state.iceflow.vertical_discr.enthalpy.dzeta
+    V_U_to_E = state.iceflow.vertical_discr.enthalpy.V_U_to_E
     dz = dzeta * state.thk[None, ...]
 
     # Correct vertical velocity
-    Wc = state.W if hasattr(state, "W") else tf.zeros_like(state.U)
+    W = state.W if hasattr(state, "W") else tf.zeros_like(state.U)
+    Wc = tf.einsum("ij,jkl->ikl", V_U_to_E, W)
     Wc = correct_vertical_velocity(Wc, state.basal_melt_rate, correct_w_for_melt)
 
     # Thermal diffusivity

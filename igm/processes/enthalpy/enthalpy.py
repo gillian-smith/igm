@@ -15,7 +15,6 @@ from .temperature import compute_temperature, compute_pmp
 from .till.friction import compute_friction
 from .till.hydro import compute_hydro, update_hydro
 from .utils import checks, initialize_enthalpy_fields
-from .vertical import initialize_vertical_discr
 
 
 def initialize(cfg: DictConfig, state: State) -> None:
@@ -26,9 +25,6 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
     # Initialize enthalpy fields
     initialize_enthalpy_fields(cfg, state)
-
-    # Initialize vertical discretization
-    initialize_vertical_discr(cfg, state)
 
     # Compute T_pmp, E_pmp
     compute_pmp(cfg, state)

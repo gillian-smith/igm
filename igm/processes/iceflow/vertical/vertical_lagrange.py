@@ -14,8 +14,8 @@ from .vertical import VerticalDiscr
 class LagrangeDiscr(VerticalDiscr):
     """Lagrange vertical discretization (P1 hat function)."""
 
-    def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute Lagrange discretization matrices."""
+    def _compute_discr(self, cfg: DictConfig):
+        """Compute Lagrange discretization matrices. Returns basis functions."""
         cfg_numerics = cfg.processes.iceflow.numerics
 
         Nz = cfg_numerics.Nz
@@ -46,3 +46,5 @@ class LagrangeDiscr(VerticalDiscr):
         self.V_b = tf.cast(V_b, self.dtype)
         self.V_s = tf.cast(V_s, self.dtype)
         self.V_bar = tf.cast(V_bar, self.dtype)
+
+        return tuple(basis_fct)

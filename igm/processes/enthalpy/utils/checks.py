@@ -12,9 +12,8 @@ def checks(cfg: DictConfig, state: State) -> None:
     """
     Validate configuration compatibility for the enthalpy module.
 
-    Ensures that the iceflow module is enabled with compatible settings,
-    including Weertman sliding law and matching vertical discretization
-    parameters between iceflow and enthalpy modules.
+    Ensures that the iceflow module is enabled and configured with the
+    Weertman sliding law, which is required for enthalpy calculations.
 
     Raises:
         ValueError: If configuration requirements are not met.
@@ -26,18 +25,3 @@ def checks(cfg: DictConfig, state: State) -> None:
         raise ValueError(
             "The 'weertman' sliding law is required for the 'enthalpy' module."
         )
-
-    # TODO: allow other vertical discretizations
-    cfg_iceflow_numerics = cfg.processes.iceflow.numerics
-    cfg_enthalpy_numerics = cfg.processes.enthalpy.numerics
-
-    if cfg_iceflow_numerics.Nz != cfg_enthalpy_numerics.Nz:
-        raise ValueError("The 'Nz' parameter should be the same in iceflow & enthalpy.")
-
-    if cfg_iceflow_numerics.vert_spacing != cfg_enthalpy_numerics.vert_spacing:
-        raise ValueError(
-            "The 'vert_spacing' parameter should be the same in iceflow & enthalpy."
-        )
-
-    if cfg_iceflow_numerics.vert_basis.lower() != "lagrange":
-        raise ValueError("The 'vert_basis' parameter should be Lagrange.")
