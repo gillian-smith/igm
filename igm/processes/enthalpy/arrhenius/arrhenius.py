@@ -35,5 +35,4 @@ def compute_arrhenius(cfg: DictConfig, state: State) -> None:
         state.arrhenius = arrhenius_avg
     else:
         state.arrhenius = tf.einsum("ij,jkl->ikl", V_E_to_U_q, arrhenius)
-        state.arrhenius = arrhenius
         state.arrhenius_avg = arrhenius_avg
