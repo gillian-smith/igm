@@ -47,9 +47,11 @@ def _setup_experiment_a(dt):
     cfg = load_yaml_recursive(os.path.join(igm.__path__[0], "conf"))
 
     # Configure vertical discretization
-    cfg.processes.iceflow.numerics.Nz = 50
+    Nz_E = 50
+    Nz_U = 10
+    cfg.processes.iceflow.numerics.Nz = Nz_U
     cfg.processes.iceflow.numerics.vert_spacing = 1
-    cfg.processes.enthalpy.numerics.Nz = 50
+    cfg.processes.enthalpy.numerics.Nz = Nz_E
     cfg.processes.enthalpy.numerics.vert_spacing = 1
 
     # Configure enthalpy solver for Experiment A
@@ -61,7 +63,7 @@ def _setup_experiment_a(dt):
     cfg.processes.enthalpy.solver.correct_w_for_melt = False
 
     # Initialize state
-    Nz, Ny, Nx = 50, 2, 2
+    Ny, Nx = 2, 2
     state = State()
     state.thk = tf.Variable(1000.0 * tf.ones((Ny, Nx)), trainable=False)
     state.topg = tf.Variable(tf.zeros((Ny, Nx)), trainable=False)
@@ -70,15 +72,15 @@ def _setup_experiment_a(dt):
     state.dt = tf.Variable(dt, trainable=False)
     state.air_temp = tf.Variable(-30.0 * tf.ones((1, Ny, Nx)), trainable=False)
     state.basal_heat_flux = 0.042 * tf.ones((Ny, Nx))
-    state.U = tf.Variable(tf.zeros((Nz, Ny, Nx)), trainable=False)
-    state.V = tf.Variable(tf.zeros((Nz, Ny, Nx)), trainable=False)
-    state.W = tf.Variable(tf.zeros((Nz, Ny, Nx)), trainable=False)
+    state.U = tf.Variable(tf.zeros((Nz_U, Ny, Nx)), trainable=False)
+    state.V = tf.Variable(tf.zeros((Nz_U, Ny, Nx)), trainable=False)
+    state.W = tf.Variable(tf.zeros((Nz_U, Ny, Nx)), trainable=False)
     state.dx = tf.Variable(1000.0, trainable=False)
     state.dX = tf.Variable(tf.ones((Ny, Nx)) * 1000.0, trainable=False)
 
     # Initialize enthalpy module with cold ice (-30°C)
     enthalpy.initialize(cfg, state)
-    T_init = 243.15 * tf.ones((Nz, Ny, Nx))
+    T_init = 243.15 * tf.ones((Nz_E, Ny, Nx))
     state.E = cfg.processes.enthalpy.thermal.c_ice * (
         T_init - cfg.processes.enthalpy.thermal.T_ref
     )
@@ -99,8 +101,12 @@ def _run_simulation(cfg, state, dt):
     print(f"\n{'='*70}")
     print(f"Running Experiment A: dt={dt:.0f} years, duration={ttf/1000:.0f} ky")
     print(f"{'='*70}")
-    print(f"{'Time':>8} | {'Phase':^10} | {'T_surf':>7} | {'T_base':>7} | {'Melt':>9} | {'Till':>6}")
-    print(f"{'[ky]':>8} | {' ':^10} | {'[°C]':>7} | {'[°C]':>7} | {'[m/y]':>9} | {'[m]':>6}")
+    print(
+        f"{'Time':>8} | {'Phase':^10} | {'T_surf':>7} | {'T_base':>7} | {'Melt':>9} | {'Till':>6}"
+    )
+    print(
+        f"{'[ky]':>8} | {' ':^10} | {'[°C]':>7} | {'[°C]':>7} | {'[m/y]':>9} | {'[m]':>6}"
+    )
     print(f"{'-'*70}")
 
     for it, t in enumerate(tim):
@@ -303,7 +309,11 @@ def _plot_analytical_comparison(time, T_base, melt_rate, till_water):
     time_iii = analytical["phase_iii"]["time"]
 
     # Skip first point if it's anomalous
-    start_idx = 1 if melt_analytical[0] < 0 or abs(melt_analytical[0] - melt_analytical[1]) > 0.01 else 0
+    start_idx = (
+        1
+        if melt_analytical[0] < 0 or abs(melt_analytical[0] - melt_analytical[1]) > 0.01
+        else 0
+    )
 
     # Hard cutoff at 225 ky (75 ky into Phase III)
     max_time_iii = 75000.0  # years since start of Phase III
@@ -319,11 +329,15 @@ def _plot_analytical_comparison(time, T_base, melt_rate, till_water):
     melt_ana_plot = melt_analytical[start_idx:end_idx]
 
     # Melt rate comparison
-    ax1.plot(time_iii_plot, melt_num_plot, 'b-', linewidth=2, label='Numerical')
-    ax1.plot(time_iii_plot, melt_ana_plot, 'r--', linewidth=2, label='Analytical', alpha=0.7)
-    ax1.set_xlabel('Time [ky]')
-    ax1.set_ylabel('Basal Melt Rate [m/y]')
-    ax1.set_title(f'Phase III: Transient Melt Rate\nMean error (validated region): {analytical["phase_iii"]["mean_error"]:.2%}')
+    ax1.plot(time_iii_plot, melt_num_plot, "b-", linewidth=2, label="Numerical")
+    ax1.plot(
+        time_iii_plot, melt_ana_plot, "r--", linewidth=2, label="Analytical", alpha=0.7
+    )
+    ax1.set_xlabel("Time [ky]")
+    ax1.set_ylabel("Basal Melt Rate [m/y]")
+    ax1.set_title(
+        f'Phase III: Transient Melt Rate\nMean error (validated region): {analytical["phase_iii"]["mean_error"]:.2%}'
+    )
     ax1.grid(True, alpha=0.3)
     ax1.legend()
 
@@ -331,10 +345,12 @@ def _plot_analytical_comparison(time, T_base, melt_rate, till_water):
     valid_mask = (melt_ana_plot > 1e-6) & (melt_num_plot > 1e-6)
     if valid_mask.sum() > 0:
         abs_error = np.abs(melt_num_plot - melt_ana_plot)
-        ax2.plot(time_iii_plot[valid_mask], abs_error[valid_mask] * 1000, 'k-', linewidth=2)
-    ax2.set_xlabel('Time [ky]')
-    ax2.set_ylabel('Absolute Error [mm/y]')
-    ax2.set_title('Phase III: Absolute Error')
+        ax2.plot(
+            time_iii_plot[valid_mask], abs_error[valid_mask] * 1000, "k-", linewidth=2
+        )
+    ax2.set_xlabel("Time [ky]")
+    ax2.set_ylabel("Absolute Error [mm/y]")
+    ax2.set_title("Phase III: Absolute Error")
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
