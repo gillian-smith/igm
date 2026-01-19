@@ -38,7 +38,7 @@ def run_experiment_test(
     monkeypatch: pytest.MonkeyPatch,
     experiment: str,
     dt: float = 200.0,
-    Nz: int = 50,
+    Nz_E: int = 50,
 ) -> None:
     """
     Generic test runner for Kleiner enthalpy benchmarks.
@@ -47,24 +47,26 @@ def run_experiment_test(
         monkeypatch: pytest fixture
         experiment: Experiment name (exp_a, exp_b)
         dt: Time step in years (for exp_a)
-        Nz: Number of vertical levels
+        Nz_E: Number of vertical levels
     """
-    test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", experiment)
+    test_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", experiment
+    )
     monkeypatch.chdir(test_dir)
 
     _print_header(f"Running Kleiner Experiment {experiment[-1].upper()}")
 
     if experiment == "exp_a":
-        _run_exp_a(dt, Nz)
+        _run_exp_a(dt, Nz_E)
     elif experiment == "exp_b":
-        _run_exp_b(Nz)
+        _run_exp_b(Nz_E)
     else:
         raise ValueError(f"Unknown experiment: {experiment}")
 
 
-def _run_exp_a(dt: float, Nz: int) -> None:
+def _run_exp_a(dt: float, Nz_E: int) -> None:
     """Run and validate Experiment A."""
-    cfg, state = setup_experiment_a(dt=dt, Nz=Nz)
+    cfg, state = setup_experiment_a(dt=dt, Nz_E=Nz_E)
     results = run_simulation_a(cfg, state, dt)
 
     _try_plot(plot_exp_a, results)
@@ -79,9 +81,9 @@ def _run_exp_a(dt: float, Nz: int) -> None:
     assert is_valid, f"Validation failed: {errors}"
 
 
-def _run_exp_b(Nz: int) -> None:
+def _run_exp_b(Nz_E: int) -> None:
     """Run and validate Experiment B."""
-    cfg, state = setup_experiment_b(Nz=Nz)
+    cfg, state = setup_experiment_b(Nz_E=Nz_E)
     run_simulation_b(cfg, state)
     results = extract_results_b(state)
 

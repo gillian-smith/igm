@@ -12,5 +12,5 @@ pytestmark = pytest.mark.slow
 
 
 def test_exp_b(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test Kleiner Experiment B with Nz=500."""
-    run_experiment_test(monkeypatch, experiment="exp_b", Nz=500)
+    """Test Kleiner Experiment B with Nz_E=500."""
+    run_experiment_test(monkeypatch, experiment="exp_b", Nz_E=500)

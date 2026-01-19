@@ -45,7 +45,7 @@ def _configure_enthalpy_solver(cfg, drain=False, refreezing=True, correct_w=Fals
     cfg.processes.enthalpy.solver.correct_w_for_melt = correct_w
 
 
-def setup_experiment_a(dt: float = 200.0, Nz: int = 50):
+def setup_experiment_a(dt: float = 200.0, Nz_E: int = 50):
     """
     Initialize configuration and state for Experiment A.
 
@@ -60,7 +60,7 @@ def setup_experiment_a(dt: float = 200.0, Nz: int = 50):
     # Vertical discretization
     cfg.processes.iceflow.numerics.Nz = Nz_U
     cfg.processes.iceflow.numerics.vert_spacing = 1
-    cfg.processes.enthalpy.numerics.Nz = Nz
+    cfg.processes.enthalpy.numerics.Nz = Nz_E
     cfg.processes.enthalpy.numerics.vert_spacing = 1
     _configure_enthalpy_solver(cfg, refreezing=True)
 
@@ -75,7 +75,7 @@ def setup_experiment_a(dt: float = 200.0, Nz: int = 50):
     enthalpy.initialize(cfg, state)
     c_ice = cfg.processes.enthalpy.thermal.c_ice
     T_ref = cfg.processes.enthalpy.thermal.T_ref
-    T_init = 243.15 * tf.ones((Nz, Ny, Nx))
+    T_init = 243.15 * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
     state.T = T_init
     state.omega = tf.zeros_like(state.E)
@@ -83,7 +83,7 @@ def setup_experiment_a(dt: float = 200.0, Nz: int = 50):
     return cfg, state
 
 
-def setup_experiment_b(Nz: int = 500):
+def setup_experiment_b(Nz_E: int = 500):
     """
     Initialize configuration and state for Experiment B.
 
@@ -93,14 +93,14 @@ def setup_experiment_b(Nz: int = 500):
     H, gamma = 200.0, 4.0 * np.pi / 180.0
     A, rho, g = 5.3e-24, 910.0, 9.81
     spy, a_perp = 31556926.0, 0.2
-    Ny, Nx = 2, 2
+    Nz_U, Ny, Nx = 10, 2, 2
 
     cfg = _load_config()
 
     # Vertical discretization
-    cfg.processes.iceflow.numerics.Nz = Nz
+    cfg.processes.iceflow.numerics.Nz = Nz_U
     cfg.processes.iceflow.numerics.vert_spacing = 1
-    cfg.processes.enthalpy.numerics.Nz = Nz
+    cfg.processes.enthalpy.numerics.Nz = Nz_E
     cfg.processes.enthalpy.numerics.vert_spacing = 1
     _configure_enthalpy_solver(cfg, refreezing=False)
 
@@ -109,24 +109,23 @@ def setup_experiment_b(Nz: int = 500):
     state.basal_heat_flux = tf.zeros((Ny, Nx))
 
     # Prescribed velocity field (Eqs. 13-15 from paper)
-    z = tf.reshape(tf.linspace(0.0, H, Nz), (Nz, 1, 1))
+    z = tf.reshape(tf.linspace(0.0, H, Nz_U), (Nz_U, 1, 1))
     z = tf.tile(z, [1, Ny, Nx])
     tau = rho * g * tf.sin(gamma)
     vx = A * (tau**3) / 2 * (H**4 - (H - z) ** 4) * spy
 
     state.U = tf.Variable(vx, trainable=False)
-    state.V = tf.Variable(tf.zeros((Nz, Ny, Nx)), trainable=False)
-    state.W = tf.Variable(-a_perp * tf.ones((Nz, Ny, Nx)), trainable=False)
+    state.V = tf.Variable(tf.zeros((Nz_U, Ny, Nx)), trainable=False)
+    state.W = tf.Variable(-a_perp * tf.ones((Nz_U, Ny, Nx)), trainable=False)
 
     # Initialize enthalpy near melting point
     c_ice = cfg.processes.enthalpy.thermal.c_ice
     T_ref = cfg.processes.enthalpy.thermal.T_ref
-    T_init = (273.15 - 1.5) * tf.ones((Nz, Ny, Nx))
+    T_init = (273.15 - 1.5) * tf.ones((Nz_E, Ny, Nx))
     state.E = c_ice * (T_init - T_ref)
     state.T = T_init
     state.omega = tf.zeros_like(state.E)
-    state.arrhenius = tf.constant(A * 1e18 * spy, dtype=tf.float32) * tf.ones((Nz, Ny, Nx))
-
+    state.arrhenius = tf.constant(A * 1e18 * spy, dtype=tf.float32) * tf.ones((Ny, Nx))
     enthalpy.initialize(cfg, state)
 
     return cfg, state
@@ -153,7 +152,9 @@ def run_simulation_a(cfg, state, dt: float):
 
         if it % 100 == 0:
             phase = "I" if t < 100000.0 else ("II" if t < 150000.0 else "III")
-            print(f"  t={t/1000:.0f} ky, Phase {phase}, T_b={results['T_base'][-1]:.2f}C")
+            print(
+                f"  t={t/1000:.0f} ky, Phase {phase}, T_b={results['T_base'][-1]:.2f}C"
+            )
 
     return {k: np.array(v) for k, v in results.items()}
 
@@ -176,7 +177,9 @@ def run_simulation_b(cfg, state, max_iter: int = 1500, tol: float = 1e-3):
                 break
             prev_E = state.E.numpy().copy()
             if it % 100 == 0:
-                print(f"  Iteration {it}: T_base={state.T[0, 0, 0].numpy() - 273.15:.2f}C")
+                print(
+                    f"  Iteration {it}: T_base={state.T[0, 0, 0].numpy() - 273.15:.2f}C"
+                )
 
 
 def extract_results_b(state):

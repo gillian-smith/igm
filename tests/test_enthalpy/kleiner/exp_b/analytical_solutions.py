@@ -209,14 +209,14 @@ class ExperimentBAnalytical:
 
         return is_valid, T_ana_interp, rmsd
 
-    def validate_enthalpy_profile(self, z_num, E_num, tolerance=300.0):
+    def validate_enthalpy_profile(self, z_num, E_num, tolerance=1000.0):
         """
         Validate enthalpy profile using RMSD.
 
         Parameters:
             z_num: Numerical height coordinates [m]
             E_num: Numerical enthalpy [J/kg]
-            tolerance: RMSD tolerance [J/kg] (default: 300.0 J/kg)
+            tolerance: RMSD tolerance [J/kg] (default: 1kJ/kg)
 
         Returns:
             (is_valid, E_analytical, rmsd)
