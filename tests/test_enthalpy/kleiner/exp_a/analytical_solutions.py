@@ -17,7 +17,7 @@ class ExperimentAAnalytical:
         k_ice=2.1,
         c_ice=2009.0,
         rho_ice=910.0,
-        qgeo=0.042,
+        q_geo=0.042,
         rho_w=1000.0,
         L=3.34e5,
     ):
@@ -25,29 +25,29 @@ class ExperimentAAnalytical:
         Initialize physical parameters.
 
         Parameters:
-            H: Ice thickness [m]
-            k_ice: Thermal conductivity [W/(m·K)]
-            c_ice: Specific heat capacity [J/(kg·K)]
-            rho_ice: Ice density [kg/m³]
-            qgeo: Geothermal heat flux [W/m²]
-            rho_w: Water density [kg/m³]
-            L: Latent heat of fusion [J/kg]
+            H: Ice thickness (m)
+            k_ice: Thermal conductivity (W/(m K))
+            c_ice: Specific heat capacity (J/(kg K))
+            rho_ice: Ice density (kg/m^3)
+            q_geo: Geothermal heat flux (W/m^2)
+            rho_w: Water density (kg/m^3)
+            L: Latent heat of fusion (J/kg)
         """
         self.H = H
         self.k_ice = k_ice
-        self.qgeo = qgeo
+        self.q_geo = q_geo
         self.rho_w = rho_w
         self.L = L
-        self.kappa = k_ice / (rho_ice * c_ice)  # Thermal diffusivity [m²/s]
-        self.spy = 31556926.0  # Seconds per year
+        self.kappa = k_ice / (rho_ice * c_ice)
+        self.spy = 31556926.0
 
     def steady_basal_temperature(self, T_surface):
         """Compute steady-state basal temperature for cold ice [K]."""
-        return T_surface + self.H * self.qgeo / self.k_ice
+        return T_surface + self.H * self.q_geo / self.k_ice
 
     def steady_melt_rate(self, T_surface, T_pmp):
         """Compute steady-state basal melt rate when base is at PMP [m/y]."""
-        q_basal = self.qgeo + self.k_ice * (T_surface - T_pmp) / self.H
+        q_basal = self.q_geo + self.k_ice * (T_surface - T_pmp) / self.H
         return self.spy * q_basal / (self.rho_w * self.L)
 
     def transient_melt_rate(self, t, T_cold, T_warm, T_pmp, n_terms=100):
@@ -76,7 +76,7 @@ class ExperimentAAnalytical:
 
         # Total heat flux and melt rate
         q_ice = -self.k_ice * (dT_eq + dT_dev)
-        return self.spy * (self.qgeo - q_ice) / (self.rho_w * self.L)
+        return self.spy * (self.q_geo - q_ice) / (self.rho_w * self.L)
 
     def validate_phase_i(self, T_base_final, T_pmp, tolerance=1.0):
         """
