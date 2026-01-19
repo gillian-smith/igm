@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 
 from igm.common import State
 from igm.utils.grad.grad import grad_xy, pad_x, pad_y, pad_z
+from igm.utils.grad.strain_rate import compute_eps_dot2, correct_grad_zeta_to_z
 
 
 def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
@@ -25,34 +26,39 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     n = cfg_physics.exp_glen
     h_min = cfg_physics.thr_ice_thk
 
-    dzeta = state.iceflow.vertical_discr.enthalpy.dzeta
-    V_U_to_E = state.iceflow.vertical_discr.enthalpy.V_U_to_E
+    vertical_discr_E = state.iceflow.vertical_discr.enthalpy
+    zeta = vertical_discr_E.zeta
+    dzeta = vertical_discr_E.dzeta
+    V_U_to_E = vertical_discr_E.V_U_to_E
     dz = dzeta * state.thk[None, ...]
 
     return compute_strain_heat_tf(
         state.U,
         state.V,
-        V_U_to_E,
+        state.thk,
+        state.usurf,
         state.arrhenius,
-        state.dx,
-        dz,
         n,
+        V_U_to_E,
+        zeta,
+        state.dX,
+        dz,
         h_min,
     )
-
-
-# TODO: correct for coordinate-following coordinates?
 
 
 @tf.function
 def compute_strain_heat_tf(
     U: tf.Tensor,
     V: tf.Tensor,
-    V_U_to_E: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
     arrhenius: tf.Tensor,
-    dx: tf.Tensor,
-    dz: tf.Tensor,
     n: tf.Tensor,
+    V_U_to_E: tf.Tensor,
+    zeta: tf.Tensor,
+    dX: tf.Tensor,
+    dz: tf.Tensor,
     h_min: tf.Tensor,
     mode_pad_xy: str = "symmetric",
     mode_pad_z: str = "extrapolate",
@@ -63,11 +69,14 @@ def compute_strain_heat_tf(
     Args:
         U: Horizontal velocity in x-direction (m yr^-1).
         V: Horizontal velocity in y-direction (m yr^-1).
-        V_U_to_E: Map velocity DOFs to values at enthalpy nodes (Ndof_E, Ndof_U).
+        h: Ice thickness (m)
+        s: Upper-surface elevation (m)
         arrhenius: Arrhenius factor field (MPa^-n yr^-1).
+        n: Glen's flow law exponent (-).
+        V_U_to_E: Map velocity DOFs to values at enthalpy nodes (Ndof_E, Ndof_U).
+        zeta: Normalized elevation of each node/level (-).
         dx: Horizontal grid spacing (m).
         dz: Vertical grid spacing field (m).
-        n: Glen's flow law exponent (-).
         h_min: Minimum ice thickness threshold (m).
         mode_pad_xy: Padding mode for horizontal boundaries.
         mode_pad_z: Padding mode for vertical boundaries.
@@ -89,41 +98,62 @@ def compute_strain_heat_tf(
     Vj = pad_y(V_si, mode=mode_pad_xy)
     Vk = pad_z(V_si, mode=mode_pad_z)
 
-    dz_padded = pad_z(dz, mode="symmetric")
-    DZ2 = dz_padded[:-1, :, :] + dz_padded[1:, :, :]
+    # Effective vertical spacing for finite differences
+    dz_pad = pad_z(dz, mode="symmetric")
+    dz_mean = (dz_pad[:-1, :, :] + dz_pad[1:, :, :]) / 2.0
+    dz_eff = tf.maximum(dz_mean, h_min)
 
-    # Compute strain rate components
-    Exx = (Ui[:, :, 2:] - Ui[:, :, :-2]) / (2 * dx)
-    Eyy = (Vj[:, 2:, :] - Vj[:, :-2, :]) / (2 * dx)
-    Ezz = -Exx - Eyy
+    # Lower and upper surface gradients
+    l = s - h
+    dldx, dldy = grad_xy(l, dX, dX, False, "extrapolate")
+    dsdx, dsdy = grad_xy(s, dX, dX, False, "extrapolate")
 
-    Exy = 0.5 * (
-        (Vi[:, :, 2:] - Vi[:, :, :-2]) / (2 * dx)
-        + (Uj[:, 2:, :] - Uj[:, :-2, :]) / (2 * dx)
+    # Horizontal gradients
+    dudx = (Ui[:, :, 2:] - Ui[:, :, :-2]) / (2.0 * dX)
+    dudy = (Uj[:, 2:, :] - Uj[:, :-2, :]) / (2.0 * dX)
+    dvdx = (Vi[:, :, 2:] - Vi[:, :, :-2]) / (2.0 * dX)
+    dvdy = (Vj[:, 2:, :] - Vj[:, :-2, :]) / (2.0 * dX)
+
+    # Vertical gradients
+    dudz = (Uk[2:, :, :] - Uk[:-2, :, :]) / (2.0 * dz_eff)
+    dvdz = (Vk[2:, :, :] - Vk[:-2, :, :]) / (2.0 * dz_eff)
+
+    # Correct for terrain-following coordinates
+    zeta = zeta[:, None, None]
+    dldx = dldx[None, :, :]
+    dldy = dldy[None, :, :]
+    dsdx = dsdx[None, :, :]
+    dsdy = dsdy[None, :, :]
+    dudx, dudy, dvdx, dvdy = correct_grad_zeta_to_z(
+        dudx,
+        dudy,
+        dvdx,
+        dvdy,
+        dudz,
+        dvdz,
+        dldx,
+        dldy,
+        dsdx,
+        dsdy,
+        zeta,
     )
 
-    # Vertical shear strain rates
-    Exz = 0.5 * (Uk[2:, :, :] - Uk[:-2, :, :]) / tf.maximum(DZ2, h_min)
-    Eyz = 0.5 * (Vk[2:, :, :] - Vk[:-2, :, :]) / tf.maximum(DZ2, h_min)
+    # Effactive strain rate
+    eps_dot2 = compute_eps_dot2(dudx, dvdx, dudy, dvdy, dudz, dvdz)
+    eps_dot = tf.sqrt(eps_dot2)
 
-    # Effective strain rate
-    strainrate = tf.sqrt(
-        0.5 * (Exx**2 + Eyy**2 + Ezz**2 + 2 * (Exy**2 + Exz**2 + Eyz**2))
+    # Convert arrhenius units: MPa^(-n) yr^(-1) to Pa^(-n) s^(-1)
+    units_conv = tf.pow(1e6, n) * spy
+
+    arrhenius_3d = (
+        tf.expand_dims(arrhenius, axis=0) if arrhenius.ndim == 2 else arrhenius
     )
 
-    # Convert arrhenius units: MPa⁻³ y⁻¹ to Pa⁻³ s⁻¹
-    unit_conversion = 1e18 * spy
-
-    dim_arrhenius = arrhenius.ndim
-
-    arrhenius_expanded = (
-        tf.expand_dims(arrhenius, axis=0) if dim_arrhenius == 2 else arrhenius
-    )
-
+    # Phi = 2 * A^(-1/n) * ε_dot^(1+1/n)
     return (
         2.0
-        * (arrhenius_expanded / unit_conversion) ** (-1.0 / n)
-        * strainrate ** (1.0 + 1.0 / n)
+        * tf.pow(arrhenius_3d / units_conv, -1.0 / n)
+        * tf.pow(eps_dot, 1.0 + 1.0 / n)
     )
 
 
@@ -139,14 +169,20 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     """
     cfg_physics = cfg.processes.iceflow.physics
     m = cfg_physics.sliding.weertman.exponent
+    u_regu = cfg_physics.sliding.weertman.regu
+
+    V_b = state.iceflow.vertical_discr.V_b
 
     return compute_friction_heat_tf(
         state.U,
         state.V,
         state.slidingco,
-        state.topg,
+        state.thk,
+        state.usurf,
         state.dX,
         m,
+        u_regu,
+        V_b,
     )
 
 
@@ -155,9 +191,12 @@ def compute_friction_heat_tf(
     U: tf.Tensor,
     V: tf.Tensor,
     C: tf.Tensor,
-    b: tf.Tensor,
+    h: tf.Tensor,
+    s: tf.Tensor,
     dx: tf.Tensor,
     m: tf.Tensor,
+    u_regu: tf.Tensor,
+    V_b: tf.Tensor,
 ) -> tf.Tensor:
     """
     TensorFlow function to compute basal frictional heating.
@@ -166,27 +205,33 @@ def compute_friction_heat_tf(
         U: Horizontal velocity in x-direction (m yr^-1).
         V: Horizontal velocity in y-direction (m yr^-1).
         C: Sliding coefficient field (MPa m^-1/m yr^1/m).
-        b: Bed elevation field (m).
+        h: Ice thickness (m)
+        s: Upper-surface elevation (m)
         dx: Horizontal grid spacing (m).
         m: Weertman sliding law exponent (-).
+        u_regu: Velocity regularization (m yr^-1).
+        V_b: Basal extraction vector: dofs -> basal (-).
 
     Returns:
         Areal frictional heating rate (W m^-2).
     """
-    spy = 31556926.0
 
-    U_si = U / spy
-    V_si = V / spy
+    # Retrieve basal velocity
+    ux_b = tf.einsum("j,jkl->kl", V_b, U)
+    uy_b = tf.einsum("j,jkl->kl", V_b, V)
 
-    # Bed slope
+    # Compute bed gradient ∇b
+    b = s - h
     dbdx, dbdy = grad_xy(b, dx, dx, False, "extrapolate")
 
-    # Vertical velocity component at base
-    wvelbase = U_si[0] * dbdx + V_si[0] * dbdy
+    # Compute basal velocity magnitude (with norm M and regularization)
+    u_corr_b = ux_b * dbdx + uy_b * dbdy
+    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
 
-    # Total basal velocity
-    ub = tf.sqrt(U_si[0] ** 2 + V_si[0] ** 2 + wvelbase**2)
+    # Transform to SI units
+    spy = 31556926.0
+    u_b_si = u_b / spy
+    C_si = C * 1e6 * spy ** (1.0 / m)
 
-    # Friction heating: τ·u
-    # Unit conversion: MPa·m⁻¹/ⁿ·y¹/ⁿ → Pa·m/s
-    return C * ub ** (1.0 / m + 1.0) * 1e6 * spy ** (1.0 / m)
+    # C |u_b|^(1/m + 1)
+    return C_si * tf.pow(u_b_si, 1.0 / m + 1.0)

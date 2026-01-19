@@ -9,6 +9,11 @@ from typing import Any, Dict, Tuple
 from .energy import EnergyComponent
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.utils.grad.grad import grad_xy
+from igm.utils.grad.strain_rate import (
+    compute_eps_dot2,
+    correct_grad_zeta_to_z,
+    dampen_eps_dot_z_floating,
+)
 from igm.utils.stag.stag import stag4h
 
 
@@ -102,109 +107,6 @@ def cost_viscosity(
         zeta,
         staggered_grid,
     )
-
-
-@tf.function()
-def compute_eps_dot2_xy(
-    dUdx: tf.Tensor, dVdx: tf.Tensor, dUdy: tf.Tensor, dVdy: tf.Tensor
-) -> tf.Tensor:
-    """Compute horizontal contribution to squared strain rate."""
-
-    dtype = dUdx.dtype
-    half = tf.constant(0.5, dtype=dtype)
-
-    Exx = dUdx
-    Eyy = dVdy
-    Ezz = -dUdx - dVdy
-    Exy = half * dVdx + half * dUdy
-
-    return half * (Exx**2 + Exy**2 + Exy**2 + Eyy**2 + Ezz**2)
-
-
-@tf.function()
-def compute_eps_dot2_z(dUdz: tf.Tensor, dVdz: tf.Tensor) -> tf.Tensor:
-    """Compute vertical contribution to squared strain rate."""
-
-    dtype = dUdz.dtype
-    half = tf.constant(0.5, dtype=dtype)
-
-    Exz = half * dUdz
-    Eyz = half * dVdz
-
-    return half * (Exz**2 + Eyz**2 + Exz**2 + Eyz**2)
-
-
-@tf.function()
-def compute_eps_dot2(
-    dUdx: tf.Tensor,
-    dVdx: tf.Tensor,
-    dUdy: tf.Tensor,
-    dVdy: tf.Tensor,
-    dUdz: tf.Tensor,
-    dVdz: tf.Tensor,
-) -> tf.Tensor:
-    """Compute squared strain rate."""
-
-    eps_dot2_xy = compute_eps_dot2_xy(dUdx, dVdx, dUdy, dVdy)
-    eps_dot2_z = compute_eps_dot2_z(dUdz, dVdz)
-
-    return eps_dot2_xy + eps_dot2_z
-
-
-def dampen_eps_dot_z_floating(
-    dUdz: tf.Tensor, dVdz: tf.Tensor, C: tf.Tensor, factor: float = 1e-2
-) -> Tuple[tf.Tensor, tf.Tensor]:
-    """Dampen vertical velocity gradients in floating regions."""
-
-    dtype = dUdz.dtype
-    zero = tf.constant(0.0, dtype=dtype)
-    factor_const = tf.constant(factor, dtype=dtype)
-
-    dUdz = tf.where(C[:, None, :, :] > zero, dUdz, factor_const * dUdz)
-    dVdz = tf.where(C[:, None, :, :] > zero, dVdz, factor_const * dVdz)
-
-    return dUdz, dVdz
-
-
-@tf.function()
-def correct_for_change_of_coordinate(
-    dudx_q: tf.Tensor,
-    dudy_q: tf.Tensor,
-    dvdx_q: tf.Tensor,
-    dvdy_q: tf.Tensor,
-    dudz_q: tf.Tensor,
-    dvdz_q: tf.Tensor,
-    dldx: tf.Tensor,
-    dldy: tf.Tensor,
-    dsdx: tf.Tensor,
-    dsdy: tf.Tensor,
-    zeta: tf.Tensor,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-    """Correct derivatives for terrain-following coordinate transformation."""
-
-    dtype = dudx_q.dtype
-    one = tf.constant(1.0, dtype=dtype)
-
-    # Evaluate at quadrature points
-    zeta_q = zeta[None, :, None, None]
-    dldx_q = dldx[:, None, :, :]
-    dldy_q = dldy[:, None, :, :]
-    dsdx_q = dsdx[:, None, :, :]
-    dsdy_q = dsdy[:, None, :, :]
-
-    # ∇ζ = - [(1 - ζ) * ∇b + ζ * ∇s] / h
-    # We omit the division by h because dudz_q and dvdz_q are
-    # already physical vertical derivatives (∂u/∂z = ∂u/∂ζ / h)
-    dzetadx_q = -((one - zeta_q) * dldx_q + zeta_q * dsdx_q)
-    dzetady_q = -((one - zeta_q) * dldy_q + zeta_q * dsdy_q)
-
-    # ∇_z = ∇_ζ + (∂/∂ζ) * ∇ζ
-    dudx_q = dudx_q + dudz_q * dzetadx_q
-    dudy_q = dudy_q + dudz_q * dzetady_q
-    dvdx_q = dvdx_q + dvdz_q * dzetadx_q
-    dvdy_q = dvdy_q + dvdz_q * dzetady_q
-
-    return dudx_q, dudy_q, dvdx_q, dvdy_q
 
 
 @tf.function()
@@ -322,19 +224,26 @@ def _cost(
     dvdz_q = dvdz_q / tf.expand_dims(tf.maximum(h, h_min), axis=1)
     # dudz_q, dvdz_q = dampen_eps_dot_z_floating(dudz_q, dvdz_q, C)
 
+    # Evaluate at quadrature points
+    zeta_q = zeta[None, :, None, None]
+    dldx_q = dldx[:, None, :, :]
+    dldy_q = dldy[:, None, :, :]
+    dsdx_q = dsdx[:, None, :, :]
+    dsdy_q = dsdy[:, None, :, :]
+
     # Correct for terrain-following coordinates
-    dudx_q, dudy_q, dvdx_q, dvdy_q = correct_for_change_of_coordinate(
+    dudx_q, dudy_q, dvdx_q, dvdy_q = correct_grad_zeta_to_z(
         dudx_q,
         dudy_q,
         dvdx_q,
         dvdy_q,
         dudz_q,
         dvdz_q,
-        dldx,
-        dldy,
-        dsdx,
-        dsdy,
-        zeta,
+        dldx_q,
+        dldy_q,
+        dsdx_q,
+        dsdy_q,
+        zeta_q,
     )
 
     # Compute strain rate

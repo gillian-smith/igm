@@ -21,6 +21,8 @@ class VerticalDiscrEnthalpy:
         Normalized depth below ice surface at each level, shape (Ndof_E, 1, 1).
     weights : tf.Tensor
         Trapezoidal quadrature weights, shape (Ndof_E, 1, 1).
+    zeta : tf.Tensor
+        Normalized elevation of each node/level, shape (Ndof_E, 1, 1).
     dzeta : tf.Tensor
         Spacings between consecutive zeta values, shape (Ndof_E-1, 1, 1).
     V_E_to_U_q : tf.Tensor
@@ -31,6 +33,7 @@ class VerticalDiscrEnthalpy:
 
     depth: tf.Tensor
     weights: tf.Tensor
+    zeta: tf.Tensor
     dzeta: tf.Tensor
     V_U_to_E: tf.Tensor
     V_E_to_U_q: tf.Tensor
@@ -63,6 +66,7 @@ def compute_discr_enthalpy(
     vertical_discr = VerticalDiscrEnthalpy()
     vertical_discr.depth = depth_E
     vertical_discr.weights = weights_E
+    vertical_discr.zeta = zeta_E
     vertical_discr.dzeta = dzeta_E
     vertical_discr.V_E_to_U_q = V_E_to_U_q
     vertical_discr.V_U_to_E = V_U_to_E
