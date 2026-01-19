@@ -83,7 +83,6 @@ class InterfaceDataAssimilation(InterfaceMapping):
                 "❌ Data assimilation currently expects a MappingNetwork as the base mapping."
             )
 
-        cost_fn = state.iceflow.optimizer.cost_fn
         precision = cfg.processes.iceflow.numerics.precision
 
         bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
@@ -92,7 +91,6 @@ class InterfaceDataAssimilation(InterfaceMapping):
             "bcs": bcs,
             "network": base_mapping.network,
             "Nz": base_mapping.Nz,
-            "cost_fn": cost_fn,  # for halt diagnostics
             "output_scale": base_mapping.output_scale,
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
