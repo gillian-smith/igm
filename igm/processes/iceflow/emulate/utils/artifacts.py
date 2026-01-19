@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import yaml
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -258,7 +258,10 @@ def save_emulator_artifact(
         normalization=norm_spec,
     )
 
-    (artifact_dir / "manifest.json").write_text(json.dumps(asdict(manifest), indent=2, sort_keys=True))
+    manifest_path = artifact_dir / "manifest.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(asdict(manifest), sort_keys=False, default_flow_style=False)
+    )
     weights_path = export_dir / "weights.weights.h5"
     model.save_weights(str(weights_path))
 
@@ -278,11 +281,11 @@ def load_emulator_artifact(
       - loads weights via model.load_weights()
     """
     artifact_dir = Path(artifact_dir)
-    manifest_path = artifact_dir / "manifest.json"
+    manifest_path = artifact_dir / "manifest.yaml"
     if not manifest_path.exists():
-        raise FileNotFoundError(f"Missing manifest.json at {manifest_path}")
+        raise FileNotFoundError(f"Missing manifest.yaml at {manifest_path}")
 
-    raw = json.loads(manifest_path.read_text())
+    raw = yaml.safe_load(manifest_path.read_text())
     manifest = EmulatorManifest(
         schema_version=int(raw["schema_version"]),
         Nz=int(raw["Nz"]),
