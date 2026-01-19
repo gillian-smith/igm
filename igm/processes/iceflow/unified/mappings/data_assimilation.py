@@ -47,7 +47,6 @@ class MappingDataAssimilation(Mapping):
         bcs: List[str],
         network: tf.keras.Model,
         Nz: tf.Tensor,
-        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         output_scale,
         state,
         variables: List[VariableSpec],
@@ -66,7 +65,6 @@ class MappingDataAssimilation(Mapping):
         self.output_scale = tf.cast(output_scale, self.precision)
         self.vars: List[VariableSpec] = variables
         self.eps = eps
-        self.cost_fn = cost_fn
 
         for v in self.network.trainable_variables:
             if v.dtype != self.precision:
@@ -83,22 +81,6 @@ class MappingDataAssimilation(Mapping):
             "slidingco": 3,
             "dX": 4,
         }
-
-        self.base_cost_reference = tf.Variable(
-            float("nan"),
-            trainable=False,
-            name="base_cost_reference",
-            dtype=self.precision,
-        )
-        self._base_cost_tol = tf.constant(0.1, dtype=self.precision)  # 10% threshold
-        self._base_cost_eps = tf.constant(
-            1e-12, dtype=self.precision
-        )  # Small epsilon for division
-
-        # Diagnostics used by the halt criterion
-        self.base_cost = tf.Variable(
-            0.0, trainable=False, name="base_cost", dtype=self.precision
-        )
 
         # Ensure state fields are tf.Variable and keep references (for initialization parity).
         self._field_refs: Dict[str, tf.Variable] = {}
@@ -202,6 +184,7 @@ class MappingDataAssimilation(Mapping):
             obj = getattr(obj, attr)
         return tf.convert_to_tensor(obj)
 
+    @tf.function(reduce_retracing=True, jit_compile=True)
     def _theta_to_field(self, idx: int) -> tf.Tensor:
         mask_bool = self._mask_bool[idx]
         tform = self.transforms[idx]
@@ -226,7 +209,7 @@ class MappingDataAssimilation(Mapping):
         updated_inputs = self.apply_theta_to_inputs(inputs)
         return updated_inputs
 
-    @tf.function(jit_compile=True)
+    @tf.function(jit_compile=False)
     def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
         processed_inputs = self.synchronize_inputs(inputs)
         self.set_inputs(processed_inputs)
@@ -240,9 +223,6 @@ class MappingDataAssimilation(Mapping):
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
 
-        # Diagnostics for halt criterion use the same cost function as the base mapping
-        current_base_cost = self.cost_fn(U, V, self.inputs)
-        self.base_cost.assign(current_base_cost)
         return U, V
 
     # ------- State update -----------------------------------------------------
@@ -301,16 +281,11 @@ class MappingDataAssimilation(Mapping):
             return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
     def on_minimize_start(self, iter_max: int) -> None:
-        """
-        Reset the base-cost reference used by the halt criterion.
-        Called eagerly at the start of each minimize call.
-        """
-        reset_value = tf.constant(float("nan"), dtype=self.base_cost_reference.dtype)
-        self.base_cost_reference.assign(reset_value)
+        pass
 
     # ------- Input channel patching --------------------------------
 
-    @tf.function(reduce_retracing=True)
+    @tf.function(reduce_retracing=True, jit_compile=True)
     def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         """
         Patch BHWC inputs with current physical-space values for selected fields.
