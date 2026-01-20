@@ -20,7 +20,11 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
 
-        inputs = list(cfg_unified.inputs)
+        if cfg.processes.iceflow.do_pretraining:
+            inputs = list(cfg.processes.pretraining.inputs)
+        else:
+            inputs = list(cfg_unified.inputs)
+            
         Nz = int(cfg_numerics.Nz)
 
         if cfg_unified.network.pretrained:
