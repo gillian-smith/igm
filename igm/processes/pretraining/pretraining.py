@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import yaml
 from pathlib import Path
 from typing import Tuple, List
 import matplotlib.pyplot as plt
@@ -15,23 +16,84 @@ import tensorflow as tf
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.emulate.utils.artifacts import save_emulator_artifact
+from igm.processes.iceflow.unified.utils import get_cost_fn
 
 
- 
+
 def initialize(cfg, state):
     cfg_pretraining = cfg.processes.pretraining
-    cfg_iceflow = cfg.processes.iceflow
+    cfg_iceflow      = cfg.processes.iceflow
+    cfg_physics      = cfg.processes.iceflow.physics
     Nz = cfg_iceflow.numerics.Nz
-    tfrecord_root = Path('/home/srosier/work/synthetic_glaciers/tfrecords/set1/')
-    out_dir = Path(cfg_pretraining.experiment_name)
-    meta = load_metadata(tfrecord_root)
 
+    tfrecord_root = Path(cfg_pretraining.data_dir)
+
+    # Put everything under the configured output root
+    out_dir = Path(cfg_pretraining.out_dir) / cfg_pretraining.experiment_name
+    # make out_dir if not exist
+    out_dir.mkdir(parents=True, exist_ok=True)
+    resume = bool(getattr(cfg_pretraining, "resume", False))
+
+    meta = load_metadata(tfrecord_root)
     shapes = meta["example_shapes_by_nz"][str(Nz)]
     H, W, Cx = shapes["x"]
 
+    # ================== safety checks ==================
+    inputs = tuple(cfg_pretraining.inputs)
+
+    if Cx != len(inputs):
+        raise ValueError(
+            f"TFRecord x has C={Cx} channels (from metadata), but cfg.processes.pretraining.inputs "
+            f"has {len(inputs)} entries: {inputs}. These must match in count and order."
+        )
+
+    if Cx == 2 and inputs != ("thk", "usurf"):
+        raise ValueError(
+            f"parse_example() assumes x channels are ('thk','usurf') in that order, but cfg inputs are {inputs}. "
+            "Either set pretraining.inputs=['thk','usurf'] or update parse_example()/TFRecords accordingly."
+        )
+
+    if int(getattr(cfg_physics, "dim_arrhenius", 1)) == 3 and Cx <= 2:
+        raise ValueError(
+            "cfg.processes.iceflow.physics.dim_arrhenius == 3 but TFRecord inputs appear to have only 2 channels. "
+            "If 3D Arrhenius is enabled, you likely need additional Arrhenius-related channels in TFRecords "
+            "(or set dim_arrhenius=1 for this pretraining run)."
+        )
+
+    if not hasattr(state, "iceflow") or not hasattr(state.iceflow, "vertical_discr") or state.iceflow.vertical_discr is None:
+        raise RuntimeError(
+            "state.iceflow.vertical_discr is missing, but the physics cost requires it. "
+            "Ensure the iceflow vertical discretization is initialized before pretraining."
+        )
+    
+    # ================== directories / resume checks ==================
+    ckpt_dir = out_dir / "checkpoints"
+    fig_dir = out_dir / "figures"
+
+    if resume:
+        if not out_dir.exists():
+            raise FileNotFoundError(
+                f"resume=True but experiment directory does not exist: {out_dir}"
+            )
+        if not ckpt_dir.exists():
+            raise FileNotFoundError(
+                f"resume=True but checkpoints directory missing: {ckpt_dir}"
+            )
+        # history.yaml existence checked later by load_history_yaml()
+    else:
+        # Prevent silently overwriting an existing run
+        if ckpt_dir.exists() and any(ckpt_dir.glob("ckpt-*")):
+            raise FileExistsError(
+                f"Experiment already has checkpoints at {ckpt_dir} but resume=False. "
+                "Set cfg.processes.pretraining.resume=true or use a new experiment_name."
+            )
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        fig_dir.mkdir(parents=True, exist_ok=True)
+
+
+    # ================== datasets ==================
     shard_files = list_shards(tfrecord_root, Nz)
 
-    # shuffle shard files to remove any possible ordering bias
     rng = random.Random(getattr(cfg_pretraining, "split_seed", 0))
     rng.shuffle(shard_files)
 
@@ -43,116 +105,263 @@ def initialize(cfg, state):
         val_fraction=0.1,
     )
 
-    # # Input normalization (stats persisted in the saved model)
-    # normalizer = tf.keras.layers.Normalization(axis=-1, name="x_norm")
-    # # Adapt on a bounded sample to keep “first run” practical; adjust as needed.
-    # norm_adapt = train_ds.unbatch().map(lambda x, y: x).take(5000).batch(256)
-    # normalizer.adapt(norm_adapt)
-
-    # Initialize mapping
+    # ================== mapping/model/opt ==================
     mapping_args = InterfaceMappings["network"].get_mapping_args(cfg, state)
     mapping = Mappings["network"](**mapping_args)
     state.iceflow.mapping = mapping
 
     opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
 
-    train_loss = tf.keras.metrics.Mean(name="train_loss")
-    val_loss = tf.keras.metrics.Mean(name="val_loss")
+    # ================== loss pieces ==================
+    physics_cost_fn = get_cost_fn(cfg, state)
 
-    def make_loss_fn(mapping, cfg):
-        lt = cfg.processes.pretraining.loss_type.lower()
-        delta = float(getattr(cfg.processes.pretraining, "huber_delta", 50.0))
+    lt = cfg_pretraining.loss_type.lower()
+    if lt not in ("mse", "huber"):
+        raise ValueError(f"loss_type must be 'mse' or 'huber', got {lt!r}")
+
+    if lt == "huber":
+        delta = float(getattr(cfg_pretraining, "huber_delta", 50.0))
         huber = tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)
 
-        @tf.function
-        def loss_fn(x, y):
-            U, V = mapping.get_UV(x)
-            Ut, Vt = y[..., 0], y[..., 1]
-            if lt == "huber":
-                return tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
-            if lt == "mse":
-                return tf.reduce_mean(tf.square(U - Ut) + tf.square(V - Vt))
-            raise ValueError(f"loss_type must be 'mse' or 'huber', got {lt!r}")
+    def compute_losses(x_batch: tf.Tensor, y_batch: tf.Tensor):
+        U, V = mapping.get_UV(x_batch)
+        Ut, Vt = y_batch[..., 0], y_batch[..., 1]
 
-        return loss_fn
+        if lt == "huber":
+            data_loss = tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
+        else:  # mse
+            data_loss = tf.reduce_mean(tf.square(U - Ut) + tf.square(V - Vt))
 
-    loss_fn = make_loss_fn(mapping, cfg)
+        # Ensure scalar
+        phys_loss = physics_cost_fn(U, V, x_batch)
+        return data_loss, phys_loss
 
+    def safe_global_norm(grads):
+        gs = [g for g in grads if g is not None]
+        return tf.linalg.global_norm(gs) if gs else tf.constant(0.0, tf.float32)
+
+    EMA          = tf.constant(0.99, tf.float32)      # smoothing of lambda updates
+    UPDATE_EVERY = tf.constant(100, tf.int64)         # per-term grads only every N steps
+    LAM_MIN      = tf.constant(1e-3, tf.float32)     # clip range 
+    LAM_MAX      = tf.constant(1e3, tf.float32)
+    EPS          = tf.constant(1e-12, tf.float32)
+    WARMUP_STEPS = tf.constant(1000, tf.int64)  # e.g. 1000 optimizer steps
+
+    step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
+    lambda_phys = tf.Variable(1.0, trainable=False, dtype=tf.float32, name="lambda_phys")
+
+    # ================== metrics ==================
+    train_total = tf.keras.metrics.Mean(name="train_total")
+    train_data  = tf.keras.metrics.Mean(name="train_data")
+    train_phys  = tf.keras.metrics.Mean(name="train_phys")
+    train_lam   = tf.keras.metrics.Mean(name="lambda_phys")
+    val_total   = tf.keras.metrics.Mean(name="val_total")
+    val_data  = tf.keras.metrics.Mean(name="val_data")
+    val_phys  = tf.keras.metrics.Mean(name="val_phys")
+    
     @tf.function
     def train_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
-        with tf.GradientTape() as tape:
-            loss = loss_fn(x_batch, y_batch)
-        grads = tape.gradient(loss, state.iceflow_model.trainable_variables)
-        opt.apply_gradients(zip(grads, state.iceflow_model.trainable_variables))
-        train_loss.update_state(loss)
+        vars_ = state.iceflow_model.trainable_variables
+        step.assign_add(1)
+
+        in_warmup = step <= WARMUP_STEPS
+        do_update = tf.equal(step % UPDATE_EVERY, 0)
+
+        def update_branch():
+            # Only run the expensive per-term gradients when NOT in warmup.
+            with tf.GradientTape(persistent=True) as tape:
+                data_loss, phys_loss = compute_losses(x_batch, y_batch)
+
+            g_data = tape.gradient(data_loss, vars_)
+            g_phys = tape.gradient(phys_loss, vars_)
+            del tape
+
+            norm_data = safe_global_norm(g_data)
+            norm_phys = safe_global_norm(g_phys)
+
+            lam_hat = norm_data / (norm_phys + EPS)
+
+            # Optional but strongly recommended: limit multiplicative change per update
+            MAX_UP   = tf.constant(2.0, tf.float32)
+            MAX_DOWN = tf.constant(2.0, tf.float32)
+            lam_hat = tf.clip_by_value(lam_hat, lambda_phys / MAX_DOWN, lambda_phys * MAX_UP)
+
+            lam_new = EMA * lambda_phys + (1.0 - EMA) * tf.stop_gradient(lam_hat)
+            lam_new = tf.clip_by_value(lam_new, LAM_MIN, LAM_MAX)
+            lambda_phys.assign(lam_new)
+
+            # Apply combined grads using updated lambda
+            grads = []
+            for gd, gp in zip(g_data, g_phys):
+                if gd is None and gp is None:
+                    grads.append(None)
+                elif gd is None:
+                    grads.append(lam_new * gp)
+                elif gp is None:
+                    grads.append(gd)
+                else:
+                    grads.append(gd + lam_new * gp)
+
+            opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
+
+            total_loss = data_loss + lam_new * phys_loss
+            return data_loss, phys_loss, total_loss, lam_new
+
+        def normal_branch():
+            # Cheap branch: one tape for total loss only.
+            with tf.GradientTape() as tape:
+                data_loss, phys_loss = compute_losses(x_batch, y_batch)
+                # Warmup uses lam=0 without mutating lambda_phys.
+                lam = tf.where(in_warmup, tf.constant(0.0, tf.float32), lambda_phys)
+                total_loss = data_loss + lam * phys_loss
+
+            grads = tape.gradient(total_loss, vars_)
+            opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
+            return data_loss, phys_loss, total_loss, lam
+
+        # If warmup: NEVER do update_branch (keeps lambda frozen and avoids pointless per-term grads)
+        # Else: do update_branch every UPDATE_EVERY steps, normal_branch otherwise
+        data_loss, phys_loss, total_loss, lam = tf.cond(
+            in_warmup,
+            normal_branch,
+            lambda: tf.cond(do_update, update_branch, normal_branch),
+        )
+
+        train_data.update_state(data_loss)
+        train_phys.update_state(phys_loss)
+        train_total.update_state(total_loss)
+        train_lam.update_state(lam)
+
 
     @tf.function
     def val_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
-        loss = loss_fn(x_batch, y_batch)
-        val_loss.update_state(loss)
+        data_loss, phys_loss = compute_losses(x_batch, y_batch)
+        total_loss = data_loss + lambda_phys * phys_loss
+        val_data.update_state(data_loss)
+        val_phys.update_state(phys_loss)
+        val_total.update_state(total_loss)
 
-    # Checkpointing
-    ckpt = tf.train.Checkpoint(step=tf.Variable(0), optimizer=opt, model=state.iceflow_model)
-    ckpt_mgr = tf.train.CheckpointManager(ckpt, str(out_dir / "checkpoints"), max_to_keep=3)
+    # ================== checkpointing ==================
+    ckpt = tf.train.Checkpoint(
+        step=step,
+        optimizer=opt,
+        model=state.iceflow_model,
+        lambda_phys=lambda_phys,
+    )
+    ckpt_mgr = tf.train.CheckpointManager(ckpt, str(ckpt_dir), max_to_keep=3)
+    # Restore if requested
+    if resume:
+        latest = ckpt_mgr.latest_checkpoint
+        if not latest:
+            raise FileNotFoundError(
+                f"resume=True but no checkpoints found in {ckpt_dir}"
+            )
+        ckpt.restore(latest).expect_partial()
+        print(f"[ckpt] restored {latest} (step={int(step.numpy())}, lambda={float(lambda_phys.numpy()):.3e})")
 
-    val_vis_ds = val_ds.unbatch().shuffle(4096, reshuffle_each_iteration=True)\
-                    .batch(cfg_pretraining.batch_size, drop_remainder=True)
+        # Load history.yaml (strict)
+        start_epoch, train_total_hist, val_total_hist, train_data_hist, val_data_hist, train_phys_hist, val_phys_hist, lambda_hist = \
+            load_history_yaml(out_dir)
+    else:
+        start_epoch = 0
+        train_total_hist, val_total_hist = [], []
+        train_data_hist,  val_data_hist  = [], []
+        train_phys_hist,  val_phys_hist  = [], []
+        lambda_hist = []
+
+    if start_epoch > int(cfg_pretraining.epochs):
+        raise ValueError(
+            f"history.yaml says epoch={start_epoch} but cfg_pretraining.epochs={cfg_pretraining.epochs}."
+        )
+
+    # ================== visuals ==================
+    val_vis_ds = (
+        val_ds.unbatch()
+        .shuffle(4096, reshuffle_each_iteration=True)
+        .batch(cfg_pretraining.batch_size, drop_remainder=True)
+    )
     val_vis_it = iter(val_vis_ds.repeat())
 
-    fig_dir = out_dir / "figures"
-    train_hist = []
-    val_hist = []
-    for epoch in range(cfg_pretraining.epochs):
-        train_loss.reset_state()
-        val_loss.reset_state()
+    # Ensure fig dir exists in resume mode too
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
-        # Train
+    # ================== training loop ==================
+    for epoch in range(start_epoch, cfg_pretraining.epochs):
+        train_total.reset_state()
+        train_data.reset_state()
+        train_phys.reset_state()
+        train_lam.reset_state()
+
+        val_total.reset_state()
+        val_data.reset_state()
+        val_phys.reset_state()
+
         for x_b, y_b in train_ds:
             train_step(x_b, y_b)
-            ckpt.step.assign_add(1)
-    
-        # Validate
+
         itv = iter(val_ds)
         for _ in range(50):
             x_b, y_b = next(itv)
             val_step(x_b, y_b)
 
-        print(f"[epoch {epoch+1}/{cfg_pretraining.epochs}] train_loss={train_loss.result().numpy():.6e} "
-              f"val_loss={val_loss.result().numpy():.6e}")
-        
-        tr = float(train_loss.result().numpy())
-        va = float(val_loss.result().numpy())
-        train_hist.append(tr)
-        val_hist.append(va)
+        # append histories
+        train_total_hist.append(float(train_total.result().numpy()))
+        train_data_hist.append(float(train_data.result().numpy()))
+        train_phys_hist.append(float(train_phys.result().numpy()))
 
-        # Save loss curve
-        save_loss_plot(train_hist, val_hist, fig_dir / "loss_curve.png")
+        val_total_hist.append(float(val_total.result().numpy()))
+        val_data_hist.append(float(val_data.result().numpy()))
+        val_phys_hist.append(float(val_phys.result().numpy()))
 
-        # Save a random surface speed comparison from validation
+        lambda_hist.append(float(train_lam.result().numpy()))
+
+        print(
+            f"[epoch {epoch+1}/{cfg_pretraining.epochs}] "
+            f"train_total={train_total_hist[-1]:.6e} "
+            f"train_data={train_data_hist[-1]:.6e} "
+            f"train_phys={train_phys_hist[-1]:.6e} "
+            f"lambda_phys={float(train_lam.result().numpy()):.3e} "
+            f"val_total={val_total_hist[-1]:.6e}"
+        )
+
+        # plots + comparisons
+        save_loss_plot(
+            train_total_hist, val_total_hist,
+            train_data_hist,  val_data_hist,
+            train_phys_hist,  val_phys_hist,
+            lambda_hist,                      # <-- NEW
+            fig_dir / "loss_curve.png",
+        )
+
         x_vis, y_vis = next(val_vis_it)
         save_speed_compare(mapping, x_vis, y_vis, Nz, fig_dir / f"speed_compare_epoch{epoch+1:04d}.png")
 
-
         ckpt_mgr.save()
+        save_history_yaml(
+            out_dir=out_dir,
+            epoch=epoch + 1,
+            train_total_hist=train_total_hist,
+            val_total_hist=val_total_hist,
+            train_data_hist=train_data_hist,
+            val_data_hist=val_data_hist,
+            train_phys_hist=train_phys_hist,
+            val_phys_hist=val_phys_hist,
+            lambda_hist=lambda_hist,   # <-- NEW
+        )
 
-    # after training is done
-    artifact_dir = Path(cfg.processes.pretraining.out_dir) / cfg.processes.pretraining.experiment_name
-    artifact_dir.mkdir(parents=True, exist_ok=True)
 
-    # inputs must match cfg.processes.iceflow.unified.inputs exactly
-    inputs = list(cfg.processes.iceflow.unified.inputs)
-
+    # ================== export ==================
     save_emulator_artifact(
-        artifact_dir=artifact_dir,
+        artifact_dir=out_dir,
         cfg=cfg,
         model=state.iceflow_model,
-        inputs=inputs,
+        inputs=list(inputs),
     )
-    print(f"[export] saved emulator artifact to {artifact_dir}")
+    print(f"[export] saved emulator artifact to {out_dir}")
 
-    k = min(5, len(val_hist))
-    avg_last5 = float(np.mean(val_hist[-k:]))
-    state.score = avg_last5
+    k = min(5, len(val_total_hist))
+    state.score = float(np.mean(val_total_hist[-k:]))
+
         
 def update(cfg, state):
     pass
@@ -220,16 +429,66 @@ def make_datasets(
 
     return ds_from(train_files, True), ds_from(val_files, False)
 
-def save_loss_plot(train_hist, val_hist, fig_path: Path) -> None:
+def save_loss_plot(
+    train_total_hist,
+    val_total_hist,
+    train_data_hist,
+    val_data_hist,
+    train_phys_hist,
+    val_phys_hist,
+    lambda_hist,          # <-- NEW
+    fig_path: Path,
+) -> None:
     fig_path.parent.mkdir(parents=True, exist_ok=True)
-    fig = plt.figure(figsize=(6, 4))
-    plt.plot(np.arange(1, len(train_hist) + 1), train_hist, label="train")
-    plt.plot(np.arange(1, len(val_hist) + 1), val_hist, label="val")
-    plt.xlabel("epoch")
-    plt.ylabel("loss")
-    plt.yscale("log")  # usually helpful for MSE-like losses
-    plt.grid(True, which="both", alpha=0.3)
-    plt.legend()
+
+    n = len(train_total_hist)
+    epochs = np.arange(1, n + 1)
+
+    train_total = np.asarray(train_total_hist, dtype=float)
+    val_total   = np.asarray(val_total_hist, dtype=float)
+    train_data  = np.asarray(train_data_hist, dtype=float)
+    val_data    = np.asarray(val_data_hist, dtype=float)
+    train_phys  = np.asarray(train_phys_hist, dtype=float)
+    val_phys    = np.asarray(val_phys_hist, dtype=float)
+    lam         = np.asarray(lambda_hist, dtype=float)
+
+    fig, (ax0, ax1, ax2) = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+
+    # ---- subplot 1: total + data ----
+    ax0.plot(epochs, train_total, label="train_total")
+    ax0.plot(epochs, val_total,   label="val_total")
+    ax0.plot(epochs, train_data,  label="train_data", linestyle="--")
+    ax0.plot(epochs, val_data,    label="val_data",   linestyle="--")
+    ax0.set_ylabel("loss (total/data)")
+
+    min_top = np.min([train_total.min(), val_total.min(), train_data.min(), val_data.min()])
+    if min_top > 0:
+        ax0.set_yscale("log")
+        ax0.grid(True, which="both", alpha=0.3)
+    else:
+        ax0.grid(True, which="major", alpha=0.3)
+
+    ax0.legend(ncol=2, fontsize=8)
+
+    # ---- subplot 2: physics ----
+    ax1.plot(epochs, train_phys, label="train_phys", linestyle=":")
+    ax1.plot(epochs, val_phys,   label="val_phys",   linestyle=":")
+    ax1.axhline(0.0, linewidth=1.0, alpha=0.5)
+    ax1.set_ylabel("physics loss")
+    ax1.grid(True, which="major", alpha=0.3)
+    ax1.legend(ncol=2, fontsize=8)
+
+    # ---- subplot 3: lambda_phys ----
+    ax2.plot(epochs, lam, label="lambda_phys")
+    ax2.set_xlabel("epoch")
+    ax2.set_ylabel("lambda_phys")
+    if np.all(lam > 0):
+        ax2.set_yscale("log")  # lambda is usually positive and spans orders of magnitude
+        ax2.grid(True, which="both", alpha=0.3)
+    else:
+        ax2.grid(True, which="major", alpha=0.3)
+    ax2.legend(fontsize=8)
+
     plt.tight_layout()
     fig.savefig(fig_path, dpi=150)
     plt.close(fig)
@@ -286,3 +545,63 @@ def save_speed_compare(mapping, x_b, y_b, Nz: int, fig_path: Path) -> None:
     plt.tight_layout()
     fig.savefig(fig_path, dpi=150)
     plt.close(fig)
+
+def _history_path(out_dir: Path) -> Path:
+    return out_dir / "history.yaml"
+
+def load_history_yaml(out_dir: Path):
+
+    path = _history_path(out_dir)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"resume=True but missing history file: {path}. "
+            "Expected history.yaml alongside checkpoints."
+        )
+
+    data = yaml.safe_load(path.read_text()) or {}
+    epoch = int(data.get("epoch", 0))
+
+    def _lst(key):
+        v = data.get(key, [])
+        if v is None:
+            v = []
+        return list(v)
+
+    return (
+        epoch,
+        _lst("train_total"),
+        _lst("val_total"),
+        _lst("train_data"),
+        _lst("val_data"),
+        _lst("train_phys"),
+        _lst("val_phys"),
+        _lst("lambda_phys"),   # <-- NEW
+    )
+
+def save_history_yaml(
+    out_dir: Path,
+    epoch: int,
+    train_total_hist,
+    val_total_hist,
+    train_data_hist,
+    val_data_hist,
+    train_phys_hist,
+    val_phys_hist,
+    lambda_hist,   # <-- NEW
+) -> None:
+
+    payload = {
+        "epoch": int(epoch),
+        "train_total": [float(x) for x in train_total_hist],
+        "val_total":   [float(x) for x in val_total_hist],
+        "train_data":  [float(x) for x in train_data_hist],
+        "val_data":    [float(x) for x in val_data_hist],
+        "train_phys":  [float(x) for x in train_phys_hist],
+        "val_phys":    [float(x) for x in val_phys_hist],
+        "lambda_phys": [float(x) for x in lambda_hist],  # <-- NEW
+    }
+
+    path = _history_path(out_dir)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(yaml.safe_dump(payload, sort_keys=False))
+    tmp.replace(path)
