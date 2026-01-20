@@ -46,13 +46,6 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Create ice flow object
     state.iceflow = Iceflow()
 
-    if cfg.processes.iceflow.do_pretraining is True:
-        print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
-        return
-
-    # Initialize ice-flow fields: U, V, slidingco, arrhenius
-    initialize_iceflow_fields(cfg, state)
-
     # Initialize vertical discretization
     cfg_numerics = cfg.processes.iceflow.numerics
 
@@ -63,6 +56,13 @@ def initialize(cfg: DictConfig, state: State) -> None:
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
+
+    if cfg.processes.iceflow.do_pretraining is True:
+        print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
+        return
+
+    # Initialize ice-flow fields: U, V, slidingco, arrhenius
+    initialize_iceflow_fields(cfg, state)
 
     # Initialize ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
