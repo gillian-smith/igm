@@ -27,6 +27,7 @@ from igm.processes.iceflow.emulate.utils import save_iceflow_model
 from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
+from igm.processes.iceflow.horizontal import HorizontalDiscrs
 
 
 class Iceflow:
@@ -49,12 +50,16 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Initialize ice-flow fields: U, V, slidingco, arrhenius
     initialize_iceflow_fields(cfg, state)
 
-    # Initialize vertical discretization
+    # Initialize discretization
     cfg_numerics = cfg.processes.iceflow.numerics
 
-    vertical_basis = cfg_numerics.vert_basis.lower()
-    vertical_discr = VerticalDiscrs[vertical_basis](cfg)
-    state.iceflow.vertical_discr = vertical_discr
+    basis_v = cfg_numerics.basis_vertical.lower()
+    discr_v = VerticalDiscrs[basis_v](cfg)
+    state.iceflow.discr_v = discr_v
+
+    basis_h = cfg_numerics.basis_horizontal.lower()
+    discr_h = HorizontalDiscrs[basis_h](cfg)
+    state.iceflow.discr_h = discr_h
 
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing

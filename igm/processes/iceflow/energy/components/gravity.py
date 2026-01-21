@@ -8,6 +8,7 @@ from typing import Any, Dict
 from omegaconf import DictConfig
 
 from .energy import EnergyComponent
+from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.utils.grad.grad import grad_xy
 from igm.utils.stag.stag import stag4h
@@ -25,7 +26,7 @@ class GravityComponent(EnergyComponent):
     """Energy component representing gravitational potential energy."""
 
     name = "gravity"
-    
+
     def __init__(self, params: GravityParams) -> None:
         """Initialize gravity component with parameters."""
         self.params = params
@@ -35,11 +36,11 @@ class GravityComponent(EnergyComponent):
         U: tf.Tensor,
         V: tf.Tensor,
         fieldin: Dict[str, tf.Tensor],
-        vert_disc: VerticalDiscr,
-        staggered_grid: bool,
+        discr_h: HorizontalDiscr,
+        discr_v: VerticalDiscr,
     ) -> tf.Tensor:
         """Compute gravitational energy cost."""
-        return cost_gravity(U, V, fieldin, vert_disc, staggered_grid, self.params)
+        return cost_gravity(U, V, fieldin, discr_h, discr_v, self.params)
 
 
 def get_gravity_params_args(cfg: DictConfig) -> Dict[str, Any]:
@@ -58,8 +59,8 @@ def cost_gravity(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict[str, tf.Tensor],
-    vert_disc: VerticalDiscr,
-    staggered_grid: bool,
+    discr_h: HorizontalDiscr,
+    discr_v: VerticalDiscr,
     gravity_params: GravityParams,
 ) -> tf.Tensor:
     """Compute gravitational energy cost from field inputs."""
@@ -68,15 +69,15 @@ def cost_gravity(
     s = fieldin["usurf"]
     dx = fieldin["dX"]
 
-    V_q = vert_disc.V_q
-    w = vert_disc.w
+    V_q = discr_v.V_q
+    w = discr_v.w
 
     dtype = U.dtype
     rho = tf.cast(gravity_params.rho, dtype)
     g = tf.cast(gravity_params.g, dtype)
     fnge = gravity_params.fnge
 
-    return _cost(U, V, h, s, dx, rho, g, fnge, V_q, w, staggered_grid)
+    return _cost(U, V, h, s, dx, rho, g, fnge, V_q, w)
 
 
 @tf.function()
@@ -91,7 +92,6 @@ def _cost(
     fnge: bool,
     V_q: tf.Tensor,
     w: tf.Tensor,
-    staggered_grid: bool,
 ) -> tf.Tensor:
     """
     Compute the gravitational energy cost term.
@@ -121,8 +121,6 @@ def _cost(
         Quadrature matrix: dofs -> quads
     w : tf.Tensor
         Weights for vertical integration
-    staggered_grid : bool
-        Staggering of (U, V, h)
 
     Returns
     -------
@@ -131,28 +129,24 @@ def _cost(
     """
 
     # Staggering
-    if staggered_grid:
-        U = stag4h(U)
-        V = stag4h(V)
-        h = stag4h(h)
+    U = stag4h(U)
+    V = stag4h(V)
+    h = stag4h(h)
 
     # Retrieve velocity at quadrature points
     u_q = tf.einsum("ij,bjkl->bikl", V_q, U)
     v_q = tf.einsum("ij,bjkl->bikl", V_q, V)
 
     # Compute upper surface gradient ∇s
-    dsdx, dsdy = grad_xy(s, dx, dx, staggered_grid, "extrapolate")
+    dsdx, dsdy = grad_xy(s, dx, dx, staggered_grid=True, mode="extrapolate")
     dsdx_q = dsdx[:, None, :, :]
     dsdy_q = dsdy[:, None, :, :]
-
-    dtype = U.dtype
 
     # Product (u,v)*∇s
     u_dsdl_q = u_q * dsdx_q + v_q * dsdy_q
     if fnge:
-        u_dsdl_q = tf.minimum(u_dsdl_q, tf.constant(0.0, dtype=dtype))
+        u_dsdl_q = tf.minimum(u_dsdl_q, 0.0)
 
     # rho * g * h * ∫ [(u,v)*∇s] dz in MPa * m/year
     w_q = w[None, :, None, None]
-    scale_factor = tf.constant(10.0 ** (-6), dtype=dtype)
-    return scale_factor * rho * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)
+    return 10.0 ** (-6) * rho * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)

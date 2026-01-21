@@ -278,7 +278,9 @@ class OptimizerLBFGS(Optimizer):
 
             U, V = self.map.get_UV(input)
             grad_u_norm, grad_theta_norm = self._get_grad_norm(grad_u, grad_theta)
-            self._update_step_state(iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm)
+            self._update_step_state(
+                iter, U, V, theta_flat, cost, grad_u_norm, grad_theta_norm
+            )
             halt_status = self._check_stopping()
             self._update_display()
 
