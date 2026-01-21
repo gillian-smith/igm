@@ -3,8 +3,6 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-"""Central discretization (matches original grad_stag). Has checkerboard null space!"""
-
 import tensorflow as tf
 from typing import Tuple
 from omegaconf import DictConfig
@@ -15,15 +13,14 @@ from igm.utils.grad.grad import grad_xy
 
 
 class CentralDiscr(HorizontalDiscr):
-    """Staggered one-sided differences (original)."""
 
     def _compute_discr(self, cfg: DictConfig) -> None:
         self.w_h = tf.constant([1.0], self.dtype)
 
     @tf.function
-    def grad_h(self, X: tf.Tensor, dx: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def grad_h(self, X: tf.Tensor, dX: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
 
-        dUdx, dUdy = grad_xy(X, dx, dx, staggered_grid=True)
+        dUdx, dUdy = grad_xy(X, dX, dX, staggered_grid=True)
 
         return dUdx[..., tf.newaxis, :, :, :], dUdy[..., tf.newaxis, :, :, :]
 

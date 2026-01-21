@@ -3,8 +3,6 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
-"""Base class and utilities for horizontal discretization."""
-
 import tensorflow as tf
 from abc import ABC, abstractmethod
 from typing import Tuple
@@ -27,7 +25,7 @@ class HorizontalDiscr(ABC):
 
     def __init__(self, cfg: DictConfig) -> None:
         """Initialize horizontal discretization."""
-        precision = tf.float32  # cfg.processes.iceflow.numerics.precision
+        precision = cfg.processes.iceflow.numerics.precision
         self.dtype = normalize_precision(precision)
         self._compute_discr(cfg)
 
@@ -39,15 +37,27 @@ class HorizontalDiscr(ABC):
         )
 
     @abstractmethod
-    def grad_h(self, X: tf.Tensor, dx: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
-        """Gradients at quadrature points: (batch, Nz, Nq, Ny-1, Nx-1)."""
+    def grad_h(self, X: tf.Tensor, dX: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """
+        Gradients at quadrature points.
+
+        Input X: (Nb, ...,  Ny, Nx)
+        Input dX: (Nb, Ny, Nx)
+        Output: (Nb, Nq, ..., Ny-1, Nx-1)
+        """
         raise NotImplementedError(
             "❌ The horizontal gradient is not implemented in this class."
         )
 
     @abstractmethod
     def interp_h(self, X: tf.Tensor) -> tf.Tensor:
-        """Interpolate to quadrature points: (..., Ny, Nx) -> (..., Nq, Ny-1, Nx-1)."""
+        """
+        Interpolate to quadrature points.
+
+        Input X: (Nb, ...,  Ny, Nx)
+        Input dX: (Nb, Ny, Nx)
+        Output: (Nb, Nq, ..., Ny-1, Nx-1)
+        """
         raise NotImplementedError(
             "❌ The interpolation is not implemented in this class."
         )
