@@ -145,7 +145,7 @@ def initialize(cfg, state):
     LAM_MIN      = tf.constant(1e-3, tf.float32)     # clip range 
     LAM_MAX      = tf.constant(1e3, tf.float32)
     EPS          = tf.constant(1e-12, tf.float32)
-    WARMUP_STEPS = tf.constant(1000, tf.int64)  # e.g. 1000 optimizer steps
+    WARMUP_STEPS = tf.constant(1000, tf.int64)  # number of initial steps to keep lambda_phys frozen at 0
 
     step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
     lambda_phys = tf.Variable(1.0, trainable=False, dtype=tf.float32, name="lambda_phys")
@@ -452,42 +452,52 @@ def save_loss_plot(
     val_phys    = np.asarray(val_phys_hist, dtype=float)
     lam         = np.asarray(lambda_hist, dtype=float)
 
-    fig, (ax0, ax1, ax2) = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    fig, axes = plt.subplots(2, 2, figsize=(7, 8), sharex=True)
+    ax0, ax1 = axes[0]
+    ax2, ax3 = axes[1]
 
-    # ---- subplot 1: total + data ----
+    # ---- subplot 1: total  ----
     ax0.plot(epochs, train_total, label="train_total")
     ax0.plot(epochs, val_total,   label="val_total")
-    ax0.plot(epochs, train_data,  label="train_data", linestyle="--")
-    ax0.plot(epochs, val_data,    label="val_data",   linestyle="--")
-    ax0.set_ylabel("loss (total/data)")
-
-    min_top = np.min([train_total.min(), val_total.min(), train_data.min(), val_data.min()])
-    if min_top > 0:
+    ax0.set_ylabel("loss (total)")
+    min_total = np.min([train_total.min(), val_total.min()])
+    if min_total > 0:
         ax0.set_yscale("log")
         ax0.grid(True, which="both", alpha=0.3)
     else:
         ax0.grid(True, which="major", alpha=0.3)
-
     ax0.legend(ncol=2, fontsize=8)
 
     # ---- subplot 2: physics ----
     ax1.plot(epochs, train_phys, label="train_phys", linestyle=":")
     ax1.plot(epochs, val_phys,   label="val_phys",   linestyle=":")
-    ax1.axhline(0.0, linewidth=1.0, alpha=0.5)
     ax1.set_ylabel("physics loss")
-    ax1.grid(True, which="major", alpha=0.3)
+    min_phys = np.min([train_phys.min(), val_phys.min()])
+    if min_phys > 0:
+        ax1.set_yscale("log")
+        ax1.grid(True, which="both", alpha=0.3)
+    else:
+        ax1.grid(True, which="major", alpha=0.3)
     ax1.legend(ncol=2, fontsize=8)
 
-    # ---- subplot 3: lambda_phys ----
-    ax2.plot(epochs, lam, label="lambda_phys")
-    ax2.set_xlabel("epoch")
-    ax2.set_ylabel("lambda_phys")
+    # ---- subplot 3: data ----
+    ax2.plot(epochs, train_data, label="train_data", linestyle="--")
+    ax2.plot(epochs, val_data,   label="val_data",   linestyle="--")
+    ax2.set_ylabel("data loss")
+    ax2.set_yscale("log")
+    ax2.grid(True, which="major", alpha=0.3)
+    ax2.legend(ncol=2, fontsize=8)
+
+    # ---- subplot 4: lambda_phys ----
+    ax3.plot(epochs, lam, label="lambda_phys")
+    ax3.set_xlabel("epoch")
+    ax3.set_ylabel("lambda_phys")
     if np.all(lam > 0):
-        ax2.set_yscale("log")  # lambda is usually positive and spans orders of magnitude
-        ax2.grid(True, which="both", alpha=0.3)
+        ax3.set_yscale("log")  # lambda is usually positive and spans orders of magnitude
+        ax3.grid(True, which="both", alpha=0.3)
     else:
-        ax2.grid(True, which="major", alpha=0.3)
-    ax2.legend(fontsize=8)
+        ax3.grid(True, which="major", alpha=0.3)
+    ax3.legend(fontsize=8)
 
     plt.tight_layout()
     fig.savefig(fig_path, dpi=150)
