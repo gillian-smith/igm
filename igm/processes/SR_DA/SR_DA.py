@@ -130,8 +130,11 @@ def data_assimilation_initialize(cfg, state):
     da.thk_var = tf.Variable(state.thk, trainable=True, dtype=thk_dtype)
     state.thk = da.thk_var  # downstream sees the TF variable
 
+    # initialize zero state.dJdthk as tf tensor
+    state.dJdthk = tf.zeros_like(state.thk, dtype=thk_dtype)
+
     da.maxiter = int(getattr(getattr(cfg_da, "optimization", {}), "maxiter", 10000))
-    da.out_freq = int(getattr(getattr(cfg_da, "optimization", {}), "output_freq", 100))
+    da.out_freq = int(getattr(getattr(cfg_da, "optimization", {}), "output_freq", 50))
 
     da.cost_components = {}
     da.result = None
@@ -193,48 +196,48 @@ def update(cfg, state):
 
         da.thk_var.assign(thk)
 
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(persistent=True) as tape:
             tape.watch(da.thk_var)
 
-            # Build model inputs from current state (now containing thk_var)
             X = fieldin_state_to_X(cfg, state)
             inputs = state.iceflow.patching.generate_patches(X)
-
-            # Ensure [B,H,W,C] for your cost_fn indexing inputs[0,:,:,:]
             if inputs.shape.rank == 3:
                 inputs = inputs[None, ...]
 
-            # Forward operator: reuse existing iceflow mapping to compute U,V
-            # (this is the forward model; we are only replacing the DA optimizer)
             U, V = state.iceflow.optimizer.map.get_UV(inputs)
+            cost_total, cost_data, cost_reg = da.cost_fn(U, V, inputs)
 
-            cost, cost_data, cost_reg = da.cost_fn(U, V, inputs)
+        # Gradient used for optimization (keep this as total unless you want to optimize misfit-only)
+        grad_thk_total = tape.gradient(cost_total, da.thk_var)
 
-        grad_thk = tape.gradient(cost, da.thk_var)
-        if grad_thk is None:
-            raise RuntimeError(
-                "Gradient w.r.t thickness is None. "
-                "This usually means some step in fieldin_state_to_X / patching / forward model "
-                "breaks TF differentiability (e.g., numpy ops or tf.numpy_function)."
-            )
+        # Gradient you want to SAVE (misfit-only)
+        grad_thk_misfit = tape.gradient(cost_data, da.thk_var)
+
+        del tape
+
+        if grad_thk_total is None:
+            raise RuntimeError("Total gradient w.r.t thickness is None.")
+        if grad_thk_misfit is None:
+            # This can happen if misfit has zero valid points in ACT&REL (or other disconnect)
+            grad_thk_misfit = tf.zeros_like(da.thk_var)
+
+        # Store for output (physical dJ_misfit/dthk)
+        da.latest_grad_thk_misfit = tf.stop_gradient(tf.identity(grad_thk_misfit))
 
         # If optimizing in z=log10(thk), TF already applied chain rule through thk=10**z.
         # But note: grad_thk here is dJ/d(thk_var). We need dJ/dx (x is z or thk).
         if da.transform == "log10":
-            # Recompute z as TF tensor and differentiate properly by making x the variable:
-            # easiest: approximate via chain rule:
-            # dJ/dz = dJ/dthk * dthk/dz = grad_thk * ln(10) * thk
-            grad_x = (grad_thk * tf.cast(np.log(10.0), da.thk_dtype) * da.thk_var)
+            grad_x = grad_thk_total * tf.cast(np.log(10.0), da.thk_dtype) * da.thk_var
         else:
-            grad_x = grad_thk
+            grad_x = grad_thk_total
 
         da.cost_components = {
-            "total": float(cost.numpy()),
+            "total": float(cost_total.numpy()),
             "data": float(cost_data.numpy()),
             "reg": float(cost_reg.numpy()),
         }
 
-        f = float(cost.numpy())
+        f = float(cost_total.numpy())
         g = grad_x.numpy().reshape(-1).astype(np.float64)
         return f, g
 
@@ -242,7 +245,12 @@ def update(cfg, state):
         it["k"] += 1
         if it["k"] % da.out_freq != 0:
             return
+        # Re-evaluate at the accepted iterate xk so the stored gradient matches it.
+        # This is extra work but avoids saving a line-search trial gradient.
+        _f, _g = fun_and_jac(xk)  # updates da.thk_var and da.latest_grad_thk
 
+        # Attach to state so update_ncdf_optimize can write it
+        state.dJdthk = da.latest_grad_thk_misfit
         # Update state.thk already held in da.thk_var; just re-evaluate outputs
         evaluate_iceflow(cfg, state)
         update_ncdf_optimize(cfg, state, it["k"])
