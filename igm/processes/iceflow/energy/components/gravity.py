@@ -10,8 +10,6 @@ from omegaconf import DictConfig
 from .energy import EnergyComponent
 from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
-from igm.utils.grad.grad import grad_xy
-from igm.utils.stag.stag import stag4h
 
 
 class GravityParams(tf.experimental.ExtensionType):
@@ -70,14 +68,14 @@ def cost_gravity(
     dx = fieldin["dX"]
 
     V_q = discr_v.V_q
-    w = discr_v.w
+    w_v = discr_v.w
 
     dtype = U.dtype
     rho = tf.cast(gravity_params.rho, dtype)
     g = tf.cast(gravity_params.g, dtype)
     fnge = gravity_params.fnge
 
-    return _cost(U, V, h, s, dx, rho, g, fnge, V_q, w)
+    return _cost(U, V, h, s, dx, rho, g, fnge, discr_h, V_q, w_v)
 
 
 @tf.function()
@@ -90,14 +88,14 @@ def _cost(
     rho: tf.Tensor,
     g: tf.Tensor,
     fnge: bool,
+    discr_h: HorizontalDiscr,
     V_q: tf.Tensor,
-    w: tf.Tensor,
+    w_v: tf.Tensor,
 ) -> tf.Tensor:
     """
     Compute the gravitational energy cost term.
 
-    Calculates the work done by gravity: rho * g * h * ∫(u·∇s)dz, where the
-    integral is computed over the ice thickness using vertical quadrature.
+    Calculates the work done by gravity: ρ g h ∫ (u,v)·∇s dz
 
     Parameters
     ----------
@@ -111,16 +109,18 @@ def _cost(
         Upper-surface elevation (m)
     dx : tf.Tensor
         Grid spacing (m)
-    rho : float
+    rho : tf.Tensor
         Ice density (kg m^-3)
-    g : float
+    g : tf.Tensor
         Gravity acceleration (m s^-2)
     fnge : bool
         Force negative gravitational energy flag
+    discr_h : HorizontalDiscr
+        Horizontal discretization class (-)
     V_q : tf.Tensor
-        Quadrature matrix: dofs -> quads
-    w : tf.Tensor
-        Weights for vertical integration
+        Quadrature matrix: dofs -> quads (-)
+    w_v : tf.Tensor
+        Weights for vertical integration (-)
 
     Returns
     -------
@@ -128,25 +128,31 @@ def _cost(
         Gravitational energy cost in MPa m/year
     """
 
-    # Staggering
-    U = stag4h(U)
-    V = stag4h(V)
-    h = stag4h(h)
+    # Interpolate to horizontal quad points
+    u_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    v_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    h_h = discr_h.interp_h(h)  # -> (batch, Nq_h, Ny-1, Nx-1)
 
-    # Retrieve velocity at quadrature points
-    u_q = tf.einsum("ij,bjkl->bikl", V_q, U)
-    v_q = tf.einsum("ij,bjkl->bikl", V_q, V)
+    # Evaluate at vertical quad points -> (batch, Nq_h, Nq_v, Ny-1, Nx-1)
+    u_hv = tf.einsum("vz,bhzyx->bhvyx", V_q, u_h)
+    v_hv = tf.einsum("vz,bhzyx->bhvyx", V_q, v_h)
 
-    # Compute upper surface gradient ∇s
-    dsdx, dsdy = grad_xy(s, dx, dx, staggered_grid=True, mode="extrapolate")
-    dsdx_q = dsdx[:, None, :, :]
-    dsdy_q = dsdy[:, None, :, :]
+    # Surface gradient at horizontal quad points -> (batch, Nq_h, Ny-1, Nx-1)
+    dsdx_h, dsdy_h = discr_h.grad_h(s, dx)
 
-    # Product (u,v)*∇s
-    u_dsdl_q = u_q * dsdx_q + v_q * dsdy_q
+    # Expand surface gradient for broadcasting -> (batch, Nq_h, Nq_v, Ny-1, Nx-1)
+    dsdx_hv = dsdx_h[:, :, tf.newaxis, :, :]
+    dsdy_hv = dsdy_h[:, :, tf.newaxis, :, :]
+
+    # (u,v)·∇s
+    u_dot_grad_s = u_hv * dsdx_hv + v_hv * dsdy_hv
+
+    # Optionally enforce non-positive (flow not going uphill)
     if fnge:
-        u_dsdl_q = tf.minimum(u_dsdl_q, 0.0)
+        u_dot_grad_s = tf.minimum(u_dot_grad_s, 0.0)
 
-    # rho * g * h * ∫ [(u,v)*∇s] dz in MPa * m/year
-    w_q = w[None, :, None, None]
-    return 10.0 ** (-6) * rho * g * h * tf.reduce_sum(u_dsdl_q * w_q, axis=1)
+    # Integrate: ρ g h ∫ (u,v)·∇s dz
+    w_h = discr_h.w_h[tf.newaxis, :, tf.newaxis, tf.newaxis, tf.newaxis]
+    w_v = w_v[tf.newaxis, tf.newaxis, :, tf.newaxis, tf.newaxis]
+    h_h = h_h[:, :, tf.newaxis, :, :]
+    return 1e-6 * rho * g * tf.reduce_sum(h_h * u_dot_grad_s * w_h * w_v, axis=[1, 2])

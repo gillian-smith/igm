@@ -127,6 +127,51 @@ def _cost(
     V_q: tf.Tensor,
     V_q_grad: tf.Tensor,
 ) -> tf.Tensor:
+    """
+    Compute the viscous energy cost term.
+
+    Calculates the viscous dissipation: h ∫ B ε̇^(1+1/n) / (1+1/n) dz
+
+    Parameters
+    ----------
+    U : tf.Tensor
+        Horizontal velocity along x axis (m/year)
+    V : tf.Tensor
+        Horizontal velocity along y axis (m/year)
+    h : tf.Tensor
+        Ice thickness (m)
+    s : tf.Tensor
+        Upper-surface elevation (m)
+    A : tf.Tensor
+        Arrhenius factor (MPa^-n year^-1)
+    dx : tf.Tensor
+        Grid spacing (m)
+    n : tf.Tensor
+        Glen's flow law exponent (-)
+    h_min : tf.Tensor
+        Minimum ice thickness threshold (m)
+    eps_dot_regu : tf.Tensor
+        Strain rate regularization (year^-1)
+    eps_dot_min : tf.Tensor
+        Minimum strain rate (year^-1)
+    eps_dot_max : tf.Tensor
+        Maximum strain rate (year^-1)
+    discr_h : HorizontalDiscr
+        Horizontal discretization class (-)
+    w_v : tf.Tensor
+        Weights for vertical integration (-)
+    zeta_v : tf.Tensor
+        Vertical quadrature points in [0,1] (-)
+    V_q : tf.Tensor
+        Vertical quadrature matrix: dofs -> quads (-)
+    V_q_grad : tf.Tensor
+        Vertical gradient matrix: dofs -> grad at quads (-)
+
+    Returns
+    -------
+    tf.Tensor
+        Viscous energy cost in MPa m/year
+    """
 
     # Ice stiffness parameter
     B = 2.0 * tf.pow(A, -1.0 / n)

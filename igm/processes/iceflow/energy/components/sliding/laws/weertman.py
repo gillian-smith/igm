@@ -61,7 +61,7 @@ def cost_weertman(
     m = tf.cast(weertman_params.exponent, dtype)
     u_regu = tf.cast(weertman_params.regu, dtype)
 
-    return _cost(U, V, h, s, C, dx, m, u_regu, V_b)
+    return _cost(U, V, h, s, C, dx, m, u_regu, discr_h, V_b)
 
 
 @tf.function()
@@ -74,6 +74,7 @@ def _cost(
     dx: tf.Tensor,
     m: tf.Tensor,
     u_regu: tf.Tensor,
+    discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:
     """
@@ -101,8 +102,10 @@ def _cost(
         Weertman exponent (-)
     u_regu : tf.Tensor
         Regularization parameter for velocity magnitude (m/year)
+    discr_h: HorizontalDiscr
+        Horizontal discretization class (-)
     V_b : tf.Tensor
-        Basal extraction vector: dofs -> basal
+        Basal extraction vector: dofs -> basal (-)
 
     Returns
     -------
@@ -110,25 +113,29 @@ def _cost(
         Weertman sliding cost in MPa m/year
     """
 
-    # Staggering
-    U = stag4h(U)
-    V = stag4h(V)
-    C = stag4h(C)
+    # Interpolate to horizontal quad points
+    U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    V_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    C_h = discr_h.interp_h(C)  # -> (batch, Nq_h, Ny-1, Nx-1)
 
-    # Retrieve basal velocity
-    ux_b = tf.einsum("j,bjkl->bkl", V_b, U)
-    uy_b = tf.einsum("j,bjkl->bkl", V_b, V)
+    # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
+    ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)
+    uy_b = tf.einsum("z,bhzyx->bhyx", V_b, V_h)
 
-    # Compute bed gradient ∇b
+    # Compute bed gradient ∇b -> (batch, Nq_h, Ny-1, Nx-1)
     b = s - h
-    dbdx, dbdy = grad_xy(b, dx, dx, staggered_grid=True, mode="extrapolate")
+    dbdx_h, dbdy_h = discr_h.grad_h(b, dx)
 
-    # Compute basal velocity magnitude (with norm M and regularization)
-    u_corr_b = ux_b * dbdx + uy_b * dbdy
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
+    # Basal velocity magnitude with bed slope correction and regu
+    u_corr_b = ux_b * dbdx_h + uy_b * dbdy_h
+    u_b = tf.sqrt(ux_b**2 + uy_b**2 + u_regu**2 + u_corr_b**2)
 
     # Effective exponent
-    s = 1.0 + 1.0 / m
+    p = 1.0 + 1.0 / m
 
-    # C * |u_b|^s / s
-    return C * tf.pow(u_b, s) / s
+    # C * |u_b|^p / p at each quad point
+    cost_h = C_h * tf.pow(u_b, p) / p
+
+    # Integrate over horizontal quad points
+    w_h = discr_h.w_h[tf.newaxis, :, tf.newaxis, tf.newaxis]
+    return tf.reduce_sum(cost_h * w_h, axis=1)

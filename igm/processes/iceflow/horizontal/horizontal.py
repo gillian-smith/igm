@@ -41,9 +41,9 @@ class HorizontalDiscr(ABC):
         """
         Gradients at quadrature points.
 
-        Input X: (Nb, ...,  Ny, Nx)
-        Input dX: (Nb, Ny, Nx)
-        Output: (Nb, Nq, ..., Ny-1, Nx-1)
+        Input X: (batch, ...,  Ny, Nx)
+        Input dX: (batch, Ny, Nx)
+        Output: (batch, Nq, ..., Ny-1, Nx-1)
         """
         raise NotImplementedError(
             "❌ The horizontal gradient is not implemented in this class."
@@ -54,9 +54,9 @@ class HorizontalDiscr(ABC):
         """
         Interpolate to quadrature points.
 
-        Input X: (Nb, ...,  Ny, Nx)
-        Input dX: (Nb, Ny, Nx)
-        Output: (Nb, Nq, ..., Ny-1, Nx-1)
+        Input X: (batch, ...,  Ny, Nx)
+        Input dX: (batch, Ny, Nx)
+        Output: (batch, Nq, ..., Ny-1, Nx-1)
         """
         raise NotImplementedError(
             "❌ The interpolation is not implemented in this class."
