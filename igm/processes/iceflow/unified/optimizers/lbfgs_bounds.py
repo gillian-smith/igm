@@ -31,9 +31,12 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
     ) -> tf.Tensor:
         eps = tf.cast(self.eps, w.dtype)
+        # for minimization with gradient g = ∂f/∂w, the steepest-descent direction is -g
+        # At the lower bound, you can only move upward into the feasible region ⇒ you need -g > 0 ⇒ g < 0.
+        # visa versa for the upper bound.
         interior = tf.logical_and(w > L + eps, w < U - eps)
-        at_lower = tf.logical_and(w <= L + eps, g > 0.0)
-        at_upper = tf.logical_and(w >= U - eps, g < 0.0)
+        at_lower = tf.logical_and(w <= L + eps, g < 0.0)
+        at_upper = tf.logical_and(w >= U - eps, g > 0.0)
         return tf.logical_or(interior, tf.logical_or(at_lower, at_upper))
 
     def _force_descent(
@@ -43,7 +46,9 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         mask = self._get_mask(theta_flat, grad_theta_flat, L, U)
         p_flat = tf.where(mask, p_flat, tf.zeros_like(p_flat))
         dot_gp = self._dot(grad_theta_flat, p_flat)
-        return tf.cond(dot_gp >= 0.0, lambda: -grad_theta_flat, lambda: p_flat), mask
+        # Fallback must also respect mask (projected steepest descent on free variables)
+        p_sd = tf.where(mask, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
+        return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask
 
     def _apply_step(
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
