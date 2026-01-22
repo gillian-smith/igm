@@ -125,7 +125,7 @@ class OptimizerLBFGS(Optimizer):
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
-
+    
     def _constrain_pair(
         self,
         s: tf.Tensor,
@@ -133,8 +133,16 @@ class OptimizerLBFGS(Optimizer):
         w_old: tf.Tensor,
         theta_trial: Optional[tf.Tensor],
         mask: Optional[tf.Tensor],
+        w_new: Optional[tf.Tensor] = None,
+        g_new: Optional[tf.Tensor] = None,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
         return s, y
+    
+    def _clip_alpha(
+        self, alpha: tf.Tensor, theta_flat: tf.Tensor, p_flat: tf.Tensor
+    ) -> tf.Tensor:
+        # Unbounded default: no clipping
+        return alpha
 
     @tf.function(reduce_retracing=True)
     def _update_memory(
@@ -253,6 +261,7 @@ class OptimizerLBFGS(Optimizer):
             # Line search
             alpha = self._line_search(theta_flat, p_flat, input)
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
+            alpha = self._clip_alpha(alpha, theta_flat, p_flat)
 
             # Apply step
             theta_flat, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
@@ -264,7 +273,7 @@ class OptimizerLBFGS(Optimizer):
 
             # Curvature pair
             s, y = theta_flat - theta_prev, grad_theta_flat - grad_theta_prev
-            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask)
+            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat)
 
             # Update memory
             s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
