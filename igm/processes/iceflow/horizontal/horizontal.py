@@ -12,13 +12,19 @@ from igm.utils.math.precision import normalize_precision
 
 
 class HorizontalDiscr(ABC):
-    """
-    Abstract horizontal discretization.
+    """Abstract base class for horizontal discretization schemes.
 
-    Attributes
-    ----------
-    w_h: tf.Tensor
-        Quadrature weights, shape (Nq,).
+    This class defines the interface for computing horizontal gradients and
+    field interpolations on a structured 2D grid.
+
+    All discretization schemes transform field values defined at grid nodes
+    (shape: batch, ..., Ny, Nx) into values at quadrature points within cells
+    (shape: batch, Nq, ..., Ny-1, Nx-1), where Nq is the number of evaluation
+    points per cell. The quadrature weights w_h are used for numerical
+    integration over cells.
+
+    Attributes:
+        w_h: Quadrature weights of shape (Nq,).
     """
 
     w_h: tf.Tensor

@@ -11,6 +11,25 @@ from .horizontal import HorizontalDiscr
 
 
 class P1Discr(HorizontalDiscr):
+    """Linear triangular (P1) finite-element discretization.
+
+    Subdivides each quadrilateral cell into two triangles and evaluates
+    gradients at their centroids. The triangulation uses a consistent diagonal:
+        - T1 (lower triangle): vertices SW → SE → NE
+        - T2 (upper triangle): vertices SW → NW → NE
+
+    Gradients are piecewise constant within each triangle, computed directly
+    from vertex differences:
+        - T1: dX/dx = (X_se - X_sw)/dx, dX/dy = (X_ne - X_se)/dx
+        - T2: dX/dx = (X_ne - X_nw)/dx, dX/dy = (X_nw - X_sw)/dx
+
+    Interpolation evaluates at triangle centroids (average of 3 vertices):
+        - T1: (X_sw + X_se + X_ne) / 3
+        - T2: (X_sw + X_nw + X_ne) / 3
+
+    Attributes:
+        w_h: Quadrature weights [0.5, 0.5] giving equal weight to each triangle.
+    """
 
     def _compute_discr(self, cfg: DictConfig) -> None:
         self.w_h = tf.constant([0.5, 0.5], self.dtype)

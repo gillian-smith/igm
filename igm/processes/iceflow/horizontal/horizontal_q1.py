@@ -12,6 +12,29 @@ from .horizontal import HorizontalDiscr
 
 
 class Q1Discr(HorizontalDiscr):
+    """Bilinear quadrilateral (Q1) finite-element discretization.
+
+    Implements standard Q1 finite elements with 2×2 Gaussian quadrature. Each
+    quadrilateral cell has four evaluation points located at Gauss points
+    (ξ, η) = (0.5 ± 1/√3, 0.5 ± 1/√3) in the reference element [0,1]².
+
+    Gradients are computed by:
+        1. Computing edge derivatives: dX/dx along south/north edges,
+           dX/dy along west/east edges.
+        2. Interpolating these edge derivatives to Gauss points using
+           bilinear basis functions: (1-η)·south + η·north for dX/dx,
+           (1-ξ)·west + ξ·east for dX/dy.
+
+    Interpolation uses the standard bilinear formula:
+        X(ξ,η) = (1-ξ)(1-η)·X_sw + ξ(1-η)·X_se
+               + (1-ξ)η·X_nw + ξη·X_ne
+
+    Attributes:
+        w_h: Quadrature weights [0.25, 0.25, 0.25, 0.25] for equal weighting
+            of the 4 Gauss points.
+        gp_xi: ξ-coordinates of Gauss points in reference element [0,1].
+        gp_eta: η-coordinates of Gauss points in reference element [0,1].
+    """
 
     def _compute_discr(self, cfg: DictConfig) -> None:
         self.w_h = tf.constant([0.25, 0.25, 0.25, 0.25], self.dtype)

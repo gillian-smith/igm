@@ -11,6 +11,30 @@ from .horizontal import HorizontalDiscr
 
 
 class MACDiscr(HorizontalDiscr):
+    """Marker-and-Cell (MAC) staggered grid discretization.
+
+    Implements the classic MAC staggered grid approach where different gradient
+    components are evaluated at different cell edges. This arrangement naturally
+    satisfies discrete conservation properties and avoids checker-board
+    instabilities common in collocated schemes.
+
+    Gradient evaluation locations:
+        - Eval 0: dX/dx at south edge midpoint, dX/dy at west edge midpoint
+        - Eval 1: dX/dx at north edge midpoint, dX/dy at east edge midpoint
+
+    Gradients are computed as simple edge differences:
+        - dX/dx = (X_east - X_west) / dx at horizontal edges
+        - dX/dy = (X_north - X_south) / dx at vertical edges
+
+    Interpolation computes cell-center values as the average of four corners:
+        X_center = (X_sw + X_se + X_nw + X_ne) / 4
+
+    The same center value is returned twice (for both evaluation sets) to
+    maintain consistent tensor shapes with other discretizations.
+
+    Attributes:
+        w_h: Quadrature weights [0.5, 0.5] for combining the two evaluation sets.
+    """
 
     def _compute_discr(self, cfg: DictConfig) -> None:
         self.w_h = tf.constant([0.5, 0.5], self.dtype)
