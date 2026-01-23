@@ -30,10 +30,10 @@ def update(cfg, state):
 
     thkexp = tf.repeat(tf.expand_dims(state.thk, axis=0), state.U.shape[0], axis=0)
 
-    if cfg.processes.iceflow.numerics.vert_basis.lower() in ["lagrange", "molho"]:
+    if cfg.processes.iceflow.numerics.basis_vertical.lower() in ["lagrange", "molho"]:
         state.U = tf.where(thkexp > 0, state.U, dirx)
         state.V = tf.where(thkexp > 0, state.V, diry)
-    elif cfg.processes.iceflow.numerics.vert_basis.lower() == "legendre":
+    elif cfg.processes.iceflow.numerics.basis_vertical.lower() == "legendre":
         state.U = tf.where(
             thkexp > 0, state.U, tf.concat([dirx[None, ...], 0.0 * state.U[1:]], axis=0)
         )
