@@ -42,7 +42,6 @@ def iceflow_energy(
 @tf.function()
 def iceflow_energy_XY(
     Nz: int,
-    dim_arrhenius: int,
     fieldin_names: List[str],
     X: tf.Tensor,
     Y: tf.Tensor,
@@ -55,9 +54,7 @@ def iceflow_energy_XY(
 ) -> tf.TensorArray:
 
     U, V = Y_to_UV(Nz, Y)
-    fieldin = X_to_fieldin(
-        X=X, fieldin_names=fieldin_names, dim_arrhenius=dim_arrhenius, Nz=Nz
-    )
+    fieldin = X_to_fieldin(X=X, fieldin_names=fieldin_names)
 
     return iceflow_energy(
         U, V, fieldin, discr_h, discr_v, energy_components, batch_size, Ny, Nx
@@ -66,8 +63,6 @@ def iceflow_energy_XY(
 
 @tf.function()
 def iceflow_energy_UV(
-    Nz: int,
-    dim_arrhenius: int,
     inputs_names: List[str],
     inputs: tf.Tensor,
     U: tf.Tensor,
@@ -77,9 +72,7 @@ def iceflow_energy_UV(
     energy_components: List[EnergyComponent],
 ) -> tf.TensorArray:
 
-    fieldin = X_to_fieldin(
-        X=inputs, fieldin_names=inputs_names, dim_arrhenius=dim_arrhenius, Nz=Nz
-    )
+    fieldin = X_to_fieldin(X=inputs, fieldin_names=inputs_names)
 
     Ny = inputs.shape[1]
     Nx = inputs.shape[2]

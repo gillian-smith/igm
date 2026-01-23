@@ -16,7 +16,11 @@ from ..iceflow.emulate.emulate import *
 from ..iceflow.solve.solve import *
 from ..iceflow.energy.energy import *
 
-from igm.processes.iceflow.utils.misc import X_to_fieldin, Y_to_UV, UV_to_Y
+from igm.processes.iceflow.utils.data_preprocessing import (
+    X_to_fieldin,
+    Y_to_UV,
+    UV_to_Y,
+)
 
 from igm.processes.iceflow.utils.vertical_discretization import (
     define_vertical_weight,
@@ -44,9 +48,7 @@ def initialize(cfg, state):
         + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
         + "_"
     )
-    state.direct_name += (
-        str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1))
-    )
+    state.direct_name += "2" + "_" + str(int(1))
 
     os.makedirs(state.direct_name, exist_ok=True)
 
@@ -167,13 +169,7 @@ def compute_solutions(cfg, state):
         resol = float((x[1] - x[0]) * co)
         dX = tf.ones_like(thk) * resol
 
-        if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-            arrhenius = (
-                tf.ones((cfg.processes.iceflow.numerics.Nz, thk.shape[0], thk.shape[1]))
-                * val_A
-            )
-        else:
-            arrhenius = tf.ones_like(thk) * val_A
+        arrhenius = tf.ones_like(thk) * val_A
 
         slidingco = tf.ones_like(thk) * val_C
 
@@ -253,9 +249,7 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
 
     import random
 
-    nb_inputs = len(cfg.processes.iceflow.emulator.fieldin) + (
-        cfg.processes.iceflow.physics.dim_arrhenius == 3
-    ) * (cfg.processes.iceflow.numerics.Nz - 1)
+    nb_inputs = len(cfg.processes.iceflow.emulator.fieldin)
     nb_outputs = 2 * cfg.processes.iceflow.numerics.Nz
 
     if os.path.exists("model0.h5"):
@@ -367,12 +361,7 @@ def train_iceflow_emulator(cfg, state, trainingset, augmentation=True):
 
             PAD = compute_PAD(cfg, nx, ny)
 
-            if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-                arrhenius = (
-                    tf.ones((1, cfg.processes.iceflow.numerics.Nz, ny, nx)) * val_A
-                )
-            else:
-                arrhenius = tf.ones_like(thk) * val_A
+            arrhenius = tf.ones_like(thk) * val_A
 
             slidingco = tf.ones_like(thk) * val_C
 

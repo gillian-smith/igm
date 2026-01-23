@@ -25,8 +25,6 @@ class VerticalDiscrEnthalpy:
         Normalized elevation of each node/level, shape (Ndof_E, 1, 1).
     dzeta : tf.Tensor
         Spacings between consecutive zeta values, shape (Ndof_E-1, 1, 1).
-    V_E_to_U_q : tf.Tensor
-        Map enthalpy DOFs → values at velocity quad points, shape (Nq_U, Ndof_E).
     V_U_to_E : tf.Tensor
         Map velocity DOFs → values at enthalpy nodes, shape (Ndof_E, Ndof_U).
     """
@@ -36,12 +34,10 @@ class VerticalDiscrEnthalpy:
     zeta: tf.Tensor
     dzeta: tf.Tensor
     V_U_to_E: tf.Tensor
-    V_E_to_U_q: tf.Tensor
 
 
 def compute_discr_enthalpy(
     cfg: DictConfig,
-    zeta_U: tf.Tensor,
     basis_U: Tuple[Callable[[tf.Tensor], tf.Tensor], ...],
     dtype: tf.dtypes.DType = tf.float32,
 ) -> VerticalDiscrEnthalpy:
@@ -58,9 +54,6 @@ def compute_discr_enthalpy(
     depth_E = depth_E[..., None, None]
     weights_E = weights_E[..., None, None]
 
-    basis_E = [compute_basis(zeta_E, i) for i in range(Nz_E)]
-    V_E_to_U_q = compute_basis_matrix(basis_E, zeta_U)
-
     V_U_to_E = compute_basis_matrix(basis_U, zeta_E)
 
     vertical_discr = VerticalDiscrEnthalpy()
@@ -68,7 +61,6 @@ def compute_discr_enthalpy(
     vertical_discr.weights = weights_E
     vertical_discr.zeta = zeta_E
     vertical_discr.dzeta = dzeta_E
-    vertical_discr.V_E_to_U_q = V_E_to_U_q
     vertical_discr.V_U_to_E = V_U_to_E
 
     return vertical_discr

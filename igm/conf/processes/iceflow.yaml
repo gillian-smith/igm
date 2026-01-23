@@ -23,7 +23,6 @@ iceflow:
     enhancement_factor: 1.0
     exp_glen: 3.0
     regu_glen: 1.0e-05
-    dim_arrhenius: 2 
     thr_ice_thk: 0.1
     min_sr: 1.0e-20
     max_sr: 1.0e+20

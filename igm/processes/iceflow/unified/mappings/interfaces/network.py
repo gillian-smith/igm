@@ -50,10 +50,7 @@ class InterfaceNetwork(InterfaceMapping):
         else:
             warnings.warn("No pretrained emulator found. Starting from scratch.")
 
-            nb_inputs = len(cfg_unified.inputs) + (cfg_physics.dim_arrhenius == 3) * (
-                cfg_numerics.Nz - 1
-            )
-
+            nb_inputs = len(cfg_unified.inputs)
             nb_outputs = 2 * cfg_numerics.Nz
             architecture_name = cfg_unified.network.architecture
 

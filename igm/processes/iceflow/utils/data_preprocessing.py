@@ -8,12 +8,7 @@ def prepare_X(
 ) -> Tuple[tf.Tensor, List[List[int]]]:
     """General preprocessing of the data for the emulator: includes setting up the dimensions, perturbation, patching, and padding."""
 
-    dim_arrhenius = cfg.processes.iceflow.physics.dim_arrhenius
-
-    if dim_arrhenius == 3:
-        X = fieldin_to_X_3d(dim_arrhenius, fieldin)
-    elif dim_arrhenius == 2:
-        X = fieldin_to_X_2d(fieldin)
+    X = fieldin_to_X_2d(fieldin)
 
     if pertubate:
         X = pertubate_X(cfg, X)
@@ -78,71 +73,28 @@ def pertubate_X(cfg, X):
     return tf.concat(XX, axis=0)
 
 
-def match_fieldin_dimensions(fieldin):
-
-    for i in tf.range(len(fieldin)):
-        field = fieldin[i]
-
-        if tf.rank(field) == 2:
-            field = tf.expand_dims(field, axis=0)
-        if i == 0:
-            fieldin_matched = field
-        else:
-
-            fieldin_matched = tf.concat([fieldin_matched, field], axis=0)
-
-    fieldin_matched = tf.expand_dims(fieldin_matched, axis=0)
-    fieldin_matched = tf.transpose(fieldin_matched, perm=[0, 2, 3, 1])
-    return fieldin_matched
-
-
 def fieldin_state_to_X(cfg, state) -> tf.Tensor:
     """This is a bit confusing variable naming. Essentially, it takes the inputs specified in the config files, checks they are in state, and then returns a stacked tensor.
     Previously, this was called 'get_fieldin' but typically field_in is a dictionary - not a stacked tensor - hence the confusion.
     """
 
     fieldin = [vars(state)[f] for f in cfg.processes.iceflow.unified.inputs]
-    if cfg.processes.iceflow.physics.dim_arrhenius == 3:
-        fieldin = match_fieldin_dimensions(fieldin)
-    elif cfg.processes.iceflow.physics.dim_arrhenius == 2:
-        fieldin = tf.stack(fieldin, axis=-1)
+    fieldin = tf.stack(fieldin, axis=-1)
 
     return fieldin
 
 
 @tf.function(jit_compile=True)
 def fieldin_to_X_2d(fieldin):
-    """Converts the fieldin variables to X (2D as the arrenhius dimension is 2D). This X is used as input to the emulator."""
+    """Converts the fieldin variables to X (2D). This X is used as input to the emulator."""
 
     return tf.expand_dims(fieldin, axis=0)
 
 
-def fieldin_to_X_3d(dim_arrhenius, fieldin):
-    """Converts the fieldin variables to X (3D as the arrenhius dimension is 3D). This X is used as input to the emulator."""
-
-    return fieldin
-
-
 @tf.function(jit_compile=True)
-def X_to_fieldin(
-    X: tf.Tensor, fieldin_names: List, dim_arrhenius: int, Nz: int
-) -> Dict[str, tf.Tensor]:
+def X_to_fieldin(X: tf.Tensor, fieldin_names: List) -> Dict[str, tf.Tensor]:
     """Converts the input tensor X to a dictionary of fieldin variables."""
-
-    fieldin = {}
-    idx = 0
-
-    for name in fieldin_names:
-        if name.lower() == "arrhenius" and dim_arrhenius == 3:
-            fieldin[name] = tf.experimental.numpy.moveaxis(
-                X[..., idx : idx + Nz], [-1], [1]
-            )
-            idx += Nz
-        else:
-            fieldin[name] = X[..., idx]
-            idx += 1
-
-    return fieldin
+    return {name: X[..., i] for i, name in enumerate(fieldin_names)}
 
 
 @tf.function(jit_compile=True)

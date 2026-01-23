@@ -56,9 +56,7 @@ class VerticalDiscr(ABC):
         basis_fct = self._compute_discr(cfg)
 
         if "enthalpy" in cfg.processes:
-            self.enthalpy = compute_discr_enthalpy(
-                cfg, self.zeta, basis_fct, self.dtype
-            )
+            self.enthalpy = compute_discr_enthalpy(cfg, basis_fct, self.dtype)
 
     @abstractmethod
     def _compute_discr(

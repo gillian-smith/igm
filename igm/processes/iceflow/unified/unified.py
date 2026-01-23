@@ -35,12 +35,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
 
     state.iceflow.preparation_params = preparation_params
     X = fieldin_state_to_X(cfg, state)
-    fieldin_dict = X_to_fieldin(
-        X,
-        fieldin_names=preparation_params.fieldin_names,
-        dim_arrhenius=cfg.processes.iceflow.physics.dim_arrhenius,
-        Nz=cfg.processes.iceflow.numerics.Nz,
-    )
+    fieldin_dict = X_to_fieldin(X, fieldin_names=preparation_params.fieldin_names)
 
     state.iceflow.patching = OverlapPatching(
         patch_size=preparation_params.patch_size,

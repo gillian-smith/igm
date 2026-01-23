@@ -83,10 +83,6 @@ physics:
     Type: float
     Description: "Regularization parameter for Glen's flow law."
     Units: dimless
-  dim_arrhenius:
-    Type: integer
-    Description: "Dimension of the Arrhenius factor; 2 for 2D, 3 for 3D."
-    Units: dimless
   thr_ice_thk:
     Type: float
     Description: "Minimal value for the ice thickness in the strain-rate computation."
