@@ -1,0 +1,239 @@
+cwd: ${get_cwd:0}
+core:
+  url_data: ''
+  folder_data: data
+  logging_file: ''
+  logging: false
+  tf_logging_level: WARNING
+  igm_logging_level: WARNING
+  hardware:
+    gpu_info: false
+    visible_gpus:
+    - 0
+    strategy: none
+  print_params: false
+  print_comp: false
+  print_info: true
+  print_imported_modules: false
+  check_compat_params: true
+  structure:
+    root_foldername: user
+    conf_foldername: conf
+    code_foldername: code
+    input_modules_foldername: inputs
+    process_modules_foldername: processes
+    output_modules_foldername: outputs
+processes:
+  iceflow:
+    method: unified
+    force_max_velbar: 0.0
+    physics:
+      energy_components:
+      - viscosity
+      - gravity
+      sliding:
+        law: weertman
+        weertman:
+          regu: 1.0e-10
+          exponent: 3.0
+        coulomb:
+          regu: 1.0e-10
+          exponent: 3.0
+          mu: 0.4
+        budd:
+          regu: 1.0e-10
+          exponent: 3.0
+      gravity_cst: 9.81
+      ice_density: 910.0
+      water_density: 1000.0
+      init_slidingco: 0.0464
+      init_arrhenius: 78.0
+      enhancement_factor: 1.0
+      exp_glen: 3.0
+      regu_glen: 1.0e-05
+      dim_arrhenius: 2
+      thr_ice_thk: 0.1
+      min_sr: 1.0e-20
+      max_sr: 1.0e+20
+      force_negative_gravitational_energy: false
+      cf_eswn: []
+    numerics:
+      precision: single
+      ord_grad_u: l2_weighted
+      ord_grad_theta: l2_weighted
+      Nz: 2
+      vert_spacing: 4.0
+      basis_horizontal: central
+      basis_vertical: molho
+    solver:
+      step_size: 1.0
+      nbitmax: 100
+      optimizer: adam
+      print_cost: false
+      fieldin:
+      - thk
+      - usurf
+      - arrhenius
+      - slidingco
+      - dX
+    emulator:
+      fieldin:
+      - thk
+      - usurf
+      - arrhenius
+      - slidingco
+      - dX
+      retrain_freq: 10
+      print_cost: false
+      lr: 2.0e-05
+      lr_init: 0.0001
+      lr_decay: 0.95
+      warm_up_it: -10000000000.0
+      nbit_init: 1
+      nbit: 1
+      framesizemax: 750
+      split_patch_method: sequential
+      pretrained: true
+      name: ''
+      save_model: false
+      exclude_borders: 0
+      optimizer: Adam
+      optimizer_clipnorm: 1.0
+      optimizer_epsilon: 1.0e-07
+      save_cost: ''
+      output_directory: ''
+      plot_sol: false
+      pertubate: false
+      network:
+        architecture: cnn
+        multiple_window_size: 0
+        activation: LeakyReLU
+        nb_layers: 16
+        nb_blocks: 4
+        nb_out_filter: 32
+        conv_ker_size: 3
+        dropout_rate: 0.0
+        weight_initialization: glorot_uniform
+        cnn3d_for_vertical: false
+        batch_norm: false
+        l2_reg: 0.0
+        separable: false
+        residual: true
+    diagnostic:
+      save_freq: 1
+      filename_metrics: diagnostic_metrics.txt
+    unified:
+      mapping: network
+      bcs:
+      - frozen_bed
+      - periodic_ns
+      - periodic_we
+      optimizer: lbfgs
+      nbit: 1
+      nbit_init: 2000
+      nbit_warmup: -1
+      retrain_freq: 10
+      adam:
+        lr: 2.0e-05
+        lr_init: 0.0001
+        lr_decay: 1.0
+        lr_decay_steps: 1000
+        optimizer_clipnorm: 1.0
+      lbfgs:
+        memory: 10
+        alpha_min: 0.0
+      sequential:
+        stages: []
+      line_search: armijo
+      inputs:
+      - thk
+      - usurf
+      - arrhenius
+      - slidingco
+      - dX
+      normalization:
+        method: adaptive
+        fixed:
+          inputs_offsets:
+            thk: 0.0
+            usurf: 0.0
+            arrhenius: 0.0
+            slidingco: 0.0
+            dX: 0.0
+            X: 0.0
+            'Y': 0.0
+          inputs_variances:
+            thk: 1.0
+            usurf: 1.0
+            arrhenius: 1.0
+            slidingco: 1.0
+            dX: 1.0
+            X: 1.0
+            'Y': 1.0
+      network:
+        debug_mode: false
+        debug_freq: 100
+        pretrained: false
+        print_summary: false
+        output_scale: 1.0
+        architecture: CNN
+      data_preparation:
+        patch_size: 1000
+        overlap: 0.0
+        batch_size: 32
+        rotation_probability: 0.0
+        flip_probability: 0.0
+        noise_type: none
+        noise_scale: 0.0
+        target_samples: 1
+      halt:
+        freq: 1
+        success:
+        - criterion: rel_tol
+          metric: cost
+          rel_tol:
+            tol: 1.0e-08
+        - criterion: rel_tol
+          metric: u
+          rel_tol:
+            tol: 1.0e-08
+        failure:
+        - criterion: 'nan'
+          metric: u
+        - criterion: 'inf'
+          metric: u
+        criteria:
+          rel_tol:
+            tol: 0.001
+            ord: l2
+          abs_tol:
+            tol: 0.001
+            ord: l2_weighted
+          patience:
+            patience: 100
+          'inf': {}
+          'nan': {}
+        metrics:
+          theta: {}
+          u: {}
+          cost: {}
+          grad_u_norm: {}
+          grad_theta_norm: {}
+      display:
+        print_cost: true
+        print_cost_freq: 1
+outputs:
+  write_ncdf:
+    output_file: results.nc
+    vars_to_save:
+    - topg
+    - usurf
+    - thk
+    - velbar_mag
+    - velsurf_mag
+    - velbase_mag
+    - slidingco
+inputs:
+  init_state:
+    L: 160000.0
+    'n': 100.0

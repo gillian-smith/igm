@@ -1,0 +1,6 @@
+- +experiment=params_adam
+- processes.iceflow.method=unified
+- processes.iceflow.unified.mapping=identity
+- processes.iceflow.unified.optimizer=adam
+- inputs.init_state.L=40000.0
+- processes.iceflow.unified.adam.lr_init=0.9

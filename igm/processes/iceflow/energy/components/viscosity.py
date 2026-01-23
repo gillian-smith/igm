@@ -201,13 +201,6 @@ def _cost(
     dvdz_hv = dvdz_hv / tf.maximum(h_h, h_min)[:, :, tf.newaxis, :]
     # dudz_q, dvdz_q = dampen_eps_dot_z_floating(dudz_q, dvdz_q, C)
 
-    # Evaluate at quadrature points
-    zeta_q = zeta[None, :, None, None]
-    dldx_q = dldx[:, None, :, :]
-    dldy_q = dldy[:, None, :, :]
-    dsdx_q = dsdx[:, None, :, :]
-    dsdy_q = dsdy[:, None, :, :]
-
     # Correct for terrain-following coordinates
     l = s - h
     dldx_h, dldy_h = discr_h.grad_h(l, dx)
