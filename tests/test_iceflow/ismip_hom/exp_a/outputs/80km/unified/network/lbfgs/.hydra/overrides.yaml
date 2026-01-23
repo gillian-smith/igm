@@ -1,5 +1,0 @@
-- +experiment=params_lbfgs
-- processes.iceflow.method=unified
-- processes.iceflow.unified.mapping=network
-- processes.iceflow.unified.optimizer=lbfgs
-- inputs.init_state.L=80000.0

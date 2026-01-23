@@ -1,6 +1,0 @@
-- +experiment=params_lbfgs
-- processes.iceflow.method=unified
-- processes.iceflow.unified.mapping=identity
-- processes.iceflow.unified.optimizer=lbfgs
-- inputs.init_state.L=80000.0
-- processes.iceflow.unified.adam.lr_init=0.9
