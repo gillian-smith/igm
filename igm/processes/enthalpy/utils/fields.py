@@ -82,19 +82,11 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
         state.iceflow = Iceflow()
         cfg_numerics = cfg.processes.iceflow.numerics
 
-        vertical_basis = cfg_numerics.vert_basis.lower()
+        vertical_basis = cfg_numerics.basis_vertical.lower()
         vertical_discr = VerticalDiscrs[vertical_basis](cfg)
         state.iceflow.vertical_discr = vertical_discr
 
     if not hasattr(state, "arrhenius"):
         cfg_physics = cfg.processes.iceflow.physics
         arrhenius = cfg_physics.init_arrhenius
-
-        if cfg_physics.dim_arrhenius == 2:
-            state.arrhenius = arrhenius * tf.ones(shape_2d)
-        else:
-            vertical_discr_E = state.iceflow.vertical_discr.enthalpy
-            V_E_to_U_q = vertical_discr_E.V_E_to_U_q
-            state.arrhenius = arrhenius * tf.einsum(
-                "ij,jkl->ikl", V_E_to_U_q, tf.ones(shape_3d)
-            )
+        state.arrhenius = arrhenius * tf.ones(shape_2d)
