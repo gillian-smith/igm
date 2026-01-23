@@ -38,7 +38,6 @@ class EmulatorParams(tf.experimental.ExtensionType):
     iz: int
     multiple_window_size: int
     arrhenius_dimension: int
-    staggered_grid: int
     fieldin_names: Tuple[str, ...]
     print_cost: bool
 
@@ -57,7 +56,6 @@ def get_emulator_params_args(cfg: DictConfig, Nx: int, Ny: int) -> Dict[str, Any
         "iz": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
         "arrhenius_dimension": cfg_physics.dim_arrhenius,
-        "staggered_grid": cfg_numerics.staggered_grid,
         "fieldin_names": tuple(cfg_emulator.fieldin),
         "print_cost": cfg_emulator.print_cost,
     }
@@ -75,7 +73,8 @@ def get_emulator_bag(
         "nbit": nbit,
         "lr": lr,
         "PAD": state.PAD,
-        "vert_disc": state.iceflow.vertical_discr,
+        "discr_h": state.iceflow.discr_h,
+        "discr_v": state.iceflow.discr_v,
         "batch_size": batch_size,
     }
 
@@ -141,28 +140,22 @@ def update_emulator(
                     tf.pad(X[i, :, :, :, :], bag["PAD"], "CONSTANT")
                 )[:, :Ny, :Nx, :]
 
-                nonstaggered_energy, staggered_energy = iceflow_energy_XY(
+                energy = iceflow_energy_XY(
                     Nz=parameters.Nz,
                     dim_arrhenius=parameters.arrhenius_dimension,
-                    staggered_grid=parameters.staggered_grid,
                     fieldin_names=parameters.fieldin_names,
                     X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
-                    vert_disc=bag["vert_disc"],
+                    discr_h=bag["discr_h"],
+                    discr_v=bag["discr_v"],
                     energy_components=bag["energy_components"],
                     batch_size=bag["batch_size"],
                     Ny=Ny - 2 * iz,
                     Nx=Nx - 2 * iz,
                 )
 
-                energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
-                energy_mean_nonstaggered = tf.reduce_mean(
-                    nonstaggered_energy, axis=[1, 2, 3]
-                )
-
-                total_energy = tf.reduce_sum(
-                    energy_mean_nonstaggered, axis=0
-                ) + tf.reduce_sum(energy_mean_staggered, axis=0)
+                energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+                total_energy = tf.reduce_sum(energy_mean, axis=0)
                 cost_emulator += total_energy
 
             gradients = tape.gradient(

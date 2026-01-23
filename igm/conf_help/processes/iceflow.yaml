@@ -128,11 +128,11 @@ numerics:
     Type: float
     Description: "Parameter controlling the discretization density to get more points near the bed than near the surface; a value 1.0 means uniform vertical spacing."
     Units: dimless
-  staggered_grid:
-    Type: integer
-    Description: "Type of staggering for the horizontal discretization."
+  basis_horizontal:
+    Type: string
+    Description: "Basis for the horizontal discretization."
     Units: dimless
-  vert_basis:
+  basis_vertical:
     Type: string
     Description: "Basis for the vertical discretization."
     Units: dimless

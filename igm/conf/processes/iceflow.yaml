@@ -35,8 +35,8 @@ iceflow:
     ord_grad_theta: l2_weighted
     Nz: 10
     vert_spacing: 4.0
-    staggered_grid: 1
-    vert_basis: Lagrange
+    basis_horizontal: central
+    basis_vertical: Lagrange
   solver:
     step_size: 1.0
     nbitmax: 100
