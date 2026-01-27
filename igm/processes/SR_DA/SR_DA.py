@@ -14,6 +14,8 @@ from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
 from .outputs.output_ncdf import update_ncdf_optimize
 from igm.processes.iceflow.utils.velocities import get_velsurf
 
+from .initial_ice_thickness import initial_thickness
+from igm.utils.math.precision import normalize_precision
 
 class DataAssimilation:
     pass
@@ -40,6 +42,9 @@ def smoothness_biharmonic(field, dx, lam):
 
 def get_cost_fn_data(cfg, state):
     def cost_function(U, V, inputs):
+
+        dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+
         U = U[0]
         V = V[0]
 
@@ -48,7 +53,6 @@ def get_cost_fn_data(cfg, state):
 
         velsurfobs = tf.stack([state.uvelsurfobs, state.vvelsurfobs], axis=-1)
 
-        dtype = velsurf.dtype
         velsurfobs = tf.cast(velsurfobs, dtype)
         velsurfobs_thr = tf.constant(cfg.processes.SR_DA.fitting.velsurfobs_thr, dtype=dtype)
         velsurfobs_std = tf.constant(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype=dtype)
@@ -61,13 +65,12 @@ def get_cost_fn_data(cfg, state):
         )
 
         current_thk = inputs[0, :, :, 0]
-        thk_dtype = current_thk.dtype
-        lam = tf.cast(cfg.processes.SR_DA.regularization.thk, thk_dtype)
-        dx = tf.cast(state.dX, thk_dtype)
+        lam = tf.cast(cfg.processes.SR_DA.regularization.thk, dtype)
+        dx = tf.cast(state.dX, dtype)
         REGU_H2 = smoothness_biharmonic(current_thk, dx, lam)
 
-        cost = tf.cast(cost1, tf.float64) + tf.cast(REGU_H2, tf.float64)
-        return cost, tf.cast(cost1, tf.float64), tf.cast(REGU_H2, tf.float64)
+        cost = tf.cast(cost1, dtype) + tf.cast(REGU_H2, dtype)
+        return cost, tf.cast(cost1, dtype), tf.cast(REGU_H2, dtype)
 
     return cost_function
 
@@ -115,6 +118,7 @@ def _get_thk_spec(cfg):
 
 def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.SR_DA
+    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     da = DataAssimilation()
     da.cost_fn = get_cost_fn_data(cfg, state)
@@ -124,15 +128,22 @@ def data_assimilation_initialize(cfg, state):
     da.thk_min = thk_min
     da.thk_max = thk_max
 
-    thk_dtype = state.thk.dtype
-    da.thk_dtype = thk_dtype
 
-    da.thk_var = tf.Variable(state.thk, trainable=True, dtype=thk_dtype)
+    thk = initial_thickness(
+        s=state.usurf,
+        u=state.uvelsurfobs,
+        v=state.vvelsurfobs,
+        mask=state.icemask,
+        dx=state.dX[0,0],
+        dy=state.dX[0,0],
+    )
+
+    da.thk_var = tf.Variable(thk, trainable=True, dtype=dtype)
     state.thk = da.thk_var  # downstream sees the TF variable
+    state.usurf = tf.cast(state.usurf, dtype)
 
     # initialize zero state.dJdthk as tf tensor
-    state.dJdthk = tf.zeros_like(state.thk, dtype=thk_dtype)
-
+    state.dJdthk = tf.zeros_like(state.thk, dtype=dtype)
     da.maxiter = int(getattr(getattr(cfg_da, "optimization", {}), "maxiter", 10000))
     da.out_freq = int(getattr(getattr(cfg_da, "optimization", {}), "output_freq", 50))
 
@@ -149,6 +160,7 @@ def initialize(cfg, state):
 
 def update(cfg, state):
     da = state.data_assimilation
+    dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
     Ny, Nx = state.thk.shape
 
     update_ncdf_optimize(cfg, state, 0)
@@ -186,12 +198,12 @@ def update(cfg, state):
         x_flat = np.asarray(x_flat, dtype=np.float64)
 
         if da.transform == "log10":
-            z = tf.convert_to_tensor(x_flat.reshape(Ny, Nx), dtype=da.thk_dtype)
-            thk = tf.pow(tf.cast(10.0, da.thk_dtype), z)
+            z = tf.convert_to_tensor(x_flat.reshape(Ny, Nx), dtype=dtype)
+            thk = tf.pow(tf.cast(10.0, dtype), z)
             # Clip to physical bounds (note: if lower=0, this will allow 0, but thk from pow won't hit 0)
             thk = tf.clip_by_value(thk, thk_min, thk_max)
         else:
-            thk = tf.convert_to_tensor(x_flat.reshape(Ny, Nx), dtype=da.thk_dtype)
+            thk = tf.convert_to_tensor(x_flat.reshape(Ny, Nx), dtype=dtype)
             thk = tf.clip_by_value(thk, thk_min, thk_max)
 
         da.thk_var.assign(thk)
@@ -227,7 +239,7 @@ def update(cfg, state):
         # If optimizing in z=log10(thk), TF already applied chain rule through thk=10**z.
         # But note: grad_thk here is dJ/d(thk_var). We need dJ/dx (x is z or thk).
         if da.transform == "log10":
-            grad_x = grad_thk_total * tf.cast(np.log(10.0), da.thk_dtype) * da.thk_var
+            grad_x = grad_thk_total * tf.cast(np.log(10.0), dtype) * da.thk_var
         else:
             grad_x = grad_thk_total
 

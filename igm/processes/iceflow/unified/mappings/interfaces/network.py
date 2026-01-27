@@ -7,7 +7,7 @@ from .interface import InterfaceMapping
 from igm.common import State
 from igm.processes.iceflow.emulate.utils.artifacts import load_emulator_artifact
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
-from igm.processes.iceflow.emulate import Architectures, NormalizationsDict
+from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.unified.mappings import Mappings
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 
@@ -42,22 +42,30 @@ class InterfaceNetwork(InterfaceMapping):
 
             iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
 
-            # Build normalizer and attach to model 
-            method = cfg_unified.normalization.method
-            normalizing_class = NormalizationsDict[method]
-
-            if method == "adaptive":
-                normalizing_layer = normalizing_class(nb_inputs)
-            elif method == "fixed":
-                offsets = cfg_unified.normalization.fixed.inputs_offsets
-                variances = cfg_unified.normalization.fixed.inputs_variances
-                normalizing_layer = normalizing_class(offsets, variances)
-            elif method in ("automatic", "none"):
-                normalizing_layer = normalizing_class()
+            # Build normalizer and attach to model
+            if cfg.processes.iceflow.do_pretraining:
+                # Pretraining: ONLY supported normalization is Keras Normalization (adapted once in pretraining.initialize)
+                iceflow_model.input_normalizer = tf.keras.layers.Normalization(
+                    axis=-1, dtype=tf.float64, name="input_norm"
+                )
             else:
-                raise ValueError(f"Unknown normalizing method: {method}")
+                # Inference / non-pretraining: keep Brandon's config-driven behavior for now
+                method = cfg_unified.normalization.method
+                normalizing_class = NormalizationsDict[method]
 
-            iceflow_model.input_normalizer = normalizing_layer
+                if method == "adaptive":
+                    normalizing_layer = normalizing_class(nb_inputs)
+                elif method == "fixed":
+                    offsets = cfg_unified.normalization.fixed.inputs_offsets
+                    variances = cfg_unified.normalization.fixed.inputs_variances
+                    normalizing_layer = normalizing_class(offsets, variances)
+                elif method in ("automatic", "none"):
+                    normalizing_layer = normalizing_class()
+                else:
+                    raise ValueError(f"Unknown normalizing method: {method}")
+
+                iceflow_model.input_normalizer = normalizing_layer
+
 
         state.iceflow_model = iceflow_model
         state.iceflow_model.compile(jit_compile=False)

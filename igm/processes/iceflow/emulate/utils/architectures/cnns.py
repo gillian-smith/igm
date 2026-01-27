@@ -138,18 +138,36 @@ class CNN(tf.keras.Model):
             # Activation
             if self.activation_name.lower() == "leakyrelu":
                 activation = tf.keras.layers.LeakyReLU(
-                    alpha=0.01, name=f"leakyrelu_{i}"
+                    alpha=0.01,
+                    dtype=self.dtype_model,      
+                    name=f"leakyrelu_{i}",
+                )
+            elif self.activation_name.lower() in ("swish", "silu"):
+                activation = tf.keras.layers.Activation(
+                    tf.nn.swish,
+                    dtype=self.dtype_model,       
+                    name=f"swish_{i}",
+                )
+            elif self.activation_name.lower() == "gelu":
+                activation = tf.keras.layers.Activation(
+                    tf.nn.gelu,
+                    dtype=self.dtype_model,           
+                    name=f"gelu_{i}",
                 )
             else:
                 activation = tf.keras.layers.Activation(
-                    self.activation_name, name=f"{self.activation_name}_{i}"
+                    self.activation_name,
+                    dtype=self.dtype_model,          
+                    name=f"{self.activation_name}_{i}",
                 )
             self.activation_layers.append(activation)
 
             # Dropout
             if self.dropout_rate > 0:
                 dropout = tf.keras.layers.Dropout(
-                    self.dropout_rate, name=f"dropout_{i}"
+                    self.dropout_rate,
+                    dtype=self.dtype_model,     
+                    name=f"dropout_{i}",
                 )
                 self.dropout_layers.append(dropout)
             else:
@@ -170,7 +188,9 @@ class CNN(tf.keras.Model):
                     name=f"conv3d_{i}",
                 )
                 upsample = tf.keras.layers.UpSampling3D(
-                    size=(2, 1, 1), name=f"upsample3d_{i}"
+                    size=(2, 1, 1),
+                    dtype=self.dtype_model,             
+                    name=f"upsample3d_{i}",
                 )
                 self.conv3d_layers.append(conv3d)
                 self.upsample3d_layers.append(upsample)
@@ -188,11 +208,12 @@ class CNN(tf.keras.Model):
     def call(self, inputs, training=None):
         """Forward pass through the network."""
 
-        x = inputs
+        x = tf.cast(inputs, self.dtype_model) 
 
         # Apply input normalization if provided
         if self.input_normalizer is not None:
             x = self.input_normalizer(x)
+            x = tf.cast(x, self.dtype_model)
 
         # Store skip connection from normalized input
         if self.use_skip:

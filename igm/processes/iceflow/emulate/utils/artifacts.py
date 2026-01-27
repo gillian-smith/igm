@@ -1,225 +1,225 @@
+#!/usr/bin/env python3
+# Copyright (C) 2021-2026 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+"""
+artifacts.py (schema v2 ONLY)
+
+Normalization policy (ONLY supported approach):
+- The network uses tf.keras.layers.Normalization(axis=-1) in the forward pass.
+- The layer is adapted exactly once during training (NOT here).
+- We persist the adapted per-channel mean/variance explicitly in manifest.yaml.
+- On load, we rebuild the model, load network weights, then rebuild a Normalization
+  layer and assign mean/variance from the manifest (decoupled from Keras weight paths).
+
+No backwards compatibility:
+- schema_version must be 2
+- normalization.method must be "keras_normalization"
+"""
+
 from __future__ import annotations
 
-import yaml
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import tensorflow as tf
+import yaml
+import warnings
 
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
-from igm.processes.iceflow.emulate.utils.normalizations import (
-    AdaptiveAffineLayer,
-    FixedAffineLayer,
-    IdentityTransformation,
-    StandardizationLayer,
-    NormalizationLayer,
-)
+from igm.utils.math.precision import normalize_precision
 
 
-# ----------------------------
-# Manifest structures
-# ----------------------------
+# -----------------------------------------------------------------------------
+# Manifest dataclasses (minimal + explicit)
+# -----------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class NormalizationSpec:
-    method: str
-    params: Dict[str, Any]
-
-
-@dataclass(frozen=True)
+@dataclass
 class ArchitectureSpec:
     name: str
     params: Dict[str, Any]
 
 
-@dataclass(frozen=True)
+@dataclass
+class NormalizationSpec:
+    method: str
+    params: Dict[str, Any]
+
+
+@dataclass
 class EmulatorManifest:
     schema_version: int
     Nz: int
-    inputs: List[str]          # ordered list of input channel names
+    inputs: List[str]
     nb_inputs: int
     nb_outputs: int
     output_scale: float
     architecture: ArchitectureSpec
     normalization: NormalizationSpec
 
+# -----------------------------------------------------------------------------
+# Simple cfg <-> manifest checks (keep strict but minimal)
+# -----------------------------------------------------------------------------
 
-# ----------------------------
-# Helpers: extract specs from cfg
-# ----------------------------
-
-def _extract_cnn_params(cfg) -> Dict[str, Any]:
-    net_cfg = cfg.processes.iceflow.emulator.network
-
-    params = {
-        "nb_layers": int(net_cfg.nb_layers),
-        "nb_out_filter": int(net_cfg.nb_out_filter),
-        "conv_ker_size": int(net_cfg.conv_ker_size),
-        "activation": str(net_cfg.activation),
-        "weight_initialization": str(net_cfg.weight_initialization),
-        "batch_norm": bool(getattr(net_cfg, "batch_norm", False)),
-        "residual": bool(getattr(net_cfg, "residual", False)),
-        "separable": bool(getattr(net_cfg, "separable", False)),
-        "dropout_rate": float(getattr(net_cfg, "dropout_rate", 0.0)),
-        "l2_reg": float(getattr(net_cfg, "l2_reg", 0.0)) if hasattr(net_cfg, "l2_reg") else None,
-        "cnn3d_for_vertical": bool(getattr(net_cfg, "cnn3d_for_vertical", False)),
-    }
-    # Remove None so json stays clean
-    return {k: v for k, v in params.items() if v is not None}
-
-
-def extract_architecture_spec(cfg, architecture_name: str) -> ArchitectureSpec:
-    name = str(architecture_name)
-
-    if name.lower() == "cnn":
-        return ArchitectureSpec(name=name, params=_extract_cnn_params(cfg))
-
-    raise NotImplementedError(
-        f"Artifact saving/loading is strict and currently implemented for architecture={name!r}. "
-        f"Add an extractor in extract_architecture_spec() for this architecture."
-    )
-
-
-def extract_normalization_spec(cfg, inputs: List[str], nb_inputs: int) -> NormalizationSpec:
-    cfg_unified = cfg.processes.iceflow.unified
-    method = str(cfg_unified.normalization.method)
-
-    if method == "none":
-        return NormalizationSpec(method="none", params={})
-
-    if method == "automatic":
-        # TO DO: confirm no params needed
-        return NormalizationSpec(method="automatic", params={})
-
-    if method == "adaptive":
-        # Stats live in the weights (mean/variance variables), but we must reconstruct the layer shape.
-        dtype = "float64" if str(cfg.processes.iceflow.numerics.precision).lower() == "double" else "float32"
-        params = {
-            "nb_channels": int(nb_inputs),
-            "epsilon": float(getattr(cfg_unified.normalization, "epsilon", 1e-6)),
-            "dtype": dtype,
-        }
-        return NormalizationSpec(method="adaptive", params=params)
-
-    if method == "fixed":
-        fixed = cfg_unified.normalization.fixed
-
-        # IMPORTANT: FixedAffineLayer takes dicts. Preserve channel order by inserting keys in inputs order.
-        offsets_cfg = dict(fixed.inputs_offsets)
-        variances_cfg = dict(fixed.inputs_variances)
-
-        offsets = {name: float(offsets_cfg[name]) for name in inputs}
-        variances = {name: float(variances_cfg[name]) for name in inputs}
-
-        dtype = "float64" if str(cfg.processes.iceflow.numerics.precision).lower() == "double" else "float32"
-        params = {
-            "offsets": offsets,
-            "variances": variances,
-            "epsilon": float(getattr(cfg_unified.normalization, "epsilon", 1e-6)),
-            "dtype": dtype,
-        }
-        return NormalizationSpec(method="fixed", params=params)
-
-    if method == "standardization":
-        params = {
-            "mode": str(getattr(cfg_unified.normalization, "mode", "channel")),
-            "epsilon": float(getattr(cfg_unified.normalization, "epsilon", 1e-6)),
-        }
-        return NormalizationSpec(method="standardization", params=params)
-
-    if method == "normalization":
-        params = {
-            "mode": str(getattr(cfg_unified.normalization, "mode", "channel")),
-            "scale_range": tuple(getattr(cfg_unified.normalization, "scale_range", (0, 1))),
-            "epsilon": float(getattr(cfg_unified.normalization, "epsilon", 1e-6)),
-        }
-        return NormalizationSpec(method="normalization", params=params)
-
-    raise ValueError(f"Unknown normalization method: {method!r}")
-
-
-# ----------------------------
-# Helpers: build normalizer from spec
-# ----------------------------
-
-def build_normalizer_from_spec(spec: NormalizationSpec) -> tf.keras.layers.Layer:
-    m = spec.method
-    p = spec.params
-
-    if m in ("none", "automatic"):
-        return IdentityTransformation()
-
-    if m == "adaptive":
-        return AdaptiveAffineLayer(
-            nb_channels=int(p["nb_channels"]),
-            epsilon=float(p.get("epsilon", 1e-6)),
-            dtype=str(p.get("dtype", "float32")),
-        )
-
-    if m == "fixed":
-        return FixedAffineLayer(
-            offsets=p["offsets"],
-            variances=p["variances"],
-            epsilon=float(p.get("epsilon", 1e-6)),
-            dtype=str(p.get("dtype", "float32")),
-        )
-
-    if m == "standardization":
-        return StandardizationLayer(mode=str(p.get("mode", "channel")), epsilon=float(p.get("epsilon", 1e-6)))
-
-    if m == "normalization":
-        return NormalizationLayer(
-            mode=str(p.get("mode", "channel")),
-            scale_range=tuple(p.get("scale_range", (0, 1))),
-            epsilon=float(p.get("epsilon", 1e-6)),
-        )
-
-    raise ValueError(f"Unknown normalization method in spec: {m!r}")
-
-
-def _force_build_normalizer(normalizer: tf.keras.layers.Layer, nb_inputs: int) -> None:
-    """
-    Ensures normalizer variables exist BEFORE loading weights.
-    Fixed/Adaptive layers create weights in build(); we trigger it with a dummy input.
-    """
-    dummy = tf.zeros((1, 1, 1, nb_inputs), dtype=normalizer.dtype if hasattr(normalizer, "dtype") else tf.float32)
-    _ = normalizer(dummy)
-
-
-# ----------------------------
-# Strict validation
-# ----------------------------
-
-def _require_equal(label: str, a: Any, b: Any) -> None:
-    if a != b:
-        raise ValueError(f"{label} mismatch: run={a!r} vs artifact={b!r}")
+def _require_equal(label: str, run: Any, artifact: Any) -> None:
+    if run != artifact:
+        raise ValueError(f"{label} mismatch: run={run!r} vs artifact={artifact!r}")
 
 
 def validate_cfg_against_manifest(cfg, manifest: EmulatorManifest) -> None:
     cfg_unified = cfg.processes.iceflow.unified
     cfg_numerics = cfg.processes.iceflow.numerics
 
+    _require_equal("schema_version", 2, int(manifest.schema_version))
     _require_equal("Nz", int(cfg_numerics.Nz), int(manifest.Nz))
     _require_equal("inputs", list(cfg_unified.inputs), list(manifest.inputs))
     _require_equal("architecture.name", str(cfg_unified.network.architecture), str(manifest.architecture.name))
-    _require_equal("normalization.method", str(cfg_unified.normalization.method), str(manifest.normalization.method))
     _require_equal("output_scale", float(cfg_unified.network.output_scale), float(manifest.output_scale))
 
-    # Strict architecture hyperparameter validation (CNN only for now)
-    arch = str(manifest.architecture.name)
-    if arch.lower() == "cnn":
-        expected = manifest.architecture.params
-        got = _extract_cnn_params(cfg)
-        _require_equal("architecture.params", got, expected)
-    else:
-        raise NotImplementedError(f"Strict validation not implemented for architecture={arch!r}")
+    # Enforce normalization contract (policy), not cfg mirroring
+    _require_equal("normalization.method", "keras_normalization", str(manifest.normalization.method))
+
+# -----------------------------------------------------------------------------
+# Normalization spec extraction + rebuild (schema v2 only)
+# -----------------------------------------------------------------------------
+
+def extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
+    """
+    Extract adapted stats from model.input_normalizer (must be tf.keras.layers.Normalization).
+    This function does NOT adapt; it only reads the already-adapted layer.
+    """
+    norm = getattr(model, "input_normalizer", None)
+    if norm is None:
+        raise ValueError("Model has no input_normalizer attached; cannot extract normalization stats.")
+    if not isinstance(norm, tf.keras.layers.Normalization):
+        raise TypeError(
+            "Expected model.input_normalizer to be tf.keras.layers.Normalization. "
+            f"Got: {type(norm)}"
+        )
+
+    # Ensure stats exist (adapt called) and are finite
+    if not hasattr(norm, "mean") or not hasattr(norm, "variance"):
+        raise RuntimeError("Normalization layer is missing mean/variance attributes (unexpected Keras version?).")
+
+    mean = np.asarray(norm.mean.numpy(), dtype=np.float64).reshape(-1)
+    var = np.asarray(norm.variance.numpy(), dtype=np.float64).reshape(-1)
+
+    if mean.size == 0 or var.size == 0:
+        raise RuntimeError(
+            "Normalization layer mean/variance appear empty. "
+            "Was norm.adapt(...) called and did the layer build correctly?"
+        )
+    if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(var)):
+        raise RuntimeError("Normalization layer mean/variance contain NaN/Inf.")
+    if np.any(var < 0):
+        raise RuntimeError("Normalization layer variance contains negative values (unexpected).")
+
+    # Keras Normalization uses variance_epsilon (default ~1e-7)
+    eps = float(getattr(norm, "variance_epsilon", 1e-7))
+
+    return NormalizationSpec(
+        method="keras_normalization",
+        params={
+            "axis": -1,
+            "variance_epsilon": eps,
+            "mean_1d": mean.tolist(),
+            "var_1d": var.tolist(),
+            "stats_source": "trained_once_via_norm.adapt",
+        },
+    )
 
 
-# ----------------------------
-# Public API: save / load
-# ----------------------------
+def _build_and_assign_normalization(
+    spec: NormalizationSpec,
+    *,
+    nb_inputs: int,
+    model_dtype: tf.DType,
+) -> tf.keras.layers.Normalization:
+    """
+    Build a new tf.keras.layers.Normalization and assign mean/variance from spec.
+
+    We avoid calling adapt() here; we assign the learned statistics explicitly.
+    """
+    method = str(spec.method).lower().strip()
+    if method != "keras_normalization":
+        raise ValueError(f"Only normalization.method='keras_normalization' is supported (got {spec.method!r}).")
+
+    p = dict(spec.params)
+    axis = int(p.get("axis", -1))
+    if axis != -1:
+        raise ValueError(f"Only axis=-1 is supported (got axis={axis}).")
+
+    eps = float(p["variance_epsilon"])
+    mean_1d = np.asarray(p["mean_1d"], dtype=np.float64).reshape(-1)
+    var_1d = np.asarray(p["var_1d"], dtype=np.float64).reshape(-1)
+
+    if mean_1d.shape[0] != nb_inputs or var_1d.shape[0] != nb_inputs:
+        raise ValueError(
+            f"Normalization stats length mismatch: nb_inputs={nb_inputs}, "
+            f"mean={mean_1d.shape}, var={var_1d.shape}"
+        )
+
+    norm = tf.keras.layers.Normalization(axis=-1, variance_epsilon=eps, dtype=model_dtype, name="input_norm")
+
+    # Force build of variables with a dummy input (shape only matters; values don't)
+    dummy = tf.zeros((1, 2, 2, nb_inputs), dtype=model_dtype)
+    _ = norm(dummy)
+
+    # Assign stats. Keras may store mean/variance as [C] or broadcast shapes.
+    def _reshape_for(var: tf.Variable, stats_1d: np.ndarray) -> tf.Tensor:
+        tgt_shape = tuple(int(d) for d in var.shape)
+        if tgt_shape == (nb_inputs,):
+            arr = stats_1d
+        elif len(tgt_shape) == 4 and tgt_shape[-1] == nb_inputs:
+            arr = stats_1d.reshape((1, 1, 1, nb_inputs))
+        else:
+            # Fallback: try to broadcast if last dim is C
+            if tgt_shape and tgt_shape[-1] == nb_inputs:
+                arr = stats_1d.reshape((1,) * (len(tgt_shape) - 1) + (nb_inputs,))
+            else:
+                raise ValueError(f"Unexpected Normalization variable shape {tgt_shape} for nb_inputs={nb_inputs}")
+        return tf.convert_to_tensor(arr, dtype=var.dtype)
+
+    # norm.mean / norm.variance are Variables
+    norm.mean.assign(_reshape_for(norm.mean, mean_1d))
+    norm.variance.assign(_reshape_for(norm.variance, var_1d))
+
+    return norm
+
+# -----------------------------------------------------------------------------
+# Minimal architecture spec (for traceability; loader uses cfg to rebuild model)
+# -----------------------------------------------------------------------------
+
+def extract_architecture_spec(cfg) -> ArchitectureSpec:
+    """
+    Store architecture name + a small set of hyperparams from cfg for traceability.
+    Loader rebuilds the model from cfg and only checks architecture name for consistency.
+    """
+    arch_name = str(cfg.processes.iceflow.unified.network.architecture)
+
+    # If you prefer even more minimal, you can set params={} and keep only name.
+    net_cfg = cfg.processes.iceflow.emulator.network
+    params = {
+        "nb_layers": int(getattr(net_cfg, "nb_layers")),
+        "nb_out_filter": int(getattr(net_cfg, "nb_out_filter")),
+        "conv_ker_size": int(getattr(net_cfg, "conv_ker_size")),
+        "activation": str(getattr(net_cfg, "activation")),
+        "weight_initialization": str(getattr(net_cfg, "weight_initialization")),
+        "batch_norm": bool(getattr(net_cfg, "batch_norm", False)),
+        "residual": bool(getattr(net_cfg, "residual", False)),
+        "separable": bool(getattr(net_cfg, "separable", False)),
+        "dropout_rate": float(getattr(net_cfg, "dropout_rate", 0.0)),
+        "l2_reg": float(getattr(net_cfg, "l2_reg", 0.0)),
+        "cnn3d_for_vertical": bool(getattr(net_cfg, "cnn3d_for_vertical", False)),
+        "trained_precision": getattr(cfg.processes.iceflow.numerics, "precision"),
+    }
+    return ArchitectureSpec(name=arch_name, params=params)
+
+# -----------------------------------------------------------------------------
+# Save / Load (schema v2 only)
+# -----------------------------------------------------------------------------
 
 def save_emulator_artifact(
     artifact_dir: str | Path,
@@ -229,39 +229,46 @@ def save_emulator_artifact(
 ) -> Path:
     """
     Saves:
-      - manifest.json
-      - export/weights.weights.h5  (model.save_weights)
-    Assumes model.input_normalizer has already been attached.
+      - manifest.yaml (schema v2, includes explicit normalization stats)
+      - export/weights.weights.h5 (network weights ONLY)
+
+    Assumptions:
+      - model.input_normalizer is tf.keras.layers.Normalization
+      - it has already been adapted once during training
     """
     artifact_dir = Path(artifact_dir)
     export_dir = artifact_dir / "export"
     export_dir.mkdir(parents=True, exist_ok=True)
 
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_unified = cfg.processes.iceflow.unified
-
     Nz = int(cfg_numerics.Nz)
+
     nb_inputs = int(len(inputs))
     nb_outputs = int(2 * Nz)
 
-    arch_spec = extract_architecture_spec(cfg, cfg_unified.network.architecture)
-    norm_spec = extract_normalization_spec(cfg, inputs=inputs, nb_inputs=nb_inputs)
+    arch_spec = extract_architecture_spec(cfg)
+    norm_spec = extract_normalization_spec(model)
 
     manifest = EmulatorManifest(
-        schema_version=1,
+        schema_version=2,
         Nz=Nz,
         inputs=list(inputs),
         nb_inputs=nb_inputs,
         nb_outputs=nb_outputs,
-        output_scale=float(cfg_unified.network.output_scale),
+        output_scale=float(cfg.processes.iceflow.unified.network.output_scale),
         architecture=arch_spec,
         normalization=norm_spec,
     )
 
-    manifest_path = artifact_dir / "manifest.yaml"
-    manifest_path.write_text(
+    (artifact_dir / "manifest.yaml").write_text(
         yaml.safe_dump(asdict(manifest), sort_keys=False, default_flow_style=False)
     )
+
+    # Ensure model variables exist before saving weights (subclassed Model)
+    desired_dtype = normalize_precision(cfg_numerics.precision)
+    dummy = tf.zeros((1, 8, 8, nb_inputs), dtype=desired_dtype)
+    _ = model(dummy, training=False)
+
     weights_path = export_dir / "weights.weights.h5"
     model.save_weights(str(weights_path))
 
@@ -273,12 +280,13 @@ def load_emulator_artifact(
     cfg,
 ) -> Tuple[tf.keras.Model, EmulatorManifest]:
     """
-    Strict loader:
-      - reads manifest.json
-      - validates cfg invariants (Nz, inputs, architecture hyperparams, normalization method, output_scale)
-      - rebuilds model via Architectures[...] using cfg
-      - reconstructs and attaches normalizer from manifest
-      - loads weights via model.load_weights()
+    Strict schema v2 loader:
+      - reads manifest.yaml
+      - validates cfg invariants
+      - rebuilds model from cfg via Architectures[arch_name]
+      - loads weights (network weights only)
+      - rebuilds tf.keras.layers.Normalization and assigns stats from manifest
+      - attaches it as model.input_normalizer
     """
     artifact_dir = Path(artifact_dir)
     manifest_path = artifact_dir / "manifest.yaml"
@@ -286,6 +294,13 @@ def load_emulator_artifact(
         raise FileNotFoundError(f"Missing manifest.yaml at {manifest_path}")
 
     raw = yaml.safe_load(manifest_path.read_text())
+
+    if int(raw.get("schema_version", -1)) != 2:
+        raise ValueError(f"Only schema_version=2 is supported. Found: {raw.get('schema_version')!r}")
+
+    arch = raw["architecture"]
+    norm = raw["normalization"]
+
     manifest = EmulatorManifest(
         schema_version=int(raw["schema_version"]),
         Nz=int(raw["Nz"]),
@@ -293,30 +308,62 @@ def load_emulator_artifact(
         nb_inputs=int(raw["nb_inputs"]),
         nb_outputs=int(raw["nb_outputs"]),
         output_scale=float(raw["output_scale"]),
-        architecture=ArchitectureSpec(**raw["architecture"]),
-        normalization=NormalizationSpec(**raw["normalization"]),
+        architecture=ArchitectureSpec(name=str(arch["name"]), params=dict(arch.get("params", {}))),
+        normalization=NormalizationSpec(method=str(norm["method"]), params=dict(norm.get("params", {}))),
     )
 
-    # Strict checks against run cfg
     validate_cfg_against_manifest(cfg, manifest)
 
     arch_name = str(manifest.architecture.name)
     if arch_name not in Architectures:
         raise ValueError(f"Unknown architecture {arch_name!r}. Available: {list(Architectures.keys())}")
 
+    desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+
+    # Warn if artifact was trained with a different precision than requested.
+    trained_p = manifest.architecture.params.get("trained_precision", None)
+    if trained_p and trained_p != "unknown":
+        try:
+            trained_dt = tf.as_dtype(str(trained_p))
+        except Exception:
+            warnings.warn(
+                f"Artifact reports trained_precision={trained_p!r}, but it could not be parsed as a TF dtype. "
+                f"Proceeding with cfg precision={desired_dtype.name}."
+            )
+        else:
+            if trained_dt != desired_dtype:
+                direction = "up-cast" if desired_dtype.size >= trained_dt.size else "down-cast"
+                warnings.warn(
+                    f"Precision mismatch: artifact trained in {trained_dt.name}, "
+                    f"but cfg requests {desired_dtype.name}. Weights will be {direction} on load."
+                )
+    # 1) Rebuild model WITHOUT normalizer first to keep weight-loading independent of normalizer vars/paths.
     model = Architectures[arch_name](cfg, manifest.nb_inputs, manifest.nb_outputs)
+    model.input_normalizer = None
 
-    # Rebuild and attach normalizer from manifest spec
-    normalizer = build_normalizer_from_spec(manifest.normalization)
-    _force_build_normalizer(normalizer, nb_inputs=manifest.nb_inputs)
-    model.input_normalizer = normalizer
-
-    # Make sure model vars exist 
-    model.build((None, None, None, manifest.nb_inputs))
+    # Ensure model vars exist
+    dummy = tf.zeros((1, 8, 8, manifest.nb_inputs), dtype=desired_dtype)
+    _ = model(dummy, training=False)
 
     weights_path = artifact_dir / "export" / "weights.weights.h5"
     if not weights_path.exists():
         raise FileNotFoundError(f"Missing weights file at {weights_path}")
 
+    # 2) Load network weights
     model.load_weights(str(weights_path))
+
+    # 3) Rebuild and attach Normalization layer from manifest stats
+    norm_layer = _build_and_assign_normalization(
+        manifest.normalization,
+        nb_inputs=manifest.nb_inputs,
+        model_dtype=desired_dtype,
+    )
+    model.input_normalizer = norm_layer
+
+    y = model(tf.zeros((1, 2, 2, manifest.nb_inputs), dtype=desired_dtype), training=False)
+    if tf.as_dtype(y.dtype) != desired_dtype:
+        raise RuntimeError(
+            f"Model forward dtype is {tf.as_dtype(y.dtype).name}, expected {desired_dtype.name}. "
+        )
+
     return model, manifest

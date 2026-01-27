@@ -293,6 +293,32 @@ def initialize(cfg, state):
     mapping = Mappings["network"](**mapping_args)
     state.iceflow.mapping = mapping
 
+    # ----------------------------
+    # E2) Adapt Keras Normalization ONCE (pretraining only)
+    # ----------------------------
+    if not hasattr(state, "iceflow_model") or state.iceflow_model is None:
+        raise RuntimeError("state.iceflow_model must be created by InterfaceNetwork before adapting normalization.")
+
+    norm = getattr(state.iceflow_model, "input_normalizer", None)
+    if norm is None or not isinstance(norm, tf.keras.layers.Normalization):
+        raise RuntimeError(
+            "Pretraining requires state.iceflow_model.input_normalizer to be a tf.keras.layers.Normalization. "
+            "Update InterfaceNetwork to attach it in pretraining mode."
+        )
+
+    # Ensure norm variables exist so checkpoint restore can load them
+    _ = norm(tf.zeros((1, H, W, Cx), dtype=tf.float32))
+
+    if not resume:
+        norm.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE))
+        print(
+            f"[norm] adapted once: mean={norm.mean.numpy().reshape(-1)} "
+            f"var={norm.variance.numpy().reshape(-1)}"
+        )
+    else:
+        # On resume, stats must come from the checkpoint.
+        print("[norm] resume=True: using normalization stats restored from checkpoint")
+
     opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
 
     physics_cost_fn = get_cost_fn(cfg, state)
