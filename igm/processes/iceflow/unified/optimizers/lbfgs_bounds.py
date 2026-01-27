@@ -44,12 +44,19 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         self, p_flat: tf.Tensor, grad_theta_flat: tf.Tensor, theta_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         L, U = self.map.get_box_bounds_flat()
-        mask = self._get_mask(theta_flat, grad_theta_flat, L, U)
-        p_flat = tf.where(mask, p_flat, tf.zeros_like(p_flat))
+
+        # Cauchy-point free set (LBFGS-B-ish)
+        theta_c, mask_c, _ = self._cauchy_point_approx(
+            theta_flat, grad_theta_flat, L, U, step_scale=tf.cast(1.0, theta_flat.dtype)
+        )
+
+        # Use mask at the Cauchy point
+        p_flat = tf.where(mask_c, p_flat, tf.zeros_like(p_flat))
         dot_gp = self._dot(grad_theta_flat, p_flat)
-        # Fallback must also respect mask (projected steepest descent on free variables)
-        p_sd = tf.where(mask, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
-        return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask
+
+        # Masked steepest descent fallback
+        p_sd = tf.where(mask_c, -grad_theta_flat, tf.zeros_like(grad_theta_flat))
+        return tf.cond(dot_gp >= 0.0, lambda: p_sd, lambda: p_flat), mask_c
 
     def _apply_step(
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
@@ -58,26 +65,6 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         theta_trial = theta_flat + alpha * p_flat
         theta_proj = self._project(theta_trial, L, U)
         return theta_proj, theta_trial
-
-    def _constrain_pair(
-        self,
-        s: tf.Tensor,
-        y: tf.Tensor,
-        w_prev: tf.Tensor,
-        theta_trial: Optional[tf.Tensor],
-        mask: Optional[tf.Tensor],
-    ) -> tuple[tf.Tensor, tf.Tensor]:
-        theta_flat = w_prev + s
-        proj_changed = tf.not_equal(tf.abs(theta_flat - theta_trial), 0.0)
-
-        s = tf.where(
-            tf.logical_or(proj_changed, tf.logical_not(mask)), tf.zeros_like(s), s
-        )
-        y = tf.where(
-            tf.logical_or(proj_changed, tf.logical_not(mask)), tf.zeros_like(y), y
-        )
-
-        return s, y
 
     @tf.function
     def _line_search(
@@ -178,3 +165,46 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         grad_theta_norm = compute_norm(proj_grad, ord=self.ord_grad_theta)
 
         return grad_u_norm, grad_theta_norm
+    
+@tf.function(reduce_retracing=True)
+def _projected_grad_dir(
+    self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
+) -> Tuple[tf.Tensor, tf.Tensor]:
+    """Projected steepest-descent direction and mask."""
+    mask = self._get_mask(w, g, L, U)
+    d = tf.where(mask, -g, tf.zeros_like(g))
+    return d, mask
+
+
+@tf.function(reduce_retracing=True)
+def _cauchy_point_approx(
+    self,
+    w: tf.Tensor,
+    g: tf.Tensor,
+    L: tf.Tensor,
+    U: tf.Tensor,
+    step_scale: tf.Tensor,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """
+    Lightweight Cauchy point approximation:
+      d = projected steepest descent
+      t = min(step_scale, alpha_max(w, d, L, U))
+      w_c = clip(w + t d)
+    Returns (w_c, mask_c, t)
+    """
+    d, _ = self._projected_grad_dir(w, g, L, U)
+    d_norm_inf = tf.reduce_max(tf.abs(d))
+
+    def no_move():
+        mask_c = self._get_mask(w, g, L, U)
+        return w, mask_c, tf.cast(0.0, w.dtype)
+
+    def do_move():
+        amax = self._alpha_max(w, d, L, U)
+        t = tf.minimum(tf.cast(step_scale, w.dtype), tf.cast(amax, w.dtype))
+        w_c = self._project(w + t * d, L, U)
+        # Still using g at w (cheap approximation); if you want, you can recompute g at w_c (not lightweight).
+        mask_c = self._get_mask(w_c, g, L, U)
+        return w_c, mask_c, t
+
+    return tf.cond(d_norm_inf <= 0.0, no_move, do_move)

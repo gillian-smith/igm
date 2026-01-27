@@ -11,9 +11,6 @@ from .line_searches import LineSearches, ValueAndGradient
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 
-tf.config.optimizer.set_jit(True)
-
-
 class OptimizerLBFGS(Optimizer):
     def __init__(
         self,
@@ -228,7 +225,7 @@ class OptimizerLBFGS(Optimizer):
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
         iter_last = tf.constant(-1, dtype=tf.int32)
-        costs = tf.TensorArray(dtype=cost.dtype, size=int(self.iter_max))
+        costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
 
         for iter in tf.range(self.iter_max):
 
