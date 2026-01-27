@@ -10,9 +10,6 @@ from .lbfgs import OptimizerLBFGS
 from .line_searches import LineSearches, ValueAndGradient
 from igm.utils.math.norms import compute_norm
 
-tf.config.optimizer.set_jit(True)
-
-
 class OptimizerLBFGSBounds(OptimizerLBFGS):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -165,46 +162,94 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         grad_theta_norm = compute_norm(proj_grad, ord=self.ord_grad_theta)
 
         return grad_u_norm, grad_theta_norm
-    
-@tf.function(reduce_retracing=True)
-def _projected_grad_dir(
-    self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
-) -> Tuple[tf.Tensor, tf.Tensor]:
-    """Projected steepest-descent direction and mask."""
-    mask = self._get_mask(w, g, L, U)
-    d = tf.where(mask, -g, tf.zeros_like(g))
-    return d, mask
+        
+    @tf.function(reduce_retracing=True)
+    def _projected_grad_dir(
+        self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Projected steepest-descent direction and mask."""
+        mask = self._get_mask(w, g, L, U)
+        d = tf.where(mask, -g, tf.zeros_like(g))
+        return d, mask
 
 
-@tf.function(reduce_retracing=True)
-def _cauchy_point_approx(
-    self,
-    w: tf.Tensor,
-    g: tf.Tensor,
-    L: tf.Tensor,
-    U: tf.Tensor,
-    step_scale: tf.Tensor,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-    """
-    Lightweight Cauchy point approximation:
-      d = projected steepest descent
-      t = min(step_scale, alpha_max(w, d, L, U))
-      w_c = clip(w + t d)
-    Returns (w_c, mask_c, t)
-    """
-    d, _ = self._projected_grad_dir(w, g, L, U)
-    d_norm_inf = tf.reduce_max(tf.abs(d))
+    @tf.function(reduce_retracing=True)
+    def _cauchy_point_approx(
+        self,
+        w: tf.Tensor,
+        g: tf.Tensor,
+        L: tf.Tensor,
+        U: tf.Tensor,
+        step_scale: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        """
+        Lightweight Cauchy point approximation:
+        d = projected steepest descent
+        t = min(step_scale, alpha_max(w, d, L, U))
+        w_c = clip(w + t d)
+        Returns (w_c, mask_c, t)
+        """
+        d, _ = self._projected_grad_dir(w, g, L, U)
+        d_norm_inf = tf.reduce_max(tf.abs(d))
 
-    def no_move():
-        mask_c = self._get_mask(w, g, L, U)
-        return w, mask_c, tf.cast(0.0, w.dtype)
+        def no_move():
+            mask_c = self._get_mask(w, g, L, U)
+            return w, mask_c, tf.cast(0.0, w.dtype)
 
-    def do_move():
-        amax = self._alpha_max(w, d, L, U)
-        t = tf.minimum(tf.cast(step_scale, w.dtype), tf.cast(amax, w.dtype))
-        w_c = self._project(w + t * d, L, U)
-        # Still using g at w (cheap approximation); if you want, you can recompute g at w_c (not lightweight).
-        mask_c = self._get_mask(w_c, g, L, U)
-        return w_c, mask_c, t
+        def do_move():
+            amax = self._alpha_max(w, d, L, U)
+            t = tf.minimum(tf.cast(step_scale, w.dtype), tf.cast(amax, w.dtype))
+            w_c = self._project(w + t * d, L, U)
+            # Still using g at w (cheap approximation); if you want, you can recompute g at w_c (not lightweight).
+            mask_c = self._get_mask(w_c, g, L, U)
+            return w_c, mask_c, t
 
-    return tf.cond(d_norm_inf <= 0.0, no_move, do_move)
+        return tf.cond(d_norm_inf <= 0.0, no_move, do_move)
+        
+    @tf.function(reduce_retracing=True)
+    def _step_base_point(
+        self,
+        theta_flat: tf.Tensor,
+        grad_theta_flat: tf.Tensor,
+        input: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        """
+        Bounded subspace step:
+        1) compute Cauchy base point theta_c (feasible)
+        2) evaluate gradient at theta_c
+        3) define free-set mask at theta_c
+        """
+        L, U = self.map.get_box_bounds_flat()
+
+        # 1) Cauchy point 
+        theta_c, _, _ = self._cauchy_point_approx(
+            theta_flat, grad_theta_flat, L, U, step_scale=tf.cast(1.0, theta_flat.dtype)
+        )
+
+        # 2) Gradient at Cauchy point (one extra grad eval per iter)
+        theta_backup = self.map.copy_theta(self.map.get_theta())
+        self.map.set_theta(self.map.unflatten_theta(theta_c))
+        _, _, grad_c = self._get_grad(input)
+        grad_c_flat = self.map.flatten_theta(grad_c)
+        self.map.set_theta(theta_backup)
+
+        # 3) Free set at Cauchy point
+        mask_c = self._get_mask(theta_c, grad_c_flat, L, U)
+
+        # Ensure the direction stays in the free subspace
+        grad_c_flat = tf.where(mask_c, grad_c_flat, tf.zeros_like(grad_c_flat))
+
+        return theta_c, grad_c_flat, mask_c
+
+
+    def _mask_memory_for_subspace(
+        self,
+        s_list: tf.Tensor,
+        y_list: tf.Tensor,
+        mask: Optional[tf.Tensor],
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        # Mask is expected to be a boolean tensor (free set at Cauchy)
+        if mask is None:
+            return s_list, y_list
+        m = tf.cast(mask, s_list.dtype)[None, :]  # [1, w_dim] broadcast over memory rows
+        return s_list * m, y_list * m

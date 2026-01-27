@@ -140,6 +140,29 @@ class OptimizerLBFGS(Optimizer):
     ) -> tf.Tensor:
         # Unbounded default: no clipping
         return alpha
+    
+    def _step_base_point(
+        self,
+        theta_flat: tf.Tensor,
+        grad_theta_flat: tf.Tensor,
+        input: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor, Optional[tf.Tensor]]:
+        """
+        Returns:
+        theta_base: base point to step from (default: current theta)
+        grad_base_flat: gradient used for direction / descent checks (default: current grad)
+        mask_base: optional boolean mask for a subspace (default: None)
+        """
+        return theta_flat, grad_theta_flat, None
+
+    def _mask_memory_for_subspace(
+        self,
+        s_list: tf.Tensor,  # [m, w_dim]
+        y_list: tf.Tensor,  # [m, w_dim]
+        mask: Optional[tf.Tensor],
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        # Unbounded default: no masking
+        return s_list, y_list
 
     @tf.function(reduce_retracing=True)
     def _update_memory(
@@ -243,25 +266,34 @@ class OptimizerLBFGS(Optimizer):
             # Tempering
             tau = self._compute_tau(iter)
 
-            # Direction
+            # choose base point / gradient for the step (bounded subclass overrides this)
+            theta_base, grad_base_flat, mask_base = self._step_base_point(
+                theta_flat, grad_theta_flat, input
+            )
+
+            # mask L-BFGS memory to the subspace if needed
+            s_list = s_flat_mem[:idx_memory]
+            y_list = y_flat_mem[:idx_memory]
+            s_list, y_list = self._mask_memory_for_subspace(s_list, y_list, mask_base)
+
+            # Direction computed in (possibly) reduced subspace
             p_flat = self._compute_direction(
-                grad_theta_flat,
-                s_flat_mem[:idx_memory],
-                y_flat_mem[:idx_memory],
+                grad_base_flat,
+                s_list,
+                y_list,
                 idx_memory,
                 tau,
             )
 
-            # Force descent
-            p_flat, mask = self._force_descent(p_flat, grad_theta_flat, theta_flat)
+            # Force descent (bounded can use the mask_base if it wants)
+            p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
 
             # Line search
-            alpha = self._line_search(theta_flat, p_flat, input)
+            alpha = self._line_search(theta_base, p_flat, input)
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
-            alpha = self._clip_alpha(alpha, theta_flat, p_flat)
+            alpha = self._clip_alpha(alpha, theta_base, p_flat)
 
-            # Apply step
-            theta_flat, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
+            theta_flat, theta_trial = self._apply_step(theta_base, alpha, p_flat)
 
             # New weights, cost, and grads
             self.map.set_theta(self.map.unflatten_theta(theta_flat))
