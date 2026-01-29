@@ -63,13 +63,26 @@ class SoftplusTransform(ParameterTransform):
     """Maps ℝ → (0, ∞) with y = softplus(theta) = log(1 + exp(theta))."""
     name = "softplus"
 
+    @staticmethod
+    def _softplus_inverse(y: tf.Tensor) -> tf.Tensor:
+        """
+        Stable inverse of softplus.
+        For small y: log(expm1(y))
+        For large y: y + log1p(-exp(-y))
+        """
+        y = tf.convert_to_tensor(y)
+        # threshold chosen so expm1(y) is safe in float32 and float64
+        thresh = tf.cast(20.0, y.dtype)
+        small = tf.math.log(tf.math.expm1(y))
+        large = y + tf.math.log1p(-tf.exp(-y))
+        return tf.where(y < thresh, small, large)
+
     def to_theta(self, x_phys: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
-        # inverse softplus: theta = log(exp(y) - 1); use expm1 for stability
+        x_phys = tf.convert_to_tensor(x_phys)
         y = tf.maximum(x_phys, tf.cast(eps, x_phys.dtype))
-        return tf.math.log(tf.math.expm1(y))
+        return self._softplus_inverse(y)
 
     def to_physical(self, theta: tf.Tensor) -> tf.Tensor:
-        # forward softplus
         return tf.nn.softplus(theta)
 
     def theta_bounds(
@@ -79,18 +92,20 @@ class SoftplusTransform(ParameterTransform):
         dtype: tf.dtypes.DType,
         eps: float = 1e-12,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
-        # Convert PHYSICAL bounds to theta-space via inverse softplus
         if (lower_phys is None) or (lower_phys <= 0.0):
             L = -tf.constant(float("inf"), dtype)
         else:
-            L = tf.math.log(tf.math.expm1(tf.constant(lower_phys, dtype)))
+            L = self._softplus_inverse(tf.constant(lower_phys, dtype))
+
         if upper_phys is None:
             U = tf.constant(float("inf"), dtype)
         else:
             if upper_phys <= 0.0:
                 raise ValueError("Upper bound must be > 0 for softplus.")
-            U = tf.math.log(tf.math.expm1(tf.constant(upper_phys, dtype)))
+            U = self._softplus_inverse(tf.constant(upper_phys, dtype))
+
         return L, U
+
 
 # registry
 TRANSFORMS: Dict[str, Type[ParameterTransform]] = {
