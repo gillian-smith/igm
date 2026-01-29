@@ -3,7 +3,7 @@ from .adam import OptimizerAdam
 from .adam_DA import OptimizerAdamDataAssimilation
 from .lbfgs import OptimizerLBFGS
 from .lbfgs_bounds import OptimizerLBFGSBounds
-from .lbfgs_DA import OptimizerLBFGSDataAssimilation
+from .lbfgs_DA import OptimizerLBFGSBoundsDA
 from .cg import OptimizerCG
 from .sequential import OptimizerSequential
 
@@ -12,7 +12,7 @@ Optimizers = {
     "adam_da": OptimizerAdamDataAssimilation,
     "lbfgs": OptimizerLBFGS,
     "lbfgs_bounds": OptimizerLBFGSBounds,
-    "lbfgs_da": OptimizerLBFGSDataAssimilation,
+    "lbfgs_da": OptimizerLBFGSBoundsDA,
     "cg": OptimizerCG,
     "sequential": OptimizerSequential,
 }
