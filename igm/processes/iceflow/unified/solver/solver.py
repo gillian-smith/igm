@@ -78,8 +78,8 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     if do_solve:
         inputs = get_solver_inputs_from_state(cfg, state)
 
-        # Compute and set stats can be linked inside the class, so we can get rid of the liskov violation here (when means in one transformation is not means in another)
-        means, variances = mapping.input_normalizer.compute_stats(inputs)
-        mapping.input_normalizer.set_stats(means, variances)
+        # # Compute and set stats can be linked inside the class, so we can get rid of the liskov violation here (when means in one transformation is not means in another)
+        # means, variances = mapping.input_normalizer.compute_stats(inputs)
+        # mapping.input_normalizer.set_stats(means, variances)
 
         state.cost = optimizer.minimize(inputs)
