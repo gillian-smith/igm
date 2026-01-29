@@ -38,7 +38,7 @@ def update_drainage(cfg: DictConfig, state: State) -> None:
     if (state.dt == 0.0) or not drain_ice_column:
         return
 
-    dzeta = state.iceflow.vertical_discr.enthalpy.dzeta
+    dzeta = state.iceflow.discr_v.enthalpy.dzeta
     dz = dzeta * state.thk[None, ...]
 
     fraction_drained, h_drained = compute_fraction_drained(

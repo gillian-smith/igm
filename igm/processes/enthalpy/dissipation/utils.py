@@ -26,7 +26,7 @@ def compute_strain_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     n = cfg_physics.exp_glen
     h_min = cfg_physics.thr_ice_thk
 
-    vertical_discr_E = state.iceflow.vertical_discr.enthalpy
+    vertical_discr_E = state.iceflow.discr_v.enthalpy
     zeta = vertical_discr_E.zeta
     dzeta = vertical_discr_E.dzeta
     V_U_to_E = vertical_discr_E.V_U_to_E
@@ -171,7 +171,7 @@ def compute_friction_heat(cfg: DictConfig, state: State) -> tf.Tensor:
     m = cfg_physics.sliding.weertman.exponent
     u_regu = cfg_physics.sliding.weertman.regu
 
-    V_b = state.iceflow.vertical_discr.V_b
+    V_b = state.iceflow.discr_v.V_b
 
     return compute_friction_heat_tf(
         state.U,

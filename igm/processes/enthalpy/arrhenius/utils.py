@@ -26,7 +26,7 @@ def compute_T_pa(cfg: DictConfig, state: State) -> tf.Tensor:
     g = cfg_physics.gravity_cst
     beta = cfg_thermal.beta
 
-    depth_ice = state.iceflow.vertical_discr.enthalpy.depth * state.thk[None, ...]
+    depth_ice = state.iceflow.discr_v.enthalpy.depth * state.thk[None, ...]
 
     return compute_T_pa_tf(state.T, beta, rho_ice, g, depth_ice)
 

@@ -27,7 +27,7 @@ def compute_arrhenius(cfg: DictConfig, state: State) -> None:
     cfg_physics = cfg.processes.iceflow.physics
     E = cfg_physics.enhancement_factor
     n = cfg_physics.exp_glen
-    weights = state.iceflow.vertical_discr.enthalpy.weights
+    weights = state.iceflow.discr_v.enthalpy.weights
 
     # Compute 3D Arrhenius factor with enhancement
     A = E * compute_arrhenius_3d(cfg, state)

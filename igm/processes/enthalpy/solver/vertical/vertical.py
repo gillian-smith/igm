@@ -45,8 +45,8 @@ def update_vertical(cfg: DictConfig, state: State) -> None:
     correct_w_for_melt = cfg_solver.correct_w_for_melt
     override_basal_at_pmp = cfg_solver.override_basal_at_pmp
 
-    dzeta = state.iceflow.vertical_discr.enthalpy.dzeta
-    V_U_to_E = state.iceflow.vertical_discr.enthalpy.V_U_to_E
+    dzeta = state.iceflow.discr_v.enthalpy.dzeta
+    V_U_to_E = state.iceflow.discr_v.enthalpy.V_U_to_E
     dz = dzeta * state.thk[None, ...]
 
     # Correct vertical velocity

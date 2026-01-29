@@ -52,7 +52,7 @@ def compute_pmp(cfg: DictConfig, state: State) -> None:
     T_pmp_ref = cfg_thermal.T_pmp_ref
     T_ref = cfg_thermal.T_ref
 
-    depth_ice = state.iceflow.vertical_discr.enthalpy.depth * state.thk[None, ...]
+    depth_ice = state.iceflow.discr_v.enthalpy.depth * state.thk[None, ...]
 
     state.T_pmp, state.E_pmp = compute_pmp_tf(
         rho_ice, g, depth_ice, beta, c_ice, T_pmp_ref, T_ref

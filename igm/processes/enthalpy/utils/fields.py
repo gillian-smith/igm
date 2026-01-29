@@ -84,7 +84,7 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
 
         vertical_basis = cfg_numerics.basis_vertical.lower()
         vertical_discr = VerticalDiscrs[vertical_basis](cfg)
-        state.iceflow.vertical_discr = vertical_discr
+        state.iceflow.discr_v = vertical_discr
 
     if not hasattr(state, "arrhenius"):
         cfg_physics = cfg.processes.iceflow.physics
