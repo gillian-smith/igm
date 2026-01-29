@@ -30,7 +30,7 @@ import warnings
 
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
 from igm.utils.math.precision import normalize_precision
-
+from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 # -----------------------------------------------------------------------------
 # Manifest dataclasses (minimal + explicit)
@@ -131,63 +131,6 @@ def extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
     )
 
 
-def _build_and_assign_normalization(
-    spec: NormalizationSpec,
-    *,
-    nb_inputs: int,
-    model_dtype: tf.DType,
-) -> tf.keras.layers.Normalization:
-    """
-    Build a new tf.keras.layers.Normalization and assign mean/variance from spec.
-
-    We avoid calling adapt() here; we assign the learned statistics explicitly.
-    """
-    method = str(spec.method).lower().strip()
-    if method != "keras_normalization":
-        raise ValueError(f"Only normalization.method='keras_normalization' is supported (got {spec.method!r}).")
-
-    p = dict(spec.params)
-    axis = int(p.get("axis", -1))
-    if axis != -1:
-        raise ValueError(f"Only axis=-1 is supported (got axis={axis}).")
-
-    eps = float(p["variance_epsilon"])
-    mean_1d = np.asarray(p["mean_1d"], dtype=np.float64).reshape(-1)
-    var_1d = np.asarray(p["var_1d"], dtype=np.float64).reshape(-1)
-
-    if mean_1d.shape[0] != nb_inputs or var_1d.shape[0] != nb_inputs:
-        raise ValueError(
-            f"Normalization stats length mismatch: nb_inputs={nb_inputs}, "
-            f"mean={mean_1d.shape}, var={var_1d.shape}"
-        )
-
-    norm = tf.keras.layers.Normalization(axis=-1, variance_epsilon=eps, dtype=model_dtype, name="input_norm")
-
-    # Force build of variables with a dummy input (shape only matters; values don't)
-    dummy = tf.zeros((1, 2, 2, nb_inputs), dtype=model_dtype)
-    _ = norm(dummy)
-
-    # Assign stats. Keras may store mean/variance as [C] or broadcast shapes.
-    def _reshape_for(var: tf.Variable, stats_1d: np.ndarray) -> tf.Tensor:
-        tgt_shape = tuple(int(d) for d in var.shape)
-        if tgt_shape == (nb_inputs,):
-            arr = stats_1d
-        elif len(tgt_shape) == 4 and tgt_shape[-1] == nb_inputs:
-            arr = stats_1d.reshape((1, 1, 1, nb_inputs))
-        else:
-            # Fallback: try to broadcast if last dim is C
-            if tgt_shape and tgt_shape[-1] == nb_inputs:
-                arr = stats_1d.reshape((1,) * (len(tgt_shape) - 1) + (nb_inputs,))
-            else:
-                raise ValueError(f"Unexpected Normalization variable shape {tgt_shape} for nb_inputs={nb_inputs}")
-        return tf.convert_to_tensor(arr, dtype=var.dtype)
-
-    # norm.mean / norm.variance are Variables
-    norm.mean.assign(_reshape_for(norm.mean, mean_1d))
-    norm.variance.assign(_reshape_for(norm.variance, var_1d))
-
-    return norm
-
 # -----------------------------------------------------------------------------
 # Minimal architecture spec (for traceability; loader uses cfg to rebuild model)
 # -----------------------------------------------------------------------------
@@ -229,40 +172,19 @@ def save_emulator_artifact(
 ) -> Path:
     """
     Saves:
-      - manifest.yaml (schema v2, includes explicit normalization stats)
       - export/weights.weights.h5 (network weights ONLY)
 
     Assumptions:
-      - model.input_normalizer is tf.keras.layers.Normalization
-      - it has already been adapted once during training
+    - model weights are built (we force-build with a dummy call)
+    - normalization stats are stored in manifest.yaml (written during training), not in weights
     """
     artifact_dir = Path(artifact_dir)
     export_dir = artifact_dir / "export"
     export_dir.mkdir(parents=True, exist_ok=True)
 
     cfg_numerics = cfg.processes.iceflow.numerics
-    Nz = int(cfg_numerics.Nz)
 
     nb_inputs = int(len(inputs))
-    nb_outputs = int(2 * Nz)
-
-    arch_spec = extract_architecture_spec(cfg)
-    norm_spec = extract_normalization_spec(model)
-
-    manifest = EmulatorManifest(
-        schema_version=2,
-        Nz=Nz,
-        inputs=list(inputs),
-        nb_inputs=nb_inputs,
-        nb_outputs=nb_outputs,
-        output_scale=float(cfg.processes.iceflow.unified.network.output_scale),
-        architecture=arch_spec,
-        normalization=norm_spec,
-    )
-
-    (artifact_dir / "manifest.yaml").write_text(
-        yaml.safe_dump(asdict(manifest), sort_keys=False, default_flow_style=False)
-    )
 
     # Ensure model variables exist before saving weights (subclassed Model)
     desired_dtype = normalize_precision(cfg_numerics.precision)
@@ -352,13 +274,30 @@ def load_emulator_artifact(
     # 2) Load network weights
     model.load_weights(str(weights_path))
 
-    # 3) Rebuild and attach Normalization layer from manifest stats
-    norm_layer = _build_and_assign_normalization(
-        manifest.normalization,
-        nb_inputs=manifest.nb_inputs,
-        model_dtype=desired_dtype,
+    # 3) Attach FixedChannelStandardization using manifest stats (forward-pass normalizer)
+    p = manifest.normalization.params
+    eps = float(p.get("variance_epsilon", 1e-7))
+
+    mean_1d = np.asarray(p["mean_1d"], dtype=np.float64).reshape(-1)
+    var_1d  = np.asarray(p["var_1d"],  dtype=np.float64).reshape(-1)
+
+    if mean_1d.shape[0] != manifest.nb_inputs or var_1d.shape[0] != manifest.nb_inputs:
+        raise ValueError(
+            f"Normalization stats length mismatch: mean={mean_1d.shape}, var={var_1d.shape}, "
+            f"nb_inputs={manifest.nb_inputs}"
+        )
+
+    model.input_normalizer = FixedChannelStandardization(
+        mean_1d=mean_1d,
+        var_1d=var_1d,
+        epsilon=eps,
+        dtype=desired_dtype,
+        name="input_norm",
     )
-    model.input_normalizer = norm_layer
+
+    # Build fixed normalizer once
+    _ = model.input_normalizer(tf.zeros((1, 2, 2, manifest.nb_inputs), dtype=desired_dtype))
+
 
     y = model(tf.zeros((1, 2, 2, manifest.nb_inputs), dtype=desired_dtype), training=False)
     if tf.as_dtype(y.dtype) != desired_dtype:

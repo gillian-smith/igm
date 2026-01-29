@@ -4,10 +4,11 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Tuple, Any, Callable
 import random
+import yaml
 
 import numpy as np
 import tensorflow as tf
@@ -15,12 +16,17 @@ import tensorflow as tf
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.emulate.utils.artifacts import save_emulator_artifact
 from igm.processes.iceflow.unified.utils import get_cost_fn
+from igm.utils.math.precision import normalize_precision
 
 # Best-guess local imports; adjust paths as needed in your repo
 from .io_tfrecords import load_metadata, list_shards, make_datasets
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
 
+from igm.processes.iceflow.emulate.utils.artifacts import EmulatorManifest, extract_architecture_spec
+from igm.processes.iceflow.emulate.utils.artifacts import NormalizationSpec  # if defined there
+
+from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
 def update(cfg, state):
     pass
@@ -174,7 +180,6 @@ def _append_epoch(history: HistoryBundle, metrics: MetricsBundle) -> Tuple[float
 
     return tt, td, tp, lam
 
-
 def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: HistoryBundle) -> None:
     """
     Non-TF orchestration: epoch loop, metric resets, history appends, printing,
@@ -294,30 +299,70 @@ def initialize(cfg, state):
     state.iceflow.mapping = mapping
 
     # ----------------------------
-    # E2) Adapt Keras Normalization ONCE (pretraining only)
+    # E2) Compute normalization stats ONCE (Keras), then attach FixedChannelStandardization (forward pass)
     # ----------------------------
-    if not hasattr(state, "iceflow_model") or state.iceflow_model is None:
-        raise RuntimeError("state.iceflow_model must be created by InterfaceNetwork before adapting normalization.")
-
-    norm = getattr(state.iceflow_model, "input_normalizer", None)
-    if norm is None or not isinstance(norm, tf.keras.layers.Normalization):
-        raise RuntimeError(
-            "Pretraining requires state.iceflow_model.input_normalizer to be a tf.keras.layers.Normalization. "
-            "Update InterfaceNetwork to attach it in pretraining mode."
-        )
-
-    # Ensure norm variables exist so checkpoint restore can load them
-    _ = norm(tf.zeros((1, H, W, Cx), dtype=tf.float32))
+    manifest_path = out_dir / "manifest.yaml"
+    desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     if not resume:
-        norm.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE))
-        print(
-            f"[norm] adapted once: mean={norm.mean.numpy().reshape(-1)} "
-            f"var={norm.variance.numpy().reshape(-1)}"
+        # Compute stats using Keras Normalization for robustness/convenience (stats only)
+        tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float64)
+
+        # IMPORTANT: adapt on inputs only
+        tmp.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE))
+
+        mean_1d = tmp.mean.numpy().reshape(-1).astype(np.float64)
+        var_1d  = tmp.variance.numpy().reshape(-1).astype(np.float64)
+        eps = 1e-7  # record-keeping; your Keras version may not expose it reliably
+
+        print(f"[norm-stats] computed once: mean={mean_1d} var={var_1d}")
+
+        # Write manifest immediately (only once)
+        if not manifest_path.exists():
+            arch_spec = extract_architecture_spec(cfg)
+
+            # Build normalization spec directly (do NOT depend on model.input_normalizer type)
+            norm_spec = NormalizationSpec(
+                method="keras_normalization",
+                params={
+                    "axis": -1,
+                    "variance_epsilon": float(eps),
+                    "mean_1d": mean_1d.tolist(),
+                    "var_1d": var_1d.tolist(),
+                    "stats_source": "trained_once_via_keras_normalization.adapt",
+                },
+            )
+
+            manifest = EmulatorManifest(
+                schema_version=2,
+                Nz=int(Nz),
+                inputs=list(inputs),
+                nb_inputs=int(len(inputs)),
+                nb_outputs=int(2 * int(Nz)),
+                output_scale=float(cfg.processes.iceflow.unified.network.output_scale),
+                architecture=arch_spec,
+                normalization=norm_spec,
+            )
+            manifest_path.write_text(
+                yaml.safe_dump(asdict(manifest), sort_keys=False, default_flow_style=False)
+            )
+            print(f"[manifest] wrote {manifest_path}")
+        else:
+            print(f"[manifest] exists, not overwriting: {manifest_path}")
+
+        # Attach the ONLY forward-pass normalizer
+        state.iceflow_model.input_normalizer = FixedChannelStandardization(
+            mean_1d=mean_1d,
+            var_1d=var_1d,
+            epsilon=eps,
+            dtype=desired_dtype,
+            name="input_norm",
         )
+        _ = state.iceflow_model.input_normalizer(tf.zeros((1, H, W, Cx), dtype=desired_dtype))
+
     else:
-        # On resume, stats must come from the checkpoint.
-        print("[norm] resume=True: using normalization stats restored from checkpoint")
+        print("[norm] resume=True: will attach FixedChannelStandardization from manifest after checkpoint restore")
+
 
     opt = tf.keras.optimizers.Adam(learning_rate=cfg_pretraining.learning_rate)
 
@@ -461,11 +506,48 @@ def initialize(cfg, state):
     if resume:
         latest = ckpt_mgr.latest_checkpoint
         if not latest:
+            raise FileNotFoundError(f"resume=True but no checkpoints found in {ckpt_dir}")
+
+        # Force-create model + norm + optimizer slot variables BEFORE restore
+        desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+        dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
+        _ = state.iceflow_model(dummy_x, training=False)  # build model vars
+        if hasattr(opt, "build"):
+            opt.build(state.iceflow_model.trainable_variables)
+
+        status = ckpt.restore(latest)
+        status.assert_existing_objects_matched()
+
+        # --- Reapply normalization from manifest (manifest is single source of truth) ---
+        if not manifest_path.exists():
             raise FileNotFoundError(
-                f"resume=True but no checkpoints found in {ckpt_dir}"
+                f"resume=True but {manifest_path} not found. "
+                "You chose manifest as source of truth; it must exist."
             )
-        ckpt.restore(latest).expect_partial()
-        print(f"[ckpt] restored {latest} (step={int(step.numpy())}, lambda={float(lambda_phys.numpy()):.3e})")
+
+        raw = yaml.safe_load(manifest_path.read_text())
+        p = raw["normalization"]["params"]
+        mean_1d = np.asarray(p["mean_1d"], dtype=np.float64)
+        var_1d  = np.asarray(p["var_1d"],  dtype=np.float64)
+        eps = float(p.get("variance_epsilon", 1e-7))
+
+        desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+
+        norm2 = FixedChannelStandardization(
+            mean_1d=mean_1d,
+            var_1d=var_1d,
+            epsilon=eps,
+            dtype=desired_dtype,
+            name="input_norm",
+        )
+
+        # Build it so downstream graph sees correct shapes
+        _ = norm2(tf.zeros((1, H, W, Cx), dtype=desired_dtype))
+
+        state.iceflow_model.input_normalizer = norm2
+        print("[norm] reapplied fixed normalizer from manifest")
+        print("[norm] reapplied from manifest mean=", mean_1d)
+        print("[norm] reapplied from manifest var= ", var_1d)
 
         (
             start_epoch,

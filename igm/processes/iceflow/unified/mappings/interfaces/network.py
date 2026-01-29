@@ -44,10 +44,7 @@ class InterfaceNetwork(InterfaceMapping):
 
             # Build normalizer and attach to model
             if cfg.processes.iceflow.do_pretraining:
-                # Pretraining: ONLY supported normalization is Keras Normalization (adapted once in pretraining.initialize)
-                iceflow_model.input_normalizer = tf.keras.layers.Normalization(
-                    axis=-1, dtype=tf.float64, name="input_norm"
-                )
+                iceflow_model.input_normalizer = None # this is handled in pretraining process
             else:
                 # Inference / non-pretraining: keep Brandon's config-driven behavior for now
                 method = cfg_unified.normalization.method
