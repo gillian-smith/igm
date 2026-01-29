@@ -309,7 +309,7 @@ class OptimizerLBFGS(Optimizer):
                 s_flat_mem, y_flat_mem, idx_memory, s, y
             )
 
-            # TODO: check if this is necessary
+            # this is needed e.g. for data assimilation logging
             self.map.on_step_end(iter)
 
             costs = costs.write(iter, cost)

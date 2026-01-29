@@ -1,127 +1,68 @@
 #!/usr/bin/env python3
-
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+from __future__ import annotations
+
 import tensorflow as tf
-from typing import Optional, Tuple
+from typing import Tuple, List, Any
 
-from .lbfgs import OptimizerLBFGS
-from .line_searches import LineSearches, ValueAndGradient
-
-tf.config.optimizer.set_jit(False)
+from .lbfgs_bounds import OptimizerLBFGSBounds
 
 
-class OptimizerLBFGSDataAssimilation(OptimizerLBFGS):
+class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
+    """
+    Bounded L-BFGS for data assimilation.
+
+    Key difference from the generic bounded optimizer:
+      - cost_fn may return either:
+          scalar total_cost
+        or
+          (total_cost, data_cost, reg_cost)
+      - we always optimize total_cost but keep (data, reg) for logging.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name = "lbfgs_bounded"
 
-        if not hasattr(self.map, "get_box_bounds_flat"):
-            raise ValueError(
-                "❌ Mapping must provide get_box_bounds_flat() for bounded optimization."
-            )
-
-    @tf.function(reduce_retracing=True)
-    def _project(self, theta: tf.Tensor, L: tf.Tensor, U: tf.Tensor) -> tf.Tensor:
-        return tf.clip_by_value(theta, L, U)
+        # Diagnostics (TF variables so they can be assigned inside tf.function)
+        dtype = getattr(self.map, "precision", tf.float32)
+        self.last_total = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_data  = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_reg   = tf.Variable(0.0, trainable=False, dtype=dtype)
 
     @tf.function(reduce_retracing=True)
-    def _get_mask(
-        self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
-    ) -> tf.Tensor:
-        eps = tf.cast(self.eps, w.dtype)
-        interior = tf.logical_and(w > L + eps, w < U - eps)
-        at_lower = tf.logical_and(w <= L + eps, g > 0.0)
-        at_upper = tf.logical_and(w >= U - eps, g < 0.0)
-        return tf.logical_or(interior, tf.logical_or(at_lower, at_upper))
-
-    def _force_descent(
-        self, p_flat: tf.Tensor, grad_theta_flat: tf.Tensor, theta_flat: tf.Tensor
-    ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
-        L, U = self.map.get_box_bounds_flat()
-        mask = self._get_mask(theta_flat, grad_theta_flat, L, U)
-        p_flat = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-        dot_gp = self._dot(grad_theta_flat, p_flat)
-        return tf.cond(dot_gp >= 0.0, lambda: -grad_theta_flat, lambda: p_flat), mask
-
-    def _apply_step(
-        self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
-    ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
-        L, U = self.map.get_box_bounds_flat()
-        theta_trial = theta_flat + alpha * p_flat
-        theta_proj = self._project(theta_trial, L, U)
-        return theta_proj, theta_trial
-
-    def _constrain_pair(
-        self,
-        s: tf.Tensor,
-        y: tf.Tensor,
-        w_prev: tf.Tensor,
-        theta_trial: Optional[tf.Tensor],
-        mask: Optional[tf.Tensor],
-    ) -> tuple[tf.Tensor, tf.Tensor]:
-        theta_flat = w_prev + s
-        proj_changed = tf.not_equal(tf.abs(theta_flat - theta_trial), 0.0)
-
-        s = tf.where(
-            tf.logical_or(proj_changed, tf.logical_not(mask)), tf.zeros_like(s), s
-        )
-        y = tf.where(
-            tf.logical_or(proj_changed, tf.logical_not(mask)), tf.zeros_like(y), y
-        )
-
-        return s, y
-
-    @tf.function
-    def _line_search(
-        self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
-    ) -> tf.Tensor:
-        L, U = self.map.get_box_bounds_flat()
-
-        def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
-            theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
-
-            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
-            f, _, grad = self._get_grad(input)
-            grad_flat = self.map.flatten_theta(grad)
-
-            mask = self._get_mask(theta_alpha, grad_flat, L, U)
-            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
-            df = self._dot(grad_flat, p_masked)
-            df = tf.cast(df, grad_flat.dtype)
-
-            self.map.set_theta(theta_backup)
-            return ValueAndGradient(x=alpha, f=f, df=df)
-
-        return self.line_search.search(theta_flat, p_flat, eval_fn)
-
-    @tf.function(jit_compile=False)
-    def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
-
-        L, U = self.map.get_box_bounds_flat()
-        theta_flat = self.map.flatten_theta(self.map.get_theta())
-        theta_proj = self._project(theta_flat, L, U)
-        self.map.set_theta(self.map.unflatten_theta(theta_proj))
-
-        return super().minimize_impl(inputs)
-
-    @tf.function
     def _get_grad(
         self, inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
-        w = self.map.get_theta()
+        theta = self.map.get_theta()
+
         with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-            for wi in w:
-                tape.watch(wi)
+            for t in theta:
+                tape.watch(t)
+
+            # Forward pass (mapping may patch/synchronize inputs internally)
             U, V = self.map.get_UV(inputs)
-            processed_inputs = self.map.synchronize_inputs(inputs)
-            # expect cost_fn to return (total, data, physics)
-            cost, data_cost, reg_cost = self.cost_fn(U, V, processed_inputs)
 
-        grad_u = tape.gradient(cost, [U, V])
-        grad_theta = tape.gradient(cost, w)
+            # IMPORTANT: cost must see the exact inputs used by the mapping/network
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+
+            total, data, reg = self.cost_fn(U, V, inputs_used)
+
+        # Grads
+        grad_u = tape.gradient(total, [U, V])
+        grad_theta = tape.gradient(total, theta)
         del tape
-        return cost, grad_u, grad_theta
 
+        # Replace None grads 
+        grad_theta = [
+            tf.zeros_like(t) if g is None else g
+            for g, t in zip(grad_theta, theta)
+        ]
+
+        # Store diagnostics
+        self.last_total.assign(tf.stop_gradient(total))
+        self.last_data.assign(tf.stop_gradient(data))
+        self.last_reg.assign(tf.stop_gradient(reg))
+
+        return total, grad_u, grad_theta

@@ -101,7 +101,8 @@ class Optimizer(ABC):
             for theta_i in theta:
                 tape.watch(theta_i)
             U, V = self.map.get_UV(inputs)
-            cost = self.cost_fn(U, V, inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs # mapping may have transformed inputs
+            cost = self.cost_fn(U, V, inputs_used)
         grad_u = tape.gradient(cost, [U, V])
         grad_theta = tape.gradient(cost, theta)
         del tape
