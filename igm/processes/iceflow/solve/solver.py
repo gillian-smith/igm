@@ -16,7 +16,6 @@ class SolverParams(tf.experimental.ExtensionType):
     Nx: int
     Ny: int
     batch_size: int
-    staggered_grid: int
     print_cost: bool
 
 
@@ -31,7 +30,6 @@ def get_solver_params_args(
         "Nx": Nx,
         "Ny": Ny,
         "batch_size": batch_size,
-        "staggered_grid": cfg_numerics.staggered_grid,
         "print_cost": cfg_solver.print_cost,
     }
 
@@ -47,7 +45,8 @@ def get_solver_bag(cfg: DictConfig, state: State) -> Dict[str, Any]:
         "energy_components": state.iceflow.energy_components,
         "optimizer": state.optimizer,
         "nbit": cfg_solver.nbitmax,
-        "vertical_discr": state.iceflow.vertical_discr,
+        "discr_h": state.iceflow.discr_h,
+        "discr_v": state.iceflow.discr_v,
     }
 
 
@@ -65,26 +64,20 @@ def optimize_adam(
 
         with tf.GradientTape(persistent=True) as tape:
 
-            nonstaggered_energy, staggered_energy = iceflow_energy(
+            energy = iceflow_energy(
                 U[None, :, :, :],
                 V[None, :, :, :],
                 bag["fieldin"],
-                bag["vertical_discr"],
+                bag["discr_h"],
+                bag["discr_v"],
                 bag["energy_components"],
-                parameters.staggered_grid,
                 parameters.batch_size,
                 parameters.Ny,
                 parameters.Nx,
             )
 
-            energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
-            energy_mean_nonstaggered = tf.reduce_mean(
-                nonstaggered_energy, axis=[1, 2, 3]
-            )
-
-            total_energy = tf.reduce_sum(
-                energy_mean_nonstaggered, axis=0
-            ) + tf.reduce_sum(energy_mean_staggered, axis=0)
+            energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+            total_energy = tf.reduce_sum(energy_mean, axis=0)
 
         gradients = tape.gradient(total_energy, [U, V])
 
@@ -109,24 +102,20 @@ def optimize_lbfgs(
         U = UV[0]
         V = UV[1]
 
-        nonstaggered_energy, staggered_energy = iceflow_energy(
+        energy = iceflow_energy(
             U[None, :, :, :],
             V[None, :, :, :],
             bag["fieldin"],
-            bag["vertical_discr"],
+            bag["discr_h"],
+            bag["discr_v"],
             bag["energy_components"],
-            parameters.staggered_grid,
             parameters.batch_size,
             parameters.Ny,
             parameters.Nx,
         )
 
-        energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
-        energy_mean_nonstaggered = tf.reduce_mean(nonstaggered_energy, axis=[1, 2, 3])
-
-        total_energy = tf.reduce_sum(energy_mean_nonstaggered, axis=0) + tf.reduce_sum(
-            energy_mean_staggered, axis=0
-        )
+        energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+        total_energy = tf.reduce_sum(energy_mean, axis=0)
 
         return total_energy
 

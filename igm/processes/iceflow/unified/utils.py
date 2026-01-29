@@ -37,18 +37,25 @@ def get_cost_fn(cfg, state):
     net_inputs_names = tuple(cfg_unified.inputs)
 
     if not do_pre:
-        def cost_fn(U, V, inputs):
-            nonst, stag = iceflow_energy_UV(
+        def cost_fn(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+            """Cost function from velocity fields and inputs."""
+            energy = iceflow_energy_UV(
                 Nz=cfg_numerics.Nz,
                 dim_arrhenius=cfg_physics.dim_arrhenius,
-                staggered_grid=cfg_numerics.staggered_grid,
-                inputs_names=list(net_inputs_names),
-                inputs=inputs,
-                U=U, V=V,
-                vert_disc=state.iceflow.vertical_discr,
+                inputs_names=tuple(cfg_unified.inputs),
+                inputs=input,
+                U=U,
+                V=V,
+                discr_h=state.iceflow.discr_h,
+                discr_v=state.iceflow.discr_v,
                 energy_components=energy_components,
             )
-            return tf.reduce_sum(tf.reduce_mean(nonst, [1,2,3]), 0) + tf.reduce_sum(tf.reduce_mean(stag, [1,2,3]), 0)
+
+            energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+            total_energy = tf.reduce_sum(energy_mean, axis=0)
+
+            return total_energy
+
         return cost_fn
 
     # ---- pretraining-only ----
@@ -168,24 +175,21 @@ def get_cost_fn(cfg, state):
     def cost_fn(U: tf.Tensor, V: tf.Tensor, input_net: tf.Tensor) -> tf.Tensor:
         input_energy = _make_energy_inputs(input_net)
 
-        nonstaggered_energy, staggered_energy = iceflow_energy_UV(
+        energy = iceflow_energy_UV(
             Nz=cfg_numerics.Nz,
             dim_arrhenius=cfg_physics.dim_arrhenius,
-            staggered_grid=cfg_numerics.staggered_grid,
             inputs_names=list(energy_inputs_names),
             inputs=input_energy,
             U=U,
             V=V,
-            vert_disc=state.iceflow.vertical_discr,
+            discr_h=state.iceflow.discr_h,
+            discr_v=state.iceflow.discr_v,
             energy_components=energy_components,
         )
 
-        energy_mean_staggered = tf.reduce_mean(staggered_energy, axis=[1, 2, 3])
-        energy_mean_nonstaggered = tf.reduce_mean(nonstaggered_energy, axis=[1, 2, 3])
+        energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
+        total_energy = tf.reduce_sum(energy_mean, axis=0)
 
-        total_energy = tf.reduce_sum(energy_mean_nonstaggered, axis=0) + tf.reduce_sum(
-            energy_mean_staggered, axis=0
-        )
         return total_energy
     return cost_fn
 

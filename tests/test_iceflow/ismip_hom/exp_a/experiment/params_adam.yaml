@@ -40,7 +40,7 @@ processes:
         print_cost: True
     numerics:
       Nz: 2
-      vert_basis: molho
+      basis_vertical: molho
 
 outputs:
   write_ncdf:

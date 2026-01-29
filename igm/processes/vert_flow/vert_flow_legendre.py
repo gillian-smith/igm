@@ -11,7 +11,7 @@ from igm.processes.iceflow.utils.velocities import get_velbase
 
 def compute_vertical_velocity_legendre(cfg, state):
 
-    vertical_discr = state.iceflow.vertical_discr
+    vertical_discr = state.iceflow.discr_v
 
     sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
 

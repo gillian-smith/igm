@@ -50,9 +50,9 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
     return {
         "thk": state.thk,
         "mapping": state.iceflow.mapping,
-        "V_bar": state.iceflow.vertical_discr.V_bar,
-        "V_b": state.iceflow.vertical_discr.V_b,
-        "V_s": state.iceflow.vertical_discr.V_s,
+        "V_bar": state.iceflow.discr_v.V_bar,
+        "V_b": state.iceflow.discr_v.V_b,
+        "V_s": state.iceflow.discr_v.V_s,
     }
 
 

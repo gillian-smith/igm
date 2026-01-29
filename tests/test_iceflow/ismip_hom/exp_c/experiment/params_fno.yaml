@@ -57,7 +57,7 @@ processes:
         print_cost: True
     numerics:
       Nz: 4
-      vert_basis: lagrange
+      basis_vertical: lagrange
     emulator:
       network:
         nb_layers: 64

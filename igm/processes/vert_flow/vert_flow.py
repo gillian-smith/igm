@@ -27,9 +27,9 @@ def initialize(cfg, state):
 def update(cfg, state):
     """ """
 
-    vert_basis = cfg.processes.iceflow.numerics.vert_basis
+    basis_vertical = cfg.processes.iceflow.numerics.basis_vertical
 
-    if vert_basis.lower() == "lagrange":
+    if basis_vertical.lower() == "lagrange":
 
         # original version by GJ
         if cfg.processes.vert_flow.version == 1:
@@ -47,19 +47,19 @@ def update(cfg, state):
             elif cfg.processes.vert_flow.method == "incompressibility":
                 state.W = compute_vertical_velocity_incompressibility_v2(cfg, state)
 
-    elif vert_basis.lower() == "legendre":
+    elif basis_vertical.lower() == "legendre":
 
         state.W = compute_vertical_velocity_legendre(cfg, state)
 
-    elif vert_basis.lower() == "molho":
+    elif basis_vertical.lower() == "molho":
 
         state.W = compute_vertical_velocity_twolayers(cfg, state)
 
     else:
-        raise ValueError(f"Unknown vertical basis: {vert_basis}")
+        raise ValueError(f"Unknown vertical basis: {basis_vertical}")
 
-    state.wvelbase = get_velbase_1(state.W, state.iceflow.vertical_discr.V_b)
-    state.wvelsurf = get_velsurf_1(state.W, state.iceflow.vertical_discr.V_s)
+    state.wvelbase = get_velbase_1(state.W, state.iceflow.discr_v.V_b)
+    state.wvelsurf = get_velsurf_1(state.W, state.iceflow.discr_v.V_s)
 
 
 def finalize(cfg, state):

@@ -16,4 +16,4 @@ class InterfaceFrozenBed(InterfaceBoundaryCondition):
     @staticmethod
     def get_bc_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
         """Extract vertical discretization weights from state for frozen bed condition."""
-        return {"V_b": state.iceflow.vertical_discr.V_b}
+        return {"V_b": state.iceflow.discr_v.V_b}

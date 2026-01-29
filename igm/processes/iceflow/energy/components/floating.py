@@ -8,6 +8,7 @@ from typing import Any, Dict, Tuple
 from omegaconf import DictConfig
 
 from .energy import EnergyComponent
+from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 
 
@@ -34,11 +35,11 @@ class FloatingComponent(EnergyComponent):
         U: tf.Tensor,
         V: tf.Tensor,
         fieldin: Dict[str, tf.Tensor],
-        vert_disc: VerticalDiscr,
-        _: bool,
+        discr_h: HorizontalDiscr,
+        discr_v: VerticalDiscr,
     ) -> tf.Tensor:
         """Compute calving front energy cost."""
-        return cost_floating(U, V, fieldin, vert_disc, self.params)
+        return cost_floating(U, V, fieldin, discr_h, self.params)
 
 
 def get_floating_params_args(cfg: DictConfig) -> Dict[str, Any]:

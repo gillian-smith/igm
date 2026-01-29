@@ -28,6 +28,7 @@ from igm.processes.iceflow.emulate.utils.artifacts import NormalizationSpec  # i
 
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
+
 def update(cfg, state):
     pass
 

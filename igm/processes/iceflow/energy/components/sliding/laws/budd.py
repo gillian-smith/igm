@@ -7,10 +7,9 @@ import tensorflow as tf
 from typing import Dict
 
 from ..sliding import SlidingComponent
+from igm.processes.iceflow.horizontal import HorizontalDiscr
 from igm.processes.iceflow.vertical import VerticalDiscr
 from igm.processes.iceflow.emulate.utils.misc import get_effective_pressure_precentage
-from igm.utils.grad.grad import grad_xy
-from igm.utils.stag.stag import stag4h
 
 
 class BuddParams(tf.experimental.ExtensionType):
@@ -33,19 +32,19 @@ class Budd(SlidingComponent):
         U: tf.Tensor,
         V: tf.Tensor,
         fieldin: Dict[str, tf.Tensor],
-        vert_disc: VerticalDiscr,
-        staggered_grid: bool,
+        discr_h: HorizontalDiscr,
+        discr_v: VerticalDiscr,
     ) -> tf.Tensor:
         """Compute Budd sliding cost."""
-        return cost_budd(U, V, fieldin, vert_disc, staggered_grid, self.params)
+        return cost_budd(U, V, fieldin, discr_h, discr_v, self.params)
 
 
 def cost_budd(
     U: tf.Tensor,
     V: tf.Tensor,
     fieldin: Dict[str, tf.Tensor],
-    vert_disc: VerticalDiscr,
-    staggered_grid: bool,
+    discr_h: HorizontalDiscr,
+    discr_v: VerticalDiscr,
     budd_params: BuddParams,
 ) -> tf.Tensor:
     """Compute Budd sliding cost from field inputs."""
@@ -55,13 +54,13 @@ def cost_budd(
     C = fieldin["slidingco"]
     dx = fieldin["dX"]
 
-    V_b = vert_disc.V_b
+    V_b = discr_v.V_b
 
     dtype = U.dtype
     m = tf.cast(budd_params.exponent, dtype)
     u_regu = tf.cast(budd_params.regu, dtype)
 
-    return _cost(U, V, h, s, C, dx, m, u_regu, V_b, staggered_grid)
+    return _cost(U, V, h, s, C, dx, m, u_regu, discr_h, V_b)
 
 
 @tf.function()
@@ -74,8 +73,8 @@ def _cost(
     dx: tf.Tensor,
     m: tf.Tensor,
     u_regu: tf.Tensor,
+    discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
-    staggered_grid: bool,
 ) -> tf.Tensor:
     """
     Compute the Budd sliding law cost term.
@@ -102,10 +101,10 @@ def _cost(
         Budd exponent (-)
     u_regu : tf.Tensor
         Regularization parameter for velocity magnitude (m/year)
+    discr_h: HorizontalDiscr
+        Horizontal discretization class (-)
     V_b : tf.Tensor
-        Basal extraction vector: dofs -> basal
-    staggered_grid : bool
-        Staggering of (U, V, C)
+        Basal extraction vector: dofs -> basal (-)
 
     Returns
     -------
@@ -113,31 +112,35 @@ def _cost(
         Budd sliding cost in MPa m/year
     """
 
-    # Staggering
-    if staggered_grid:
-        U = stag4h(U)
-        V = stag4h(V)
-        C = stag4h(C)
+    # Interpolate to horizontal quad points
+    U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    V_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
+    C_h = discr_h.interp_h(C)  # -> (batch, Nq_h, Ny-1, Nx-1)
+    h_h = discr_h.interp_h(h)  # -> (batch, Nq_h, Ny-1, Nx-1)
 
-    # Retrieve basal velocity
-    ux_b = tf.einsum("j,bjkl->bkl", V_b, U)
-    uy_b = tf.einsum("j,bjkl->bkl", V_b, V)
+    # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
+    ux_b = tf.einsum("z,bhzyx->bhyx", V_b, U_h)
+    uy_b = tf.einsum("z,bhzyx->bhyx", V_b, V_h)
 
-    # Compute bed gradient ∇b
+    # Compute bed gradient ∇b -> (batch, Nq_h, Ny-1, Nx-1)
     b = s - h
-    dbdx, dbdy = grad_xy(b, dx, dx, staggered_grid, "extrapolate")
+    dbdx_h, dbdy_h = discr_h.grad_h(b, dx)
 
-    # Compute basal velocity magnitude (with norm M and regularization)
-    u_corr_b = ux_b * dbdx + uy_b * dbdy
-    u_b = tf.sqrt(ux_b * ux_b + uy_b * uy_b + u_regu * u_regu + u_corr_b * u_corr_b)
+    # Basal velocity magnitude with bed slope correction and regu
+    u_corr_b = ux_b * dbdx_h + uy_b * dbdy_h
+    u_b = tf.sqrt(ux_b**2 + uy_b**2 + u_regu**2 + u_corr_b**2)
 
-    # Temporary fix for effective pressure - should be within the inputs
-    dtype = U.dtype
-    N = get_effective_pressure_precentage(h, percentage=tf.constant(0.0, dtype=dtype))
-    N = tf.where(N < tf.constant(1e-3, dtype=dtype), tf.constant(1e-3, dtype=dtype), N)
+    # Effective pressure at quad points
+    # TODO: should be within the inputs
+    N_h = get_effective_pressure_precentage(h_h, percentage=0.0)
+    N_h = tf.where(N_h < 1e-3, 1e-3, N_h)
 
     # Effective exponent
-    s = tf.constant(1.0, dtype=dtype) + tf.constant(1.0, dtype=dtype) / m
+    p = 1.0 + 1.0 / m
 
-    # C * N * |u_b|^s / s
-    return C * N * tf.pow(u_b, s) / s
+    # C * N * |u_b|^p / p at each quad point
+    cost_h = C_h * N_h * tf.pow(u_b, p) / p
+
+    # Integrate over horizontal quad points
+    w_h = discr_h.w_h[tf.newaxis, :, tf.newaxis, tf.newaxis]
+    return tf.reduce_sum(cost_h * w_h, axis=1)

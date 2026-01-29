@@ -24,9 +24,7 @@ def update(cfg, state):
                 "update topg_glacial_erosion at time : " + str(state.t.numpy())
             )
 
-        velbase_mag = getmag(
-            *get_velbase(state.U, state.V, state.iceflow.vertical_discr.V_b)
-        )
+        velbase_mag = getmag(*get_velbase(state.U, state.V, state.iceflow.discr_v.V_b))
 
         # apply erosion law, erosion rate is proportional to a power of basal sliding speed
         dtopgdt = cfg.processes.glerosion.cst * (

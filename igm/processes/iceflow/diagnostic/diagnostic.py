@@ -54,7 +54,7 @@ def update_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
         V_solver,
         U_emulator,
         V_emulator,
-        state.iceflow.vertical_discr.V_bar,
+        state.iceflow.discr_v.V_bar,
         state.thk,
     )
 
