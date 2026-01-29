@@ -108,6 +108,12 @@ class MappingDataAssimilation(Mapping):
         self._mask_flat_idx: List[Optional[tf.Tensor]] = []
         self._background_phys_flat: List[Optional[tf.Tensor]] = []
 
+        # Map variable name -> index in self.vars / self._theta / etc.
+        self._varname_to_idx: Dict[str, int] = {}
+        for i, spec in enumerate(self.vars):
+            if spec.name in self._varname_to_idx:
+                raise ValueError(f"Duplicate variable name in DA mapping: {spec.name}")
+            self._varname_to_idx[spec.name] = i
 
         for spec in self.vars:
             tname = (spec.transform or "identity").lower()
@@ -360,3 +366,15 @@ class MappingDataAssimilation(Mapping):
             right = updated[:, :, :, ch + 1 :]
             updated = tf.concat([left, phys_b, right], axis=-1)
         return updated
+        
+    def get_physical_field(self, name: str) -> tf.Tensor:
+        """
+        Differentiable physical field derived from current theta.
+        Safe to call inside tf.function
+        """
+        if name not in self._varname_to_idx:
+            raise ValueError(
+                f"Unknown field '{name}'. Available: {list(self._varname_to_idx.keys())}"
+            )
+        idx = self._varname_to_idx[name]
+        return tf.cast(self._theta_to_field(idx), self.precision)

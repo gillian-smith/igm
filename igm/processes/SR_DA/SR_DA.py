@@ -49,28 +49,29 @@ def smoothness_biharmonic(field, dx, lam):
     return lam * half * tf.reduce_mean(tf.square(lap))
 
 
-def get_cost_fn_data(cfg, state):
+def get_cost_fn_data(cfg, state, da_map):
     def cost_function(U, V, inputs):
         dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
         U = U[0]
         V = V[0]
 
-        uvelsurf, vvelsurf = get_velsurf(U, V, state.iceflow.vertical_discr.V_s)
+        uvelsurf, vvelsurf = get_velsurf(U, V, state.iceflow.discr_v.V_s)
 
         uobs = tf.cast(state.uvelsurfobs, dtype)
         vobs = tf.cast(state.vvelsurfobs, dtype)
 
         mask = tf.logical_and(~tf.math.is_nan(uobs), ~tf.math.is_nan(vobs))
 
-        ru = (uobs - uvelsurf) / cfg.processes.SR_DA.fitting.velsurfobs_std
-        rv = (vobs - vvelsurf) / cfg.processes.SR_DA.fitting.velsurfobs_std
+        std = tf.cast(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype)
 
-        # Vector SSE per point, then mean over points
+        ru = (uobs - uvelsurf) / std
+        rv = (vobs - vvelsurf) / std
+
         cost_data = 0.5 * tf.reduce_mean(tf.boolean_mask(ru**2 + rv**2, mask))
 
-        # Regularization based on the (patched) inputs tensor
-        current_thk = tf.cast(state.thk, dtype)
+        current_thk = da_map.get_physical_field("thk") # this is needed to ensure the gradient tape tracks thk
+
         lam = tf.cast(cfg.processes.SR_DA.regularization.thk, dtype)
         dx = tf.cast(state.dX, dtype)
         cost_reg = smoothness_biharmonic(current_thk, dx, lam)
@@ -80,12 +81,12 @@ def get_cost_fn_data(cfg, state):
 
     return cost_function
 
+
 def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.SR_DA
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     da = DataAssimilation()
-    da.cost_fn = get_cost_fn_data(cfg, state)
 
     # Initial thickness guess (physical)
     thk0 = initial_thickness(
@@ -96,26 +97,23 @@ def data_assimilation_initialize(cfg, state):
         dx=state.dX[0, 0],
         dy=state.dX[0, 0],
     )
-    thk0 = tf.convert_to_tensor(thk0, dtype=dtype)
-
-    # Put initial physical field in state (mapping will read from state to initialize θ)
-    state.thk = thk0
+    state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
     state.usurf = tf.cast(state.usurf, dtype)
 
+    # 1) Build mapping first
     mapping_args = InterfaceDataAssimilation.get_mapping_args(cfg, state)
     da.map = MappingDataAssimilation(**mapping_args)
 
-    optimizer_args = InterfaceLBFGS.get_optimizer_args(
-        cfg,
-        da.cost_fn,
-        da.map,
-    )
+    # 2) Build cost_fn capturing the map
+    da.cost_fn = get_cost_fn_data(cfg, state, da.map)
+
+    # 3) Build optimizer after cost_fn exists
+    optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, da.cost_fn, da.map)
     da.opt = OptimizerLBFGSBoundsDA(**optimizer_args)
 
-    num_patches = state.iceflow.patching.num_patches  # int
-    patch_H, patch_W, patch_C = (
-        state.iceflow.patching.patch_shape
-    ) 
+    # sampler wiring unchanged...
+    num_patches = state.iceflow.patching.num_patches
+    patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
     sampler = TrainingBatchBuilder(
         preparation_params=state.iceflow.preparation_params,
         fieldin_names=state.iceflow.preparation_params.fieldin_names,
@@ -124,32 +122,32 @@ def data_assimilation_initialize(cfg, state):
     )
     da.opt.sampler = sampler
 
-    # Iteration controls
     da.maxiter = cfg_da.optimization.nbitmax
     da.out_freq = cfg_da.output.freq
 
     def _step_callback(it_tf):
         it = int(it_tf.numpy())
-        # keep state consistent for writing
+
+        # For outputs (not for gradients): sync state fields for netcdf writing
         da.map.update_state_fields(state)
-        # Build inputs for THIS accepted iterate
+
         X = fieldin_state_to_X(cfg, state)
         inputs = state.iceflow.patching.generate_patches(X)
-        # Forward + cost terms
+
         U, V = da.map.get_UV(inputs)
         inputs_used = da.map.inputs if hasattr(da.map, "inputs") else inputs
         total, data, reg = da.cost_fn(U, V, inputs_used)
 
-        # Put scalars somewhere stable for the NetCDF writer to read
         state.da_cost_total = float(total.numpy())
         state.da_cost_data  = float(data.numpy())
         state.da_cost_reg   = float(reg.numpy())
+
         evaluate_iceflow(cfg, state)
         update_ncdf_optimize(cfg, state, it)
 
     da.map.set_step_callback(_step_callback, out_freq=da.out_freq)
-
     state.data_assimilation = da
+
 
 def initialize(cfg, state):
     data_assimilation_initialize(cfg, state)

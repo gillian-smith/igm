@@ -15,7 +15,7 @@ import tensorflow as tf
 
 from igm.processes.iceflow.unified.mappings import Mappings, InterfaceMappings
 from igm.processes.iceflow.emulate.utils.artifacts import save_emulator_artifact
-from igm.processes.iceflow.unified.utils import get_cost_fn
+from igm.processes.pretraining.cost_tmp import get_cost_fn
 from igm.utils.math.precision import normalize_precision
 
 # Best-guess local imports; adjust paths as needed in your repo
