@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 def get_cost_fn(cfg, state):
 
     
-    do_pre = bool(cfg.processes.iceflow.do_pretraining)
+    #do_pre = bool(cfg.processes.iceflow.do_pretraining)
+    do_pre = True
 
     # always-needed stuff
     cfg_unified  = cfg.processes.iceflow.unified
