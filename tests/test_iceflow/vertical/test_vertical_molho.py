@@ -45,10 +45,13 @@ def test_matrices_shapes(cfg: DictConfig) -> None:
     assert discr.zeta.shape == (5,)
     assert discr.V_q.shape == (5, 2)
     assert discr.V_q_grad.shape == (5, 2)
-    assert discr.V_q_int.shape == (5, 2)
     assert discr.V_b.shape == (2,)
     assert discr.V_s.shape == (2,)
     assert discr.V_bar.shape == (2,)
+    assert discr.V_int.shape == (2, 2)
+    assert discr.V_corr_b.shape == (2, 2)
+    assert discr.V_corr_s.shape == (2, 2)
+    assert discr.V_const.shape == (2,)
 
 
 def test_matrices_properties(cfg: DictConfig) -> None:
@@ -69,10 +72,13 @@ def test_matrices_example(cfg: DictConfig) -> None:
     zeta_computed = discr.zeta.numpy()
     V_q_computed = discr.V_q.numpy()
     V_q_grad_computed = discr.V_q_grad.numpy()
-    V_q_int_computed = discr.V_q_int.numpy()
     V_b_computed = discr.V_b.numpy()
     V_s_computed = discr.V_s.numpy()
     V_bar_computed = discr.V_bar.numpy()
+    V_int_computed = discr.V_int.numpy()
+    V_corr_b_computed = discr.V_corr_b.numpy()
+    V_corr_s_computed = discr.V_corr_s.numpy()
+    V_const_computed = discr.V_const.numpy()
 
     z_quad, w_quad = compute_gauss_quad(order=5)
     z = z_quad.numpy()
@@ -82,10 +88,13 @@ def test_matrices_example(cfg: DictConfig) -> None:
     zeta_expected = z
     V_q_expected = np.stack([1.0 - z, z], axis=1)
     V_q_grad_expected = np.tile(np.array([-1.0, 1.0]), (len(z), 1))
-    V_q_int_expected = np.stack([z - 0.5 * z**2, 0.5 * z**2], axis=1)
     V_b_expected = np.array([1.0, 0.0])
     V_s_expected = np.array([0.0, 1.0])
     V_bar_expected = np.array([np.sum(w * (1.0 - z)), np.sum(w * z)])
+    V_int_expected = np.array([[0.0, 0.0], [0.5, 0.5]])
+    V_corr_b_expected = np.array([[0.0, 0.0], [-0.5, 0.5]])
+    V_corr_s_expected = np.array([[0.0, 0.0], [-0.5, 0.5]])
+    V_const_expected = np.array([1.0, 1.0])
 
     rtol = 1e-5
     atol = 1e-7
@@ -94,7 +103,10 @@ def test_matrices_example(cfg: DictConfig) -> None:
     np.testing.assert_allclose(zeta_computed, zeta_expected, rtol, atol)
     np.testing.assert_allclose(V_q_computed, V_q_expected, rtol, atol)
     np.testing.assert_allclose(V_q_grad_computed, V_q_grad_expected, rtol, atol)
-    np.testing.assert_allclose(V_q_int_computed, V_q_int_expected, rtol, atol)
     np.testing.assert_allclose(V_b_computed, V_b_expected, rtol, atol)
     np.testing.assert_allclose(V_s_computed, V_s_expected, rtol, atol)
     np.testing.assert_allclose(V_bar_computed, V_bar_expected, rtol, atol)
+    np.testing.assert_allclose(V_int_computed, V_int_expected, rtol, atol)
+    np.testing.assert_allclose(V_corr_b_computed, V_corr_b_expected, rtol, atol)
+    np.testing.assert_allclose(V_corr_s_computed, V_corr_s_expected, rtol, atol)
+    np.testing.assert_allclose(V_const_computed, V_const_expected, rtol, atol)

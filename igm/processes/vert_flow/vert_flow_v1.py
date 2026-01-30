@@ -1,19 +1,41 @@
 #!/usr/bin/env python3
 
-"""
 # Copyright (C) 2021-2025 IGM authors
-Published under the GNU GPL (Version 3), check at the LICENSE file
-"""
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
+
 import tensorflow as tf
 
 from igm.utils.grad.grad import grad_xy
 from igm.utils.grad.compute_divflux import compute_divflux
-from igm.processes.iceflow.utils.vertical_discretization import (
-    compute_levels,
-    compute_dz,
+from igm.processes.iceflow.utils.vertical_discretization import compute_levels
+from igm.processes.vert_flow.vert_flow_legendre import (
+    compute_vertical_velocity_legendre,
 )
+from igm.processes.vert_flow.vert_flow_v2 import compute_vertical_velocity_twolayers
+
+
+def compute_vertical_velocity_v1(cfg, state):
+
+    basis_vertical = cfg.processes.iceflow.numerics.basis_vertical.lower()
+
+    if basis_vertical == "lagrange":
+        method = cfg.processes.vert_flow.method.lower()
+        if method == "kinematic":
+            return compute_vertical_velocity_kinematic_v1(cfg, state)
+        elif method == "incompressibility":
+            return compute_vertical_velocity_incompressibility_v1(cfg, state)
+        else:
+            raise ValueError(f"❌ Unknown method: <{method}>.")
+
+    elif basis_vertical == "legendre":
+        return compute_vertical_velocity_legendre(cfg, state)
+
+    elif basis_vertical == "molho":
+        return compute_vertical_velocity_twolayers(cfg, state)
+
+    else:
+        raise ValueError(f"❌ Unsupported vertical basis: <{basis_vertical}>.")
 
 
 def compute_vertical_velocity_kinematic_v1(cfg, state):

@@ -29,10 +29,13 @@ class SSADiscr(VerticalDiscr):
         self.zeta = tf.constant([0.5], dtype=self.dtype)
         self.V_q = tf.constant([[1.0]], dtype=self.dtype)
         self.V_q_grad = tf.constant([[0.0]], dtype=self.dtype)
-        self.V_q_int = tf.constant([[0.5]], dtype=self.dtype)
         self.V_b = tf.constant([1.0], dtype=self.dtype)
         self.V_s = tf.constant([1.0], dtype=self.dtype)
         self.V_bar = tf.constant([1.0], dtype=self.dtype)
+        self.V_int = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_corr_b = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_corr_s = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_const = tf.constant([1.0], dtype=self.dtype)
 
         basis_fct = (lambda z: tf.ones_like(z),)
 
