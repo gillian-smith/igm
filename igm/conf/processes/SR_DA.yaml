@@ -1,5 +1,6 @@
 SR_DA:
   store_freq: 100
+  measurement_noise: 0.0
   control_list:
   - thk
   cost_list:
@@ -54,7 +55,7 @@ SR_DA:
     slidingco: 0.0001
     arrhenius: 0.1
   output:
-    freq: 50
+    freq: 200
     plot2d_live: true
     plot2d: true
     save_result_in_ncdf: geology-optimized.nc

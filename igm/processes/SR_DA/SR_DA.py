@@ -30,6 +30,40 @@ class DataAssimilation:
         self.out_freq = 0
         self.result = None
 
+def add_measurement_noise_uv(uobs, vobs, ice_mask, noise_factor, base_std):
+    """
+    Add one realization of iid Gaussian noise to u/v observations,
+    but ONLY where ice_mask is True and u/v are finite.
+
+    noise_factor: dimensionless multiplier (0 => no noise)
+    base_std:      velocity std in observation units (e.g. m/yr)
+    """
+    noise_factor = float(noise_factor)
+    base_std = float(base_std)
+    sigma = noise_factor * base_std
+
+    u = np.asarray(uobs)
+    v = np.asarray(vobs)
+    ice = np.asarray(ice_mask).astype(bool)
+
+    if sigma <= 0.0:
+        return u, v, 0.0
+
+    valid = np.isfinite(u) & np.isfinite(v) & ice
+    if not np.any(valid):
+        return u, v, sigma
+
+    nu = np.random.normal(loc=0.0, scale=sigma, size=u.shape).astype(u.dtype, copy=False)
+    nv = np.random.normal(loc=0.0, scale=sigma, size=v.shape).astype(v.dtype, copy=False)
+
+    u_noisy = u.copy()
+    v_noisy = v.copy()
+    u_noisy[valid] = u_noisy[valid] + nu[valid]
+    v_noisy[valid] = v_noisy[valid] + nv[valid]
+
+    return u_noisy, v_noisy, sigma
+
+
 def smoothness_biharmonic(field, dx, lam):
     dtype = field.dtype
     f = field[None, ..., None]  # [1, Ny, Nx, 1]
@@ -48,7 +82,6 @@ def smoothness_biharmonic(field, dx, lam):
     half = tf.constant(0.5, dtype=dtype)
     return lam * half * tf.reduce_mean(tf.square(lap))
 
-
 def get_cost_fn_data(cfg, state, da_map):
     def cost_function(U, V, inputs):
         dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
@@ -61,7 +94,8 @@ def get_cost_fn_data(cfg, state, da_map):
         uobs = tf.cast(state.uvelsurfobs, dtype)
         vobs = tf.cast(state.vvelsurfobs, dtype)
 
-        mask = tf.logical_and(~tf.math.is_nan(uobs), ~tf.math.is_nan(vobs))
+        ice = tf.cast(state.icemask, tf.bool)
+        mask = tf.math.is_finite(uobs) & tf.math.is_finite(vobs) & ice
 
         std = tf.cast(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype)
 
@@ -77,16 +111,32 @@ def get_cost_fn_data(cfg, state, da_map):
         cost_reg = smoothness_biharmonic(current_thk, dx, lam)
 
         cost_total = tf.cast(cost_data, dtype) + tf.cast(cost_reg, dtype)
+        
         return cost_total, tf.cast(cost_data, dtype), tf.cast(cost_reg, dtype)
 
     return cost_function
-
 
 def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.SR_DA
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     da = DataAssimilation()
+
+    # --- Measurement noise injection (one-time) ---
+    noise_factor = float(getattr(cfg_da, "measurement_noise", 0.0))
+    base_std = float(cfg_da.fitting.velsurfobs_std)
+
+    u_noisy, v_noisy, sigma = add_measurement_noise_uv(
+        state.uvelsurfobs,
+        state.vvelsurfobs,
+        ice_mask=state.icemask,
+        noise_factor=noise_factor,
+        base_std=base_std,
+    )
+
+    # Overwrite the observations used everywhere downstream (cost, plots, init, etc.)
+    state.uvelsurfobs = u_noisy
+    state.vvelsurfobs = v_noisy
 
     # Initial thickness guess (physical)
     thk0 = initial_thickness(
@@ -97,6 +147,8 @@ def data_assimilation_initialize(cfg, state):
         dx=state.dX[0, 0],
         dy=state.dX[0, 0],
     )
+    state.uvelsurfobs = tf.convert_to_tensor(u_noisy, dtype=dtype)
+    state.vvelsurfobs = tf.convert_to_tensor(v_noisy, dtype=dtype)
     state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
     state.usurf = tf.cast(state.usurf, dtype)
 
@@ -148,10 +200,8 @@ def data_assimilation_initialize(cfg, state):
     da.map.set_step_callback(_step_callback, out_freq=da.out_freq)
     state.data_assimilation = da
 
-
 def initialize(cfg, state):
     data_assimilation_initialize(cfg, state)
-
 
 def update(cfg, state):
     da = state.data_assimilation
