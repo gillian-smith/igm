@@ -126,9 +126,9 @@ def _validate_pretraining_setup(inputs: Tuple[str, ...], Cx: int, cfg_physics, s
             "(or set dim_arrhenius=1 for this pretraining run)."
         )
 
-    if not hasattr(state, "iceflow") or not hasattr(state.iceflow, "vertical_discr") or state.iceflow.vertical_discr is None:
+    if not hasattr(state, "iceflow") or not hasattr(state.iceflow, "discr_v") or state.iceflow.discr_v is None:
         raise RuntimeError(
-            "state.iceflow.vertical_discr is missing, but the physics cost requires it. "
+            "state.iceflow.discr_v is missing, but the physics cost requires it. "
             "Ensure the iceflow vertical discretization is initialized before pretraining."
         )
 
@@ -211,7 +211,6 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
             f"lambda_phys={lam:.3e} "
             f"val_total={history.val_total[-1]:.6e}"
         )
-
         # --- plots + comparisons ---
         save_loss_plot(
             history.train_total, history.val_total,
@@ -246,6 +245,7 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
 
 
 def initialize(cfg, state):
+    tf.config.optimizer.set_jit(False)
     # ----------------------------
     # A) Config / paths
     # ----------------------------
@@ -310,7 +310,11 @@ def initialize(cfg, state):
         tmp = tf.keras.layers.Normalization(axis=-1, dtype=tf.float64)
 
         # IMPORTANT: adapt on inputs only
-        tmp.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE))
+        tmp.adapt(train_ds.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE).take(2000)) # to do: this speeds up the first epoch but may be less accurate
+
+        # Force one batch materialization so data pipeline is “ready”
+        x0, y0 = next(iter(train_ds))
+
 
         mean_1d = tmp.mean.numpy().reshape(-1).astype(np.float64)
         var_1d  = tmp.variance.numpy().reshape(-1).astype(np.float64)
@@ -419,7 +423,7 @@ def initialize(cfg, state):
     # ----------------------------
     # G) Train/val steps
     # ----------------------------
-    @tf.function
+    @tf.function(reduce_retracing=True, jit_compile=False)
     def train_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
         vars_ = state.iceflow_model.trainable_variables
         step.assign_add(1)
@@ -485,7 +489,7 @@ def initialize(cfg, state):
         metrics.train_total.update_state(total_loss)
         metrics.train_lam.update_state(lam)
 
-    @tf.function
+    @tf.function(reduce_retracing=True, jit_compile=False)
     def val_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
         data_loss, phys_loss = compute_losses(x_batch, y_batch)
         total_loss = data_loss + lambda_phys * phys_loss
