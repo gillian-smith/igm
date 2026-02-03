@@ -94,8 +94,7 @@ def get_cost_fn_data(cfg, state, da_map):
         uobs = tf.cast(state.uvelsurfobs, dtype)
         vobs = tf.cast(state.vvelsurfobs, dtype)
 
-        ice = tf.cast(state.icemask, tf.bool)
-        mask = tf.math.is_finite(uobs) & tf.math.is_finite(vobs) & ice
+        mask = tf.logical_and(~tf.math.is_nan(uobs), ~tf.math.is_nan(vobs))
 
         std = tf.cast(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype)
 
