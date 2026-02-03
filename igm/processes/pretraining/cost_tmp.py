@@ -44,8 +44,11 @@ def get_cost_fn(cfg, state):
             arrhenius0,
             " expanded to Nz channels (dim_arrhenius=3)" if cfg_physics.dim_arrhenius == 3 else "",
         )
-    
+
+    _warned_missing = False
+    _warned_extra = False
     def _safe_unpack_net(X_net: tf.Tensor) -> dict:
+        nonlocal _warned_missing, _warned_extra
         # Uses static channel count (trace-time); avoids out-of-bounds strided_slice
         C = X_net.shape[-1]
         if C is None:
@@ -81,25 +84,33 @@ def get_cost_fn(cfg, state):
                 else:
                     missing_in_tensor.append(name)
 
-        if missing_in_tensor:
+        if missing_in_tensor and not _warned_missing:
             logger.warning(
                 "Pretraining: inputs tensor has %d channels but cfg lists more. "
                 "These configured inputs are missing in the tensor and will use defaults/zeros: %s",
                 C, missing_in_tensor
             )
+            _warned_missing = True
 
-        if idx < C:
+        if idx < C and not _warned_extra:
             logger.warning(
                 "Pretraining: inputs tensor has %d channels but cfg consumed %d. Extra channels will be ignored.",
                 C, idx
             )
+            _warned_extra = True
 
         return field
 
     def _make_energy_inputs(X_net: tf.Tensor) -> tf.Tensor:
         """
         X_net: [B, Ny, Nx, C_net] exactly what the network expects.
-        Returns: X_energy with channels matching energy_inputs_names (and arrhenius expanded if dim_arrhenius==3).
+        Returns: X_energy with channels matching energy_inputs_names
+                (and arrhenius expanded if dim_arrhenius==3).
+
+        Safety goals:
+        - Avoid creating large compile-time constants (XLA constant folding) by
+            making defaults depend on X_net at runtime.
+        - Keep shapes derived from tf.shape(X_net) to reduce retracing.
         """
 
         # Parse only what is actually present in the network tensor
@@ -109,34 +120,49 @@ def get_cost_fn(cfg, state):
         B, Ny, Nx = shp[0], shp[1], shp[2]
         dtype = X_net.dtype
 
+        # A runtime-dependent prototype tensor (prevents XLA from constant-folding
+        # huge fills as compile-time constants)
+        proto = X_net[..., :1]  # [B,Ny,Nx,1], guaranteed to depend on runtime input
+
         dX  = tf.cast(dX0, dtype)
         sc0 = tf.cast(slidingco0, dtype)
         ar0 = tf.cast(arrhenius0, dtype)
 
+        def _const_chan_1(val: tf.Tensor) -> tf.Tensor:
+            # runtime-dependent constant channel: [B,Ny,Nx,1]
+            return tf.ones_like(proto) * val
+
+        def _const_chan_n(val: tf.Tensor, n: int) -> tf.Tensor:
+            # runtime-dependent constant channels: [B,Ny,Nx,n]
+            return tf.tile(tf.ones_like(proto) * val, [1, 1, 1, n])
+
         def _chan(name: str) -> tf.Tensor:
-            key = name
             low = name.lower()
 
-            if key in field_net:
+            # Present in network inputs
+            if name in field_net:
                 if low == "arrhenius" and cfg_physics.dim_arrhenius == 3:
-                    # field_net['arrhenius'] is [B, Nz, Ny, Nx]; pack back to [B, Ny, Nx, Nz]
-                    return tf.experimental.numpy.moveaxis(field_net[key], [1], [-1])
-                return field_net[key][..., tf.newaxis]  # [B,Ny,Nx,1]
+                    # field_net['arrhenius'] is [B, Nz, Ny, Nx] -> [B, Ny, Nx, Nz]
+                    return tf.experimental.numpy.moveaxis(field_net[name], [1], [-1])
+                # [B,Ny,Nx] -> [B,Ny,Nx,1]
+                return field_net[name][..., tf.newaxis]
 
-            # Missing -> fill with constants
+            # Missing -> fill with runtime-dependent "constants"
             if low == "dx":
-                return tf.fill([B, Ny, Nx, 1], dX)
+                return _const_chan_1(dX)
             if low == "slidingco":
-                return tf.fill([B, Ny, Nx, 1], sc0)
+                return _const_chan_1(sc0)
             if low == "arrhenius":
                 if cfg_physics.dim_arrhenius == 3:
-                    return tf.fill([B, Ny, Nx, cfg_numerics.Nz], ar0)  # [B,Ny,Nx,Nz]
-                return tf.fill([B, Ny, Nx, 1], ar0)
+                    return _const_chan_n(ar0, int(cfg_numerics.Nz))
+                return _const_chan_1(ar0)
 
-            # Safe fallback: zeros (but you may prefer to raise for unknown names)
-            return tf.zeros([B, Ny, Nx, 1], dtype=dtype)
+            # Safe fallback
+            return tf.zeros_like(proto)
 
+        # Assemble energy input tensor in the required channel order
         return tf.concat([_chan(nm) for nm in energy_inputs_names], axis=-1)
+
 
     def cost_fn(U: tf.Tensor, V: tf.Tensor, input_net: tf.Tensor) -> tf.Tensor:
         input_energy = _make_energy_inputs(input_net)
