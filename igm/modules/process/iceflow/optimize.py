@@ -557,7 +557,7 @@ def print_costs(params, state, cost, i):
           + [f"{bound(cost[key].numpy()):>12.4f}" for key in keys]
         print("   ".join(L))
 
-    print("   ".join([f"{bound(cost[key].numpy()):>12.4f}" for key in keys]),file=f)
+    print("   ".join([f"{bound(cost[key].numpy()):>12.8f}" for key in keys]),file=f)
 
 def save_rms_std(params, state):
 
