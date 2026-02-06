@@ -117,7 +117,7 @@ class OptimizerHessian(Optimizer):
             grad_theta = inner_tape.gradient(cost, theta)
             grad_u = inner_tape.gradient(cost, [U, V])
             del inner_tape
-            # grad_theta = tf.convert_to_tensor(grad_theta)
+
             grad_theta_flat = tf.concat(
                 [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
             )
@@ -128,36 +128,11 @@ class OptimizerHessian(Optimizer):
             sources=theta,
         )
 
-        n_unknowns = tf.add_n([tf.size(t) for t in theta])
-
         # Full Hessian
-        # h = tf.convert_to_tensor(h_blocks_theta)
-        # h_mat = tf.reshape(h, (n_unknowns, n_unknowns))
+        n_unknowns = tf.add_n([tf.size(t) for t in theta])
         h_mat = tf.concat(
             [tf.reshape(h, (n_unknowns, -1)) for h in h_blocks_theta], axis=1
         )
-
-        # Newton system
-        # grad_theta_flat = tf.reshape(grad_theta_flat, (n_unknowns, 1))
-
-        # Damping
-        # h_mat = h_mat + tf.eye(n_unknowns, dtype=h_mat.dtype) * tf.cast(
-        #     self.damping, h_mat.dtype
-        # )
-
-        # self._analyze_hessian(h_mat, iter=tf.constant(0), n_eigs=30)
-        # self._plot_hessian(h_mat, iter=tf.constant(0))
-
-        # Solve
-        # step_vec = tf.linalg.solve(h_mat, -g_vec)
-        # step_flat = tf.squeeze(step_vec, axis=-1)
-
-        # # Unflatten
-        # nU = tf.size(U)
-        # step_U = tf.reshape(step_flat[:nU], tf.shape(U))
-        # step_V = tf.reshape(step_flat[nU:], tf.shape(V))
-
-        # step_u = (step_U, step_V)
 
         return cost, h_mat, grad_u, grad_theta
 
@@ -246,19 +221,8 @@ class OptimizerHessian(Optimizer):
                 self.damping, h_mat.dtype
             )
         
-            # tf.print(p.shape, "p shape")
             p_flat = tf.squeeze(p_flat, axis=-1)
             grad_theta_flat = tf.squeeze(grad_theta_flat, axis=-1)
-
-            # nU = tf.size(U)
-            # step_U = tf.reshape(p_flat[:nU], tf.shape(U))
-            # step_V = tf.reshape(p_flat[nU:], tf.shape(V))
-
-            # step_u = (step_U, step_V)
-
-            # p_flat = self.map.flatten_theta(p_flat)
-            # grad_flat = self.map.flatten_theta(grad_theta_flat)
-
 
             p_flat, _ = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
