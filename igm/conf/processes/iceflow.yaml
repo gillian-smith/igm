@@ -100,6 +100,8 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
+    hessian:
+      damping: 1e-6
     sequential:
       stages: []
     line_search: hager-zhang
