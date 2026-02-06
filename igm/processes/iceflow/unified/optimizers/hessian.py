@@ -11,7 +11,7 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
 
-tf.config.optimizer.set_jit(True)
+# tf.config.optimizer.set_jit(True)
 
 
 class OptimizerHessian(Optimizer):
@@ -29,7 +29,7 @@ class OptimizerHessian(Optimizer):
         alpha_min: float = 0.0,
         iter_max: int = 100,
         damping: float = 1e-4,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             cost_fn,
@@ -40,7 +40,7 @@ class OptimizerHessian(Optimizer):
             precision,
             ord_grad_u,
             ord_grad_theta,
-            **kwargs
+            **kwargs,
         )
         self.name = "hessian"
         self.line_search = LineSearches[line_search_method]()
@@ -51,132 +51,115 @@ class OptimizerHessian(Optimizer):
     def update_parameters(self, iter_max: int, damping: float) -> None:
         self.iter_max.assign(iter_max)
         self.damping = damping
-    
+
     @tf.function
-    def _analyze_hessian(self, h_mat: tf.Tensor, iter: tf.Tensor, n_eigs: int = 10) -> None:
+    def _analyze_hessian(
+        self, h_mat: tf.Tensor, iter: tf.Tensor, n_eigs: int = 10
+    ) -> None:
         """Print smallest N eigenvalues of the Hessian."""
         eigenvalues = tf.linalg.eigvalsh(h_mat)
         smallest_eigs = eigenvalues[:n_eigs]
-        
+
         tf.print(
-            "Iter:", iter,
-            "| Smallest", n_eigs, "eigenvalues:",
+            "Iter:",
+            iter,
+            "| Smallest",
+            n_eigs,
+            "eigenvalues:",
             smallest_eigs,
-            summarize=-1
+            summarize=-1,
         )
-        
+
         # Also print condition number
         cond_number = eigenvalues[-1] / (eigenvalues[0] + 1e-12)
         tf.print("Condition number (λ_max/λ_min):", cond_number)
 
-    def _plot_hessian_wrapper(self, h_mat_np: tf.Tensor, iter_np: tf.Tensor) -> tf.Tensor:
+    def _plot_hessian_wrapper(
+        self, h_mat_np: tf.Tensor, iter_np: tf.Tensor
+    ) -> tf.Tensor:
         """Wrapper for plotting (called via py_function)."""
         import matplotlib.pyplot as plt
         import numpy as np
-        
-        h_mat = h_mat_np.numpy() if hasattr(h_mat_np, 'numpy') else h_mat_np
-        iter_val = int(iter_np.numpy() if hasattr(iter_np, 'numpy') else iter_np)
-        
+
+        h_mat = h_mat_np.numpy() if hasattr(h_mat_np, "numpy") else h_mat_np
+        iter_val = int(iter_np.numpy() if hasattr(iter_np, "numpy") else iter_np)
+
         plt.figure(figsize=(10, 8))
-        plt.imshow(h_mat, cmap='RdBu_r', aspect='auto')
-        plt.colorbar(label='Hessian value')
-        plt.title(f'Hessian Matrix at Iteration {iter_val}')
-        plt.xlabel('Parameter index')
-        plt.ylabel('Parameter index')
+        plt.imshow(h_mat, cmap="RdBu_r", aspect="auto")
+        plt.colorbar(label="Hessian value")
+        plt.title(f"Hessian Matrix at Iteration {iter_val}")
+        plt.xlabel("Parameter index")
+        plt.ylabel("Parameter index")
         plt.tight_layout()
         plt.show()
-        plt.savefig(f'hessian_iter_{iter_val:04d}.png', dpi=150)
+        plt.savefig(f"hessian_iter_{iter_val:04d}.png", dpi=150)
         plt.close()
-        
+
         return tf.constant(0)  # Return dummy value
 
     @tf.function
     def _plot_hessian(self, h_mat: tf.Tensor, iter: tf.Tensor) -> None:
         """Plot Hessian matrix as an image."""
         tf.py_function(
-            func=self._plot_hessian_wrapper,
-            inp=[h_mat, iter],
-            Tout=tf.int32
+            func=self._plot_hessian_wrapper, inp=[h_mat, iter], Tout=tf.int32
         )
-    
+
     @tf.function
-    def _get_grad(self, inputs: tf.Tensor):
-        """Compute cost, grad_u, and Newton step in (U, V) and theta.
-        
-        """
+    def _get_grads_and_hessian(self, inputs: tf.Tensor):
+        """Compute cost, grad_theta, and Hessian."""
         theta = self.map.get_theta()
-        with tf.GradientTape(persistent=True) as outer_tape:
+        with tf.GradientTape() as outer_tape:
             with tf.GradientTape(persistent=True) as inner_tape:
                 U, V = self.map.get_UV(inputs)
-
-                # Must be watched or be tf.Variable
-                # inner_tape.watch((U, V))
-                # outer_tape.watch((U, V))
-
                 cost = self.cost_fn(U, V, inputs)
 
             # First derivatives
-            # grad_U, grad_V = inner_tape.gradient(cost, (U, V))
-            grad_u = inner_tape.gradient(cost, (U, V))
             grad_theta = inner_tape.gradient(cost, theta)
+            grad_u = inner_tape.gradient(cost, [U, V])
             del inner_tape
-            g_concat_u = tf.concat(
-                (
-                    tf.reshape(grad_u[0], [-1]),
-                    tf.reshape(grad_u[1], [-1]),
-                ),
-                axis=0,
-            )
-            g_concat_theta = tf.concat(
-                (
-                    tf.reshape(grad_theta, [-1]),
-                ),
-                axis=0,
+            # grad_theta = tf.convert_to_tensor(grad_theta)
+            grad_theta_flat = tf.concat(
+                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
             )
 
         # Hessian blocks
-        # h_blocks_u = outer_tape.jacobian(
-        #     target=g_concat_u,
-        #     sources=(U, V),
-        # )
         h_blocks_theta = outer_tape.jacobian(
-            target=g_concat_theta,
+            target=grad_theta_flat,  # jacobian needs a flat tensor and not a list (compared to gradient)
             sources=theta,
         )
-        h_U, h_V = h_blocks_theta
-        del outer_tape
-        tf.print(grad_theta)
-        
-        # Flatten Hessian blocks
-        hU_flat = tf.reshape(h_U, (tf.shape(g_concat_u)[0], -1))
-        hV_flat = tf.reshape(h_V, (tf.shape(g_concat_u)[0], -1))
+
+        n_unknowns = tf.add_n([tf.size(t) for t in theta])
+
         # Full Hessian
-        h_mat = tf.concat((hU_flat, hV_flat), axis=1)
+        # h = tf.convert_to_tensor(h_blocks_theta)
+        # h_mat = tf.reshape(h, (n_unknowns, n_unknowns))
+        h_mat = tf.concat(
+            [tf.reshape(h, (n_unknowns, -1)) for h in h_blocks_theta], axis=1
+        )
 
         # Newton system
-        n_params = tf.shape(g_concat_u)[0]
-        g_vec = tf.reshape(g_concat_u, (n_params, 1))
+        # grad_theta_flat = tf.reshape(grad_theta_flat, (n_unknowns, 1))
 
         # Damping
-        h_mat = h_mat + tf.eye(n_params, dtype=h_mat.dtype) * tf.cast(
-            self.damping, h_mat.dtype
-        )
-        
+        # h_mat = h_mat + tf.eye(n_unknowns, dtype=h_mat.dtype) * tf.cast(
+        #     self.damping, h_mat.dtype
+        # )
+
         # self._analyze_hessian(h_mat, iter=tf.constant(0), n_eigs=30)
         # self._plot_hessian(h_mat, iter=tf.constant(0))
-        
+
         # Solve
-        step_vec = tf.linalg.solve(h_mat, -g_vec)
-        step_flat = tf.squeeze(step_vec, axis=-1)
+        # step_vec = tf.linalg.solve(h_mat, -g_vec)
+        # step_flat = tf.squeeze(step_vec, axis=-1)
 
-        # Unflatten
-        nU = tf.size(U)
-        step_U = tf.reshape(step_flat[:nU], tf.shape(U))
-        step_V = tf.reshape(step_flat[nU:], tf.shape(V))
+        # # Unflatten
+        # nU = tf.size(U)
+        # step_U = tf.reshape(step_flat[:nU], tf.shape(U))
+        # step_V = tf.reshape(step_flat[nU:], tf.shape(V))
 
-        step_u = (step_U, step_V)
+        # step_u = (step_U, step_V)
 
-        return cost, grad_u, step_u
+        return cost, h_mat, grad_u, grad_theta
 
     def _force_descent(
         self, p_flat: tf.Tensor, grad_theta_flat: tf.Tensor, _: tf.Tensor
@@ -188,12 +171,12 @@ class OptimizerHessian(Optimizer):
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
-    
+
     @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         dtype = self.precision
         return tf.tensordot(tf.cast(a, dtype), tf.cast(b, dtype), axes=1)
-    
+
     # @tf.function
     def _line_search(
         self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
@@ -231,7 +214,7 @@ class OptimizerHessian(Optimizer):
 
         theta_flat = self.map.flatten_theta(self.map.get_theta())
 
-        cost, grad_u, step_theta = self._get_grad(input)
+        cost, _, _, _ = self._get_grads_and_hessian(input)
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
 
@@ -247,14 +230,37 @@ class OptimizerHessian(Optimizer):
                 next_batch = static_batches
             input = next_batch[0, :, :, :, :]
 
+            cost, h_mat, grad_u, grad_theta = self._get_grads_and_hessian(input)
 
-            cost, grad_u, step_theta = self._get_grad(input)
+            # n_unknowns = tf.add_n([tf.size(t) for t in theta])
+            grad_theta_flat = tf.concat(
+                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
+            )
+            grad_theta_flat = tf.reshape(grad_theta_flat, (-1, 1))
 
-            p_flat = self.map.flatten_theta(step_theta)
-            grad_flat = self.map.flatten_theta(grad_u)
+            # Solve for newton step
+            p_flat = tf.linalg.solve(h_mat, -grad_theta_flat)
+            
+            # Damping to avoid singularity and add convexity
+            h_mat += tf.eye(tf.shape(h_mat)[0], dtype=h_mat.dtype) * tf.cast(
+                self.damping, h_mat.dtype
+            )
+        
+            # tf.print(p.shape, "p shape")
+            p_flat = tf.squeeze(p_flat, axis=-1)
+            grad_theta_flat = tf.squeeze(grad_theta_flat, axis=-1)
 
-            # Safety: ensure descent (same logic as L-BFGS)
-            p_flat, _ = self._force_descent(p_flat, grad_flat, theta_flat)
+            # nU = tf.size(U)
+            # step_U = tf.reshape(p_flat[:nU], tf.shape(U))
+            # step_V = tf.reshape(p_flat[nU:], tf.shape(V))
+
+            # step_u = (step_U, step_V)
+
+            # p_flat = self.map.flatten_theta(p_flat)
+            # grad_flat = self.map.flatten_theta(grad_theta_flat)
+
+
+            p_flat, _ = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
             alpha = self._line_search(theta_flat, p_flat, input)
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
@@ -266,7 +272,7 @@ class OptimizerHessian(Optimizer):
             costs = costs.write(iter, cost)
 
             U, V = self.map.get_UV(input)
-            grad_u_norm, step_norm = self._get_grad_norm(grad_u, step_theta)
+            grad_u_norm, step_norm = self._get_grad_norm(grad_u, grad_theta)
             self._update_step_state(
                 iter, U, V, theta_flat, cost, grad_u_norm, step_norm
             )
@@ -275,12 +281,12 @@ class OptimizerHessian(Optimizer):
             self._update_display()
 
             if self.debug_mode and iter % self.debug_freq == 0:
-                self._update_debug_state(iter, cost, grad_u, step_theta)
+                self._update_debug_state(iter, cost, grad_u, grad_theta_flat)
                 self._debug_display()
 
             iter_last = iter
             if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
                 break
-        
+
         self._finalize_display(halt_status)
         return costs.stack()[: iter_last + 1]

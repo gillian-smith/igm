@@ -56,8 +56,8 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     # Initialize optimizer
     optimizer_name = cfg.processes.iceflow.unified.optimizer
     optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
-        cfg=cfg, cost_fn=SyntheticCosts['quadratic_moderate'], map=mapping
-        # cfg=cfg, cost_fn=get_cost_fn(cfg, state), map=mapping
+        # cfg=cfg, cost_fn=SyntheticCosts['quadratic_moderate'], map=mapping
+        cfg=cfg, cost_fn=get_cost_fn(cfg, state), map=mapping
     )
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.iceflow.optimizer = optimizer
