@@ -26,6 +26,7 @@ class OptimizerLBFGS(Optimizer):
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
+        robust_curvature: bool = False, 
         **kwargs
     ):
         super().__init__(
@@ -49,6 +50,7 @@ class OptimizerLBFGS(Optimizer):
             self.eps = tf.constant(1e-12, self.precision)
         else:
             self.eps = tf.constant(1e-20, self.precision)
+        self.robust_curvature = bool(robust_curvature) 
 
     def update_parameters(self, iter_max: int, alpha_min: float) -> None:
         self.iter_max.assign(iter_max)
@@ -61,8 +63,15 @@ class OptimizerLBFGS(Optimizer):
 
     @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        dtype = self.precision
-        return tf.tensordot(tf.cast(a, dtype), tf.cast(b, dtype), axes=1)
+        if self.robust_curvature:
+            # robust: accumulate in float64
+            acc = tf.tensordot(tf.cast(a, tf.float64), tf.cast(b, tf.float64), axes=1)
+            return tf.cast(acc, self.precision)
+        else:
+            # cheap: accumulate in working precision
+            a = tf.cast(a, self.precision)
+            b = tf.cast(b, self.precision)
+            return tf.tensordot(a, b, axes=1)
 
     @tf.function(reduce_retracing=True)
     def _compute_direction(
@@ -95,6 +104,10 @@ class OptimizerLBFGS(Optimizer):
         last_y = y_list[num_elems - 1]
         last_s = s_list[num_elems - 1]
         gamma = self._dot(last_y, last_s) / (self._dot(last_y, last_y) + self.eps)
+
+        # basic safety checks
+        gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
+        gamma = tf.clip_by_value(gamma, tf.constant(1e-6, gamma.dtype), tf.constant(1e6, gamma.dtype))
         gamma = tf.cast(gamma, q.dtype)
 
         # Tempering
@@ -173,7 +186,18 @@ class OptimizerLBFGS(Optimizer):
         s: tf.Tensor,
         y: tf.Tensor,
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+
         dot_ys = self._dot(y, s)
+
+        if self.robust_curvature:
+            dot_yy = self._dot(y, y)
+            dot_ss = self._dot(s, s)
+
+            c = tf.cast(1e-6, dot_ys.dtype)
+            thresh = tf.maximum(self.eps, c * tf.sqrt(dot_yy * dot_ss))
+            accept = dot_ys > thresh
+        else:
+            accept = dot_ys > self.eps
 
         def update():
             def append():
@@ -192,9 +216,7 @@ class OptimizerLBFGS(Optimizer):
 
             return tf.cond(idx_memory < self.memory, append, shift)
 
-        return tf.cond(
-            dot_ys > self.eps, update, lambda: (s_flat_mem, y_flat_mem, idx_memory)
-        )
+        return tf.cond(accept, update, lambda: (s_flat_mem, y_flat_mem, idx_memory))
 
     @tf.function
     def _line_search(

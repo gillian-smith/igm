@@ -13,16 +13,11 @@ from .lbfgs_bounds import OptimizerLBFGSBounds
 class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     """
     Bounded L-BFGS for data assimilation.
-
-    Key difference from the generic bounded optimizer:
-      - cost_fn may return either:
-          scalar total_cost
-        or
-          (total_cost, data_cost, reg_cost)
-      - we always optimize total_cost but keep (data, reg) for logging.
+    Here we always optimize total_cost but keep (data, reg) for logging.
     """
 
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault("robust_curvature", True)
         super().__init__(*args, **kwargs)
 
         # Diagnostics (TF variables so they can be assigned inside tf.function)

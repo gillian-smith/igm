@@ -28,13 +28,11 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
     def _get_mask(
         self, w: tf.Tensor, g: tf.Tensor, L: tf.Tensor, U: tf.Tensor
     ) -> tf.Tensor:
-        eps = tf.cast(self.eps, w.dtype)
-        # for minimization with gradient g = ∂f/∂w, the steepest-descent direction is -g
-        # At the lower bound, you can only move upward into the feasible region ⇒ you need -g > 0 ⇒ g < 0.
-        # visa versa for the upper bound.
-        interior = tf.logical_and(w > L + eps, w < U - eps)
-        at_lower = tf.logical_and(w <= L + eps, g < 0.0)
-        at_upper = tf.logical_and(w >= U - eps, g > 0.0)
+        tol = tf.constant(1e-7, w.dtype) if w.dtype == tf.float32 else tf.constant(1e-12, w.dtype)
+
+        interior = tf.logical_and(w > L + tol, w < U - tol)
+        at_lower = tf.logical_and(w <= L + tol, g < 0.0)
+        at_upper = tf.logical_and(w >= U - tol, g > 0.0)
         return tf.logical_or(interior, tf.logical_or(at_lower, at_upper))
 
     def _force_descent(
@@ -64,14 +62,15 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         return theta_proj, theta_trial
 
     @tf.function
-    def _line_search(
-        self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
-    ) -> tf.Tensor:
+    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         L, U = self.map.get_box_bounds_flat()
+        amax = self._alpha_max(theta_flat, p_flat, L, U)
 
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
+            alpha_eff = tf.minimum(alpha, amax)
+
             theta_backup = self.map.copy_theta(self.map.get_theta())
-            theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
+            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
 
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
             f, _, grad = self._get_grad(input)
@@ -80,12 +79,12 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
             mask = self._get_mask(theta_alpha, grad_flat, L, U)
             p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
             df = self._dot(grad_flat, p_masked)
-            df = tf.cast(df, grad_flat.dtype)
 
             self.map.set_theta(theta_backup)
-            return ValueAndGradient(x=alpha, f=f, df=df)
+            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
 
         return self.line_search.search(theta_flat, p_flat, eval_fn)
+
 
     @tf.function(jit_compile=False)
     def minimize_impl(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -135,7 +134,8 @@ class OptimizerLBFGSBounds(OptimizerLBFGS):
         L, U = self.map.get_box_bounds_flat()
 
         # Did projection change any component?
-        proj_changed = tf.abs(w_new - theta_trial) > 0.0
+        tol = tf.constant(1e-7, w_new.dtype) if w_new.dtype == tf.float32 else tf.constant(1e-12, w_new.dtype)
+        proj_changed = tf.abs(w_new - theta_trial) > tol
 
         # Free-set at the NEW point (based on descent feasibility)
         mask_new = self._get_mask(w_new, g_new, L, U)
