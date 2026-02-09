@@ -39,10 +39,10 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         cfg_oggm.PARAMS["continue_on_error"] = True
         cfg_oggm.PARAMS["use_multiprocessing"] = False
 
-        WD = "OGGM-prepro"
 
-        # Where to store the data for the run - should be somewhere you have access to
-        cfg_oggm.PATHS["working_dir"] = utils.gettempdir(dirname=WD, reset=True)
+        job = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or str(os.getpid())
+        WD = f"OGGM-prepro-{job}"   # in preprocess branch
+        cfg_oggm.PATHS["working_dir"] = utils.gettempdir(dirname=WD, reset=True, home=True)
 
         # We need the outlines here
         if RGI_version==6:
@@ -78,7 +78,9 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         # needed by OGGM, since you start "from scratch" entirely
         # In my view this code should almost never be needed
 
-        WD = "OGGM-dir"
+        job = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or str(os.getpid())
+        WD = f"OGGM-dir-{job}"
+        cfg_oggm.PATHS["working_dir"] = utils.gettempdir(dirname=WD, reset=True, home=True)
 
         # Initialize OGGM and set up the default run parameters
         cfg_oggm.initialize()
@@ -98,7 +100,6 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         cfg_oggm.PARAMS["map_proj"] = "utm"
 
         # Where to store the data for the run - should be somewhere you have access to
-        cfg_oggm.PATHS["working_dir"] = utils.gettempdir(dirname=WD, reset=True)
 
         # We need the outlines here
         rgi_ids = utils.get_rgi_glacier_entities(RGIs)
