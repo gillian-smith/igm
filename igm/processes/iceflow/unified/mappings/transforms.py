@@ -47,16 +47,22 @@ class Log10Transform(ParameterTransform):
         return tf.exp(ln10 * theta)
     def theta_bounds(self, lower_phys, upper_phys, dtype, eps: float = 1e-12):
         ln10 = tf.constant(2.302585092994046, dtype)
-        if (lower_phys is None) or (lower_phys <= 0.0):
-            L = -tf.constant(float("inf"), dtype)
+        eps_t = tf.cast(eps, dtype)
+
+        # enforce same floor used by to_theta()
+        if lower_phys is None:
+            L = tf.math.log(eps_t) / ln10
         else:
-            L = tf.math.log(tf.constant(lower_phys, dtype)) / ln10
+            L_phys = tf.maximum(tf.cast(lower_phys, dtype), eps_t)
+            L = tf.math.log(L_phys) / ln10
+
         if upper_phys is None:
             U = tf.constant(float("inf"), dtype)
         else:
-            if upper_phys <= 0.0:
-                raise ValueError("Upper bound must be > 0 for log10.")
-            U = tf.math.log(tf.constant(upper_phys, dtype)) / ln10
+            U_phys = tf.cast(upper_phys, dtype)
+            tf.debugging.assert_greater(U_phys, eps_t)
+            U = tf.math.log(U_phys) / ln10
+
         return L, U
 
 class SoftplusTransform(ParameterTransform):
@@ -95,7 +101,7 @@ class SoftplusTransform(ParameterTransform):
         if (lower_phys is None) or (lower_phys <= 0.0):
             L = -tf.constant(float("inf"), dtype)
         else:
-            L = self._softplus_inverse(tf.constant(lower_phys, dtype))
+            L = self._softplus_inverse(eps)
 
         if upper_phys is None:
             U = tf.constant(float("inf"), dtype)
