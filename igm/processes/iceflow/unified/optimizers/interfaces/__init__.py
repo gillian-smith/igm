@@ -4,7 +4,7 @@ from .lbfgs import InterfaceLBFGS
 from .cg import InterfaceCG
 from .cg_newton import InterfaceCGNewton
 from .sequential import InterfaceSequential
-from .hessian import InterfaceHessian
+from .newton import InterfaceNewton
 from .trust_region import InterfaceTrustRegion
 
 InterfaceOptimizers = {
@@ -16,6 +16,6 @@ InterfaceOptimizers = {
     "cg": InterfaceCG,
     "cg_newton": InterfaceCGNewton,
     "sequential": InterfaceSequential,
-    "hessian": InterfaceHessian,
+    "newton": InterfaceNewton,
     "trust_region": InterfaceTrustRegion,
 }

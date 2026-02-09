@@ -5,6 +5,7 @@
 import tensorflow as tf
 from omegaconf import DictConfig
 from typing import Any, Callable, Dict
+import warnings
 
 from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
@@ -12,7 +13,7 @@ from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
 
-class InterfaceHessian(InterfaceOptimizer):
+class InterfaceNewton(InterfaceOptimizer):
     @staticmethod
     def get_optimizer_args(
         cfg: DictConfig,
@@ -25,6 +26,9 @@ class InterfaceHessian(InterfaceOptimizer):
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
 
+        if map.name == "network":
+            warnings.warn("❌ The Newton optimizer is not stable with the 'network' mapping. \
+                             Consider using the 'cg_newton' optimizer instead.")
         return {
             "cost_fn": cost_fn,
             "map": map,

@@ -28,7 +28,8 @@ class MappingNetwork(Mapping):
         self.shapes = [w.shape for w in network.trainable_variables]
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
         self.Nz = Nz
-
+        self.name = "network"
+        
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)

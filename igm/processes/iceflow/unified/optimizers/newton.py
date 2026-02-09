@@ -11,10 +11,7 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
 
-# tf.config.optimizer.set_jit(True)
-
-
-class OptimizerHessian(Optimizer):
+class OptimizerNewton(Optimizer):
     def __init__(
         self,
         cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
@@ -42,7 +39,7 @@ class OptimizerHessian(Optimizer):
             ord_grad_theta,
             **kwargs,
         )
-        self.name = "hessian"
+        self.name = "newton"
         self.line_search = LineSearches[line_search_method]()
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
         self.alpha_min = tf.Variable(alpha_min, dtype=self.precision)
@@ -97,7 +94,7 @@ class OptimizerHessian(Optimizer):
 
         return tf.constant(0)  # Return dummy value
 
-    @tf.function
+    # @tf.function
     def _plot_hessian(self, h_mat: tf.Tensor, iter: tf.Tensor) -> None:
         """Plot Hessian matrix as an image."""
         tf.py_function(
@@ -119,8 +116,8 @@ class OptimizerHessian(Optimizer):
             del inner_tape
 
             grad_theta_flat = tf.concat(
-                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
-            )
+                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0 # ! Flattening here (on network mapping) causing an incredibly complex graph and memory leaks... (despite it being the cleanest...)
+            ) 
 
         # Hessian blocks
         h_blocks_theta = outer_tape.jacobian(
@@ -213,13 +210,14 @@ class OptimizerHessian(Optimizer):
             )
             grad_theta_flat = tf.reshape(grad_theta_flat, (-1, 1))
 
-            # Solve for newton step
-            p_flat = tf.linalg.solve(h_mat, -grad_theta_flat)
-            
             # Damping to avoid singularity and add convexity
             h_mat += tf.eye(tf.shape(h_mat)[0], dtype=h_mat.dtype) * tf.cast(
                 self.damping, h_mat.dtype
             )
+            
+            # Solve for newton step
+            p_flat = tf.linalg.solve(h_mat, -grad_theta_flat)
+            
         
             p_flat = tf.squeeze(p_flat, axis=-1)
             grad_theta_flat = tf.squeeze(grad_theta_flat, axis=-1)

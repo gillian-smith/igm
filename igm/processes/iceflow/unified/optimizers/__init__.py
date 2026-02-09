@@ -8,7 +8,7 @@ from .cg import OptimizerCG
 from .cg_newton import OptimizerCGNewton
 from .trust_region import OptimizerTrustRegion
 from .sequential import OptimizerSequential
-from .hessian import OptimizerHessian
+from .newton import OptimizerNewton
 
 Optimizers = {
     "adam": OptimizerAdam,
@@ -16,7 +16,7 @@ Optimizers = {
     "lbfgs": OptimizerLBFGS,
     "lbfgs_bounds": OptimizerLBFGSBounds,
     "lbfgs_da": OptimizerLBFGSDataAssimilation,
-    "hessian": OptimizerHessian,
+    "newton": OptimizerNewton,
     "cg": OptimizerCG,
     "cg_newton": OptimizerCGNewton,
     "trust_region": OptimizerTrustRegion,
