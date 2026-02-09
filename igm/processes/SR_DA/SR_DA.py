@@ -63,24 +63,33 @@ def add_measurement_noise_uv(uobs, vobs, ice_mask, noise_factor, base_std):
 
     return u_noisy, v_noisy, sigma
 
+def masked_mean(x: tf.Tensor, mask: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
+    m = tf.cast(mask, x.dtype)
+    num = tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
+    den = tf.reduce_sum(m) + tf.cast(eps, x.dtype)
+    return num / den
 
-def smoothness_biharmonic(field, dx, lam):
+def smoothness_biharmonic(field, dx, lam, mask=None, eps=1e-12):
     dtype = field.dtype
     f = field[None, ..., None]  # [1, Ny, Nx, 1]
+
     k = tf.constant([[0., 1., 0.],
                      [1., -4., 1.],
-                     [0., 1., 0.]], dtype=dtype)
-    k = k[:, :, None, None]  # [3,3,1,1]
+                     [0., 1., 0.]], dtype=dtype)[:, :, None, None]
+
     fpad = tf.pad(f, [[0,0],[1,1],[1,1],[0,0]], mode="REFLECT")
-    lap = tf.nn.conv2d(fpad, k, strides=1, padding="VALID")
-    lap = tf.cast(lap, dtype)
+    lap = tf.nn.conv2d(fpad, k, strides=1, padding="VALID")  # [1, Ny, Nx, 1]
+    dx2 = tf.reshape(dx * dx, [1, tf.shape(dx)[0], tf.shape(dx)[1], 1])
+    lap = lap / tf.cast(dx2, dtype)
 
-    dx_squared = tf.reshape(dx * dx, [1, tf.shape(dx)[0], tf.shape(dx)[1], 1])
-    dx_squared = tf.cast(dx_squared, dtype)
-    lap /= dx_squared
+    lap2 = tf.square(lap)[0, :, :, 0]  # [Ny, Nx]
 
-    half = tf.constant(0.5, dtype=dtype)
-    return lam * half * tf.reduce_mean(tf.square(lap))
+    if mask is None:
+        mean_lap2 = tf.reduce_mean(lap2)
+    else:
+        mean_lap2 = masked_mean(lap2, tf.cast(mask, tf.bool), eps=eps)
+
+    return tf.cast(lam, dtype) * tf.cast(0.5, dtype) * mean_lap2
 
 def get_cost_fn_data(cfg, state, da_map):
     def cost_function(U, V, inputs):
@@ -94,22 +103,27 @@ def get_cost_fn_data(cfg, state, da_map):
         uobs = tf.cast(state.uvelsurfobs, dtype)
         vobs = tf.cast(state.vvelsurfobs, dtype)
 
-        mask = tf.logical_and(~tf.math.is_nan(uobs), ~tf.math.is_nan(vobs))
+        valid = tf.math.is_finite(uobs) & tf.math.is_finite(vobs)
+        ice = tf.cast(state.icemask, tf.bool)
+        active = valid & ice
+
 
         std = tf.cast(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype)
-
         ru = (uobs - uvelsurf) / std
         rv = (vobs - vvelsurf) / std
 
-        cost_data = 0.5 * tf.reduce_mean(tf.boolean_mask(ru**2 + rv**2, mask))
+        res2 = tf.cast(ru**2 + rv**2, dtype)  # x is float dtype
+
+        cost_data = tf.cast(0.5, dtype) * masked_mean(res2, active, eps=1e-12)
+
 
         current_thk = da_map.get_physical_field("thk") # this is needed to ensure the gradient tape tracks thk
 
         lam = tf.cast(cfg.processes.SR_DA.regularization.thk, dtype)
         dx = tf.cast(state.dX, dtype)
-        cost_reg = smoothness_biharmonic(current_thk, dx, lam)
+        cost_reg = smoothness_biharmonic(current_thk, dx, lam, mask=active, eps=1e-12)
 
-        cost_total = tf.cast(cost_data, dtype) + tf.cast(cost_reg, dtype)
+        cost_total = tf.cast(cost_data + cost_reg, dtype)
         
         return cost_total, tf.cast(cost_data, dtype), tf.cast(cost_reg, dtype)
 
