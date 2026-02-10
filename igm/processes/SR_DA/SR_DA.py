@@ -99,6 +99,7 @@ def get_cost_fn_data(cfg, state, da_map):
         V = V[0]
 
         uvelsurf, vvelsurf = get_velsurf(U, V, state.iceflow.discr_v.V_s)
+        eps = tf.cast(1e-12, dtype)
 
         uobs = tf.cast(state.uvelsurfobs, dtype)
         vobs = tf.cast(state.vvelsurfobs, dtype)
@@ -114,14 +115,14 @@ def get_cost_fn_data(cfg, state, da_map):
 
         res2 = tf.cast(ru**2 + rv**2, dtype)  # x is float dtype
 
-        cost_data = tf.cast(0.5, dtype) * masked_mean(res2, active, eps=1e-12)
+        cost_data = tf.cast(0.5, dtype) * masked_mean(res2, active, eps=eps)
 
 
         current_thk = da_map.get_physical_field("thk") # this is needed to ensure the gradient tape tracks thk
 
         lam = tf.cast(cfg.processes.SR_DA.regularization.thk, dtype)
         dx = tf.cast(state.dX, dtype)
-        cost_reg = smoothness_biharmonic(current_thk, dx, lam, mask=active, eps=1e-12)
+        cost_reg = smoothness_biharmonic(current_thk, dx, lam, mask=active, eps=eps)
 
         cost_total = tf.cast(cost_data + cost_reg, dtype)
         
@@ -164,6 +165,7 @@ def data_assimilation_initialize(cfg, state):
     state.vvelsurfobs = tf.convert_to_tensor(v_noisy, dtype=dtype)
     state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
     state.usurf = tf.cast(state.usurf, dtype)
+    state.dX = tf.cast(state.dX, dtype) 
 
     # 1) Build mapping first
     mapping_args = InterfaceDataAssimilation.get_mapping_args(cfg, state)

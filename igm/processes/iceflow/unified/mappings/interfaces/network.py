@@ -30,9 +30,8 @@ class InterfaceNetwork(InterfaceMapping):
         if cfg_unified.network.pretrained:
             dtype = normalize_precision(cfg_numerics.precision)
             artifact_dir = cfg_unified.network.pretrained_path
-            policy = tf.keras.mixed_precision.Policy(dtype.name)
-            with tf.keras.mixed_precision.policy_scope(policy):
-                iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
+            tf.keras.mixed_precision.set_global_policy("float64" if tf.as_dtype(dtype) == tf.float64 else "float32")
+            iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
