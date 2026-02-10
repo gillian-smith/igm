@@ -5,95 +5,64 @@
 from __future__ import annotations
 
 import tensorflow as tf
-from typing import Tuple, List, Any
+from typing import Tuple
 
 from .lbfgs_bounds import OptimizerLBFGSBounds
+from .line_searches import ValueAndGradient  # NEW
+from .da_progress_optimizer import _DAProgressOptimizer  # NEW
 
 
 class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     """
-    Bounded L-BFGS for data assimilation.
-    Here we always optimize total_cost but keep (data, reg) for logging.
-    I've also added a lot of additional safeguards and stricter criteria for updating lbfgs memory to try and help hard problems
+    Bounded L-BFGS for data assimilation with scale-aware rho spike clamping.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        rho_spike_factor: float = 20.0,
+        rho_warmup: int = 5,
+        rho_ema_beta: float = 0.99,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
-        # Diagnostics (TF variables so they can be assigned inside tf.function)
         dtype = getattr(self.map, "precision", tf.float32)
+
         self.last_total = tf.Variable(0.0, trainable=False, dtype=dtype)
         self.last_data  = tf.Variable(0.0, trainable=False, dtype=dtype)
         self.last_reg   = tf.Variable(0.0, trainable=False, dtype=dtype)
 
-        # --- running stats of y^T s (accepted pairs only) ---
-        self.ys_mean  = tf.Variable(0.0, trainable=False, dtype=dtype)
-        self.ys_count = tf.Variable(0,   trainable=False, dtype=tf.int64)
+        self.rho_mean  = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.rho_count = tf.Variable(0,   trainable=False, dtype=tf.int64)
 
-        # how many accepted pairs before we start capping rho
-        self.ys_warmup = tf.constant(5, dtype=tf.int64)
+        self.rho_spike_factor = tf.constant(rho_spike_factor, dtype=dtype)
+        self.rho_warmup       = tf.constant(rho_warmup, dtype=tf.int64)
+        self.rho_ema_beta     = tf.constant(rho_ema_beta, dtype=dtype)
 
-        # allow rho up to (rho_spike_factor * typical_rho)
-        # typical_rho ≈ 1 / ys_mean
-        self.rho_spike_factor = tf.constant(100.0, dtype=dtype)
-
-        # optional counters if you still want acceptance-rate prints in DA
-        self.mem_accept = tf.Variable(0, trainable=False, dtype=tf.int64)
-        self.mem_total  = tf.Variable(0, trainable=False, dtype=tf.int64)
-
-    @tf.function(reduce_retracing=True)
-    def _get_grad(
-        self, inputs: tf.Tensor
-    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
-        theta = self.map.get_theta()
-
-        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-            for t in theta:
-                tape.watch(t)
-
-            # Forward pass (mapping may patch/synchronize inputs internally)
-            U, V = self.map.get_UV(inputs)
-
-            # IMPORTANT: cost must see the exact inputs used by the mapping/network
-            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
-
-            total, data, reg = self.cost_fn(U, V, inputs_used)
-
-        # Grads
-        grad_u = tape.gradient(total, [U, V])
-        grad_theta = tape.gradient(total, theta)
-        del tape
-
-        # Replace None grads 
-        grad_theta = [
-            tf.zeros_like(t) if g is None else g
-            for g, t in zip(grad_theta, theta)
-        ]
-
-        # Store diagnostics
-        self.last_total.assign(tf.stop_gradient(total))
-        self.last_data.assign(tf.stop_gradient(data))
-        self.last_reg.assign(tf.stop_gradient(reg))
-
-        return total, grad_u, grad_theta
+        # swap display for DA-specific one, preserving enabled/freq
+        self.display = _DAProgressOptimizer(enabled=self.display.enabled, freq=self.display.freq)
 
     def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
-        # reset stats each run
-        self.ys_mean.assign(tf.cast(0.0, self.ys_mean.dtype))
-        self.ys_count.assign(0)
-        self.mem_accept.assign(0)
-        self.mem_total.assign(0)
+        self.rho_mean.assign(tf.cast(0.0, self.rho_mean.dtype))
+        self.rho_count.assign(0)
         return super().minimize(inputs)
-    
+
+    @tf.function(reduce_retracing=True)
+    def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+        acc = tf.tensordot(tf.cast(a, tf.float64), tf.cast(b, tf.float64), axes=1)
+        return tf.cast(acc, self.precision)
+
     @tf.function(reduce_retracing=True)
     def _rho_cap(self) -> tf.Tensor:
-        # cap = spike_factor / ys_mean  (since rho = 1 / (y^T s))
-        mean = tf.maximum(self.ys_mean, tf.cast(self.eps, self.ys_mean.dtype))
-        cap = tf.cast(self.rho_spike_factor, mean.dtype) / mean
+        inf = tf.constant(float("inf"), dtype=self.rho_mean.dtype)
 
-        inf = tf.constant(float("inf"), dtype=cap.dtype)
-        return tf.cond(self.ys_count >= self.ys_warmup, lambda: cap, lambda: inf)
-    
+        def cap():
+            mean = tf.maximum(self.rho_mean, tf.cast(self.eps, self.rho_mean.dtype))
+            return tf.cast(self.rho_spike_factor, mean.dtype) * mean
+
+        return tf.cond(self.rho_count >= self.rho_warmup, cap, lambda: inf)
+
     @tf.function(reduce_retracing=True)
     def _update_memory(
         self,
@@ -105,31 +74,28 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
         dot_ys = self._dot(y, s)
-        accept = tf.math.is_finite(dot_ys) & (dot_ys > self.eps)
+        finite = tf.math.is_finite(dot_ys)
+        accept = finite & (dot_ys > self.eps)
 
-        self.mem_total.assign_add(1)
-        self.mem_accept.assign_add(tf.cast(accept, tf.int64))
-
-        # update running mean of y^T s (only when accepted)
         def _update_stats():
-            c = self.ys_count
-            c_new = c + 1
+            rho = 1.0 / (dot_ys + self.eps)
+            beta = tf.cast(self.rho_ema_beta, self.rho_mean.dtype)
+            rho_cast = tf.cast(rho, self.rho_mean.dtype)
 
-            # update mean in float64 for numerical stability, store back in dtype
-            mean64 = tf.cast(self.ys_mean, tf.float64)
-            c64    = tf.cast(c, tf.float64)
-            ys64   = tf.cast(dot_ys, tf.float64)
+            def init():
+                self.rho_mean.assign(rho_cast)
+                self.rho_count.assign_add(1)
+                return 0
 
-            new_mean64 = (mean64 * c64 + ys64) / (c64 + 1.0)
+            def ema():
+                self.rho_mean.assign(beta * self.rho_mean + (1.0 - beta) * rho_cast)
+                self.rho_count.assign_add(1)
+                return 0
 
-            self.ys_mean.assign(tf.cast(new_mean64, self.ys_mean.dtype))
-            self.ys_count.assign(c_new)
-            return tf.constant(0, tf.int32)
+            return tf.cond(self.rho_count <= 0, init, ema)
 
-        tf.cond(accept, _update_stats, lambda: tf.constant(0, tf.int32))
-        tf.print("ys_mean", self.ys_mean, "rho_cap", self._rho_cap(), "accept", accept)
+        tf.cond(accept, lambda: tf.cast(_update_stats(), tf.int32), lambda: tf.constant(0, tf.int32))
 
-        # store memory (same as base)
         def update():
             def append():
                 return (
@@ -158,10 +124,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
         num_elems: tf.Tensor,
         tau: tf.Tensor,
     ) -> tf.Tensor:
+
         if tf.equal(num_elems, 0):
             return -grad
 
-        rho_cap = self._rho_cap()  
+        rho_cap = tf.cast(self._rho_cap(), grad.dtype)
 
         q = grad
         alpha_list = tf.TensorArray(dtype=grad.dtype, size=num_elems, dynamic_size=False)
@@ -171,12 +138,11 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             y_i = y_list[i]
 
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(rho, tf.cast(rho_cap, rho.dtype))
+            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
 
             alpha_i = rho * self._dot(s_i, q)
-            alpha_i = tf.cast(alpha_i, q.dtype)
-            alpha_list = alpha_list.write(i, alpha_i)
-            q = q - alpha_i * y_i
+            alpha_list = alpha_list.write(i, tf.cast(alpha_i, q.dtype))
+            q = q - tf.cast(alpha_i, q.dtype) * y_i
 
         last_y = y_list[num_elems - 1]
         last_s = s_list[num_elems - 1]
@@ -193,16 +159,121 @@ class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
             y_i = y_list[i]
 
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
-            rho = tf.minimum(rho, tf.cast(rho_cap, rho.dtype))  
+            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
 
             beta = rho * self._dot(y_i, r)
-            beta = tf.cast(beta, r.dtype)
             alpha_i = alpha_list.read(i)
-            r = r + s_i * (alpha_i - beta)
+            r = r + s_i * (tf.cast(alpha_i, r.dtype) - tf.cast(beta, r.dtype))
 
         return -r
 
     @tf.function(reduce_retracing=True)
-    def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        acc = tf.tensordot(tf.cast(a, tf.float64), tf.cast(b, tf.float64), axes=1)
-        return tf.cast(acc, self.precision)
+    def _get_grad_trial(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
+        # the point of a separate method here is to avoid writing the wrong costs to the display when doing line search evaluations, which can be confusing when the line search evaluates points with much higher cost than the current iterate
+        theta = self.map.get_theta()
+
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
+
+            U, V = self.map.get_UV(inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+            total, _, _ = self.cost_fn(U, V, inputs_used)
+
+        grad_theta = tape.gradient(total, theta)
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+        return total, grad_theta
+
+    @tf.function
+    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+        L, U = self.map.get_box_bounds_flat()
+        amax = self._alpha_max(theta_flat, p_flat, L, U)
+
+        def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
+            alpha_eff = tf.minimum(alpha, amax)
+
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
+
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
+
+            f, grad_theta = self._get_grad_trial(input)
+            grad_flat = self.map.flatten_theta(grad_theta)
+
+            mask = self._get_mask(theta_alpha, grad_flat, L, U)
+            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
+            df = self._dot(grad_flat, p_masked)
+
+            self.map.set_theta(theta_backup)
+            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
+
+        return self.line_search.search(theta_flat, p_flat, eval_fn)
+
+
+    def _update_display(self) -> None:
+        if not getattr(self.display, "enabled", False):
+            return
+
+        def update_display(iter_val, total_val, data_val, reg_val, *crit_data):
+            if crit_data:
+                n = len(crit_data) // 2
+                values = [float(crit_data[i].numpy()) for i in range(n)]
+                satisfied = [bool(crit_data[n + i].numpy()) for i in range(n)]
+            else:
+                values = None
+                satisfied = None
+
+            self.display.update(
+                int(iter_val.numpy()),
+                float(total_val.numpy()),
+                float(data_val.numpy()),
+                float(reg_val.numpy()),
+                values,
+                satisfied,
+            )
+            return 1.0
+
+        should_update = self.display.should_update(self.step_state.iter)
+
+        py_func_args = [
+            self.step_state.iter,
+            self.last_total.read_value(),
+            self.last_data.read_value(),
+            self.last_reg.read_value(),
+        ]
+
+        if self.halt_state.criterion_values and self.halt_state.criterion_satisfied:
+            py_func_args.extend(self.halt_state.criterion_values)
+            py_func_args.extend(self.halt_state.criterion_satisfied)
+
+        tf.cond(
+            should_update,
+            lambda: tf.py_function(update_display, py_func_args, tf.float32),
+            lambda: tf.constant(0.0, dtype=tf.float32),
+        )
+
+    @tf.function(reduce_retracing=True)
+    def _get_grad(
+        self, inputs: tf.Tensor
+    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
+        theta = self.map.get_theta()
+
+        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
+
+            U, V = self.map.get_UV(inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+            total, data, reg = self.cost_fn(U, V, inputs_used)
+
+        grad_u = tape.gradient(total, [U, V])
+        grad_theta = tape.gradient(total, theta)
+        del tape
+
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+
+        self.last_total.assign(tf.stop_gradient(total))
+        self.last_data.assign(tf.stop_gradient(data))
+        self.last_reg.assign(tf.stop_gradient(reg))
+
+        return total, grad_u, grad_theta
