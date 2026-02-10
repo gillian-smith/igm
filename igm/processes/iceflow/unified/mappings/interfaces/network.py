@@ -10,7 +10,7 @@ from igm.processes.iceflow.emulate.utils.architectures import Architectures
 from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.unified.mappings import Mappings
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
-
+from igm.utils.math.precision import normalize_precision
 
 class InterfaceNetwork(InterfaceMapping):
 
@@ -28,8 +28,11 @@ class InterfaceNetwork(InterfaceMapping):
         Nz = int(cfg_numerics.Nz)
 
         if cfg_unified.network.pretrained:
+            dtype = normalize_precision(cfg_numerics.precision)
             artifact_dir = cfg_unified.network.pretrained_path
-            iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
+            policy = tf.keras.mixed_precision.Policy(dtype.name)
+            with tf.keras.mixed_precision.policy_scope(policy):
+                iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 

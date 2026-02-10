@@ -246,7 +246,7 @@ def load_emulator_artifact(
     trained_p = manifest.architecture.params.get("trained_precision", None)
     if trained_p and trained_p != "unknown":
         try:
-            trained_dt = tf.as_dtype(str(trained_p))
+            trained_dt = normalize_precision(str(trained_p))
         except Exception:
             warnings.warn(
                 f"Artifact reports trained_precision={trained_p!r}, but it could not be parsed as a TF dtype. "
