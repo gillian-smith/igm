@@ -11,6 +11,7 @@ from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
 from .line_searches import LineSearches, ValueAndGradient
 
+
 class OptimizerNewton(Optimizer):
     def __init__(
         self,
@@ -49,7 +50,7 @@ class OptimizerNewton(Optimizer):
         self.iter_max.assign(iter_max)
         self.damping = damping
 
-    @tf.function
+    # @tf.function
     def _analyze_hessian(
         self, h_mat: tf.Tensor, iter: tf.Tensor, n_eigs: int = 10
     ) -> None:
@@ -101,10 +102,12 @@ class OptimizerNewton(Optimizer):
             func=self._plot_hessian_wrapper, inp=[h_mat, iter], Tout=tf.int32
         )
 
-    @tf.function
+    # @tf.function
     def _get_grads_and_hessian(self, inputs: tf.Tensor):
         """Compute cost, grad_theta, and Hessian."""
+
         theta = self.map.get_theta()
+
         with tf.GradientTape() as outer_tape:
             with tf.GradientTape(persistent=True) as inner_tape:
                 U, V = self.map.get_UV(inputs)
@@ -115,9 +118,10 @@ class OptimizerNewton(Optimizer):
             grad_u = inner_tape.gradient(cost, [U, V])
             del inner_tape
 
+            # ! Flattening here (on network mapping) causes an incredibly complex graph and memory leaks... (despite it being the cleanest...)
             grad_theta_flat = tf.concat(
-                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0 # ! Flattening here (on network mapping) causing an incredibly complex graph and memory leaks... (despite it being the cleanest...)
-            ) 
+                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
+            )
 
         # Hessian blocks
         h_blocks_theta = outer_tape.jacobian(
@@ -144,7 +148,7 @@ class OptimizerNewton(Optimizer):
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
 
-    @tf.function(reduce_retracing=True)
+    # @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         dtype = self.precision
         return tf.tensordot(tf.cast(a, dtype), tf.cast(b, dtype), axes=1)
@@ -204,7 +208,6 @@ class OptimizerNewton(Optimizer):
 
             cost, h_mat, grad_u, grad_theta = self._get_grads_and_hessian(input)
 
-            # n_unknowns = tf.add_n([tf.size(t) for t in theta])
             grad_theta_flat = tf.concat(
                 [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
             )
@@ -214,11 +217,10 @@ class OptimizerNewton(Optimizer):
             h_mat += tf.eye(tf.shape(h_mat)[0], dtype=h_mat.dtype) * tf.cast(
                 self.damping, h_mat.dtype
             )
-            
+
             # Solve for newton step
             p_flat = tf.linalg.solve(h_mat, -grad_theta_flat)
-            
-        
+
             p_flat = tf.squeeze(p_flat, axis=-1)
             grad_theta_flat = tf.squeeze(grad_theta_flat, axis=-1)
 
