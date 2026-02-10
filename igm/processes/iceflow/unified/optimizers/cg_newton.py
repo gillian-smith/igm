@@ -63,7 +63,7 @@
 #         self.cg_max_iter = cg_max_iter
 #         self.cg_tol = tf.constant(cg_tol, dtype=self.precision)
 #         self.use_truncated_cg = use_truncated_cg
-        
+
 #         # Diagnostic settings
 #         self.diagnostics = diagnostics
 #         self.diagnostics_freq = diagnostics_freq
@@ -77,7 +77,7 @@
 #     # ============================================================
 
 #     def _cost_and_grad(
-#         self, 
+#         self,
 #         inputs: tf.Tensor,
 #         cost_fn: Callable,
 #     ):
@@ -105,7 +105,7 @@
 #         """
 #         Compute (H + damping I) v using nested GradientTapes.
 #         """
-        
+
 #         nU = tf.size(U)
 #         vU = tf.reshape(v_flat[:nU], tf.shape(U))
 #         vV = tf.reshape(v_flat[nU:], tf.shape(V))
@@ -116,9 +116,9 @@
 #                 inner_tape.watch((U, V))
 #                 c = cost_fn(U, V, inputs)
 #             gU, gV = inner_tape.gradient(c, (U, V))
-            
+
 #             gv = tf.reduce_sum(gU * vU) + tf.reduce_sum(gV * vV)
-        
+
 #         HvU, HvV = outer_tape.gradient(gv, (U, V))
 
 #         Hv_flat = tf.concat(
@@ -144,53 +144,53 @@
 #         """
 #         Use Lanczos iteration to estimate extreme eigenvalues of H.
 #         Returns (lambda_min, lambda_max) estimates.
-        
+
 #         This is matrix-free and only uses Hessian-vector products.
 #         """
 #         # Get problem dimension
 #         cost, _, _, grad_U, grad_V = self._cost_and_grad(inputs, cost_fn)
 #         g_flat = tf.concat([tf.reshape(grad_U, [-1]), tf.reshape(grad_V, [-1])], axis=0)
 #         n = tf.size(g_flat)
-        
+
 #         # Initialize with random vector
 #         v = tf.random.normal(tf.shape(g_flat), dtype=self.precision)
 #         v = v / tf.norm(v)
-        
+
 #         # Lanczos tridiagonal matrix
 #         alpha = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
 #         beta = tf.TensorArray(dtype=self.precision, size=n_iter, dynamic_size=False)
-        
+
 #         v_old = tf.zeros_like(v)
 #         beta_old = tf.constant(0.0, dtype=self.precision)
-        
+
 #         for j in tf.range(n_iter):
 #             # Hessian-vector product
 #             w = self._hvp(inputs, U, V, v, cost_fn, damping)
-            
+
 #             # Orthogonalize
 #             alpha_j = tf.reduce_sum(w * v)
 #             w = w - alpha_j * v - beta_old * v_old
-            
+
 #             beta_j = tf.norm(w)
-            
+
 #             alpha = alpha.write(j, alpha_j)
 #             beta = beta.write(j, beta_j)
-            
+
 #             # Update
 #             v_old = v
 #             v = w / (beta_j + 1e-16)  # Avoid division by zero
 #             beta_old = beta_j
-        
+
 #         # Build tridiagonal matrix
 #         alpha_vals = alpha.stack()
 #         beta_vals = beta.stack()
-        
+
 #         # Estimate eigenvalues from tridiagonal (simple bounds)
 #         # lambda_max ≈ max(alpha + 2*beta)
 #         # lambda_min ≈ min(alpha - 2*beta)
 #         lambda_max = tf.reduce_max(alpha_vals + 2.0 * beta_vals)
 #         lambda_min = tf.reduce_min(alpha_vals - 2.0 * beta_vals)
-        
+
 #         return lambda_min, lambda_max
 
 #     # ============================================================
@@ -213,7 +213,7 @@
 #         Hg = self._hvp(inputs, U, V, g_flat, cost_fn, damping)
 #         gHg = tf.reduce_sum(g_flat * Hg)
 #         gg = tf.reduce_sum(g_flat * g_flat)
-        
+
 #         return gHg / (gg + 1e-16)
 
 #     # ============================================================
@@ -241,9 +241,9 @@
 #         r = b
 #         p = r
 #         rs = tf.reduce_sum(r * r)
-        
+
 #         initial_residual = tf.sqrt(rs)
-        
+
 #         neg_curv_detected = False
 
 #         for i in tf.range(cg_max_iter):
@@ -252,17 +252,17 @@
 #                 if verbose:
 #                     tf.print("  CG converged at iteration", i)
 #                 break
-                
+
 #             Ap = self._hvp(inputs, U, V, p, cost_fn, damping)
 #             pAp = tf.reduce_sum(p * Ap)
-            
+
 #             # Diagnostics every few iterations
 #             if verbose and i % 5 == 0:
 #                 rel_residual = tf.sqrt(rs) / (initial_residual + 1e-16)
-#                 tf.print("  CG iter:", i, 
-#                         "| rel_res:", rel_residual, 
+#                 tf.print("  CG iter:", i,
+#                         "| rel_res:", rel_residual,
 #                         "| p^T Ap:", pAp)
-            
+
 #             # Check for negative curvature (truncated CG)
 #             if use_truncated and pAp <= 0.0:
 #                 if verbose:
@@ -271,14 +271,14 @@
 #                 if i == 0:
 #                     x = r  # Use gradient direction
 #                 break
-            
+
 #             denom = pAp
 #             alpha = rs / denom
-            
+
 #             x = x + alpha * p
 #             r = r - alpha * Ap
 #             rs_new = tf.reduce_sum(r * r)
-            
+
 #             beta = rs_new / rs
 #             p = r + beta * p
 #             rs = rs_new
@@ -297,7 +297,7 @@
 #     # ============================================================
 
 #     def _get_grad(
-#         self, 
+#         self,
 #         inputs: tf.Tensor,
 #         cost_fn: Callable,
 #         damping: tf.Tensor,
@@ -353,9 +353,9 @@
 #     # ============================================================
 
 #     def _line_search(
-#         self, 
-#         theta_flat: tf.Tensor, 
-#         p_flat: tf.Tensor, 
+#         self,
+#         theta_flat: tf.Tensor,
+#         p_flat: tf.Tensor,
 #         input: tf.Tensor,
 #         cost_fn: Callable,
 #         damping: tf.Tensor,
@@ -419,17 +419,17 @@
 
 #             if run_diagnostics:
 #                 tf.print("\n========== DIAGNOSTICS AT ITERATION", iter, "==========")
-                
+
 #                 # 1. Eigenvalue estimates via Lanczos
 #                 lambda_min, lambda_max = self._lanczos_eigenvalues(
 #                     input, U, V, cost_fn, damping, n_iter=20
 #                 )
 #                 tf.print("Estimated eigenvalues: λ_min =", lambda_min, ", λ_max =", lambda_max)
-                
+
 #                 # 2. Condition number
 #                 cond_number = lambda_max / (tf.abs(lambda_min) + 1e-16)
 #                 tf.print("Estimated condition number: κ(H) =", cond_number)
-                
+
 #                 # 3. Strong convexity check
 #                 if lambda_min > 0.0:
 #                     tf.print("Status: STRONGLY CONVEX (λ_min > 0)")
@@ -437,15 +437,15 @@
 #                     tf.print("Status: NEARLY SINGULAR or FLAT (λ_min ≈ 0)")
 #                 else:
 #                     tf.print("Status: INDEFINITE (λ_min < 0) - possible saddle point")
-                
+
 #                 # 4. Curvature along gradient direction
 #                 grad_curv = self._gradient_curvature(input, U, V, g_flat, cost_fn, damping)
 #                 tf.print("Curvature along gradient: g^T H g / ||g||^2 =", grad_curv)
-                
+
 #                 # 5. Gradient norm
 #                 grad_norm = tf.norm(g_flat)
 #                 tf.print("Gradient norm: ||g|| =", grad_norm)
-                
+
 #                 tf.print("=" * 60, "\n")
 
 #             # Solve Newton system with verbose output if diagnostics enabled
@@ -480,7 +480,7 @@
 #             iter_last = iter
 #             if tf.not_equal(halt_status, HaltStatus.CONTINUE.value):
 #                 break
-        
+
 #         tf.print("Final values for U and V", U, V)
 
 #         self._finalize_display(halt_status)
@@ -501,12 +501,15 @@ from .line_searches import LineSearches, ValueAndGradient
 
 from dataclasses import dataclass
 
+
 @dataclass
 class CGContext:
     """Context for CG solver to avoid passing many arguments."""
+
     inputs: tf.Tensor
     cost_fn: Callable
     damping: tf.Tensor
+
 
 class OptimizerCGNewton(Optimizer):
     """
@@ -563,7 +566,7 @@ class OptimizerCGNewton(Optimizer):
         self.damping = tf.cast(damping, self.precision)
 
     def _cost_and_grad(
-        self, 
+        self,
         inputs: tf.Tensor,
         cost_fn: Callable,
     ):
@@ -571,13 +574,12 @@ class OptimizerCGNewton(Optimizer):
         theta = self.map.get_theta()
         with tf.GradientTape(persistent=True) as tape:
             U, V = self.map.get_UV(inputs)
-            # tape.watch((U, V))
             cost = cost_fn(U, V, inputs)
 
         grad_u = tape.gradient(cost, (U, V))
         grad_theta = tape.gradient(cost, theta)
-        
-        return cost, U, V, grad_u, grad_theta
+
+        return cost, grad_u, grad_theta
 
     def _hvp(
         self,
@@ -586,50 +588,29 @@ class OptimizerCGNewton(Optimizer):
         cost_fn: Callable,
         damping: tf.Tensor,
     ) -> tf.Tensor:
-        """Compute (H + damping I) v using nested GradientTapes."""
-        
-        # nU = tf.size(U)
-        # vU = tf.reshape(v_flat[:nU], tf.shape(U))
-        # vV = tf.reshape(v_flat[nU:], tf.shape(V))
-        
+        """Compute (H + damping I) v using Reverse-over-reverse hessian-vector product.
+        We choose to not do the perlmutter trick (forward-over-reverse) as it
+        complicates the graph structure despite it being more memory efficient."""
+
         theta = self.map.get_theta()
-        # theta_flat = self.map.flatten_theta(theta)
-        
+
         with tf.GradientTape(persistent=True) as outer_tape:
-            # outer_tape.watch((U, V))
             with tf.GradientTape(persistent=True) as inner_tape:
-                # inner_tape.watch((U, V))
-                U, V = self.map.get_UV(inputs) # This line adds so much time for tracing ...
+                U, V = self.map.get_UV(
+                    inputs
+                )  # This line adds so much time for tracing ...
                 cost = cost_fn(U, V, inputs)
-            # grad_U, grad_V = inner_tape.gradient(cost, (U, V))
+
             grad_theta = inner_tape.gradient(cost, theta)
-            
-            # gv = tf.reduce_sum(grad_U * vU) + tf.reduce_sum(grad_V * vV)
-        
-        # HvU, HvV = outer_tape.gradient(gv, (U, V))
-        # HvU, HvV = outer_tape.gradient(
-        #     (grad_U, grad_V),
-        #     (U, V),
-        #     output_gradients=(vU, vV),
-        # )
 
-        # tf.
-
-        # print("Sum of sizes:", sum([int(s) for s in self.map.sizes]))
-        # print(self.map.sizes)
-        # print(tf.shape(v_flat))
-        v = self.map.unflatten_theta(v_flat)
-
+        v = self.map.unflatten_theta(
+            v_flat
+        )  # v has same structure as theta in parameter space (and function space)
         Hv_theta = outer_tape.gradient(
             grad_theta,
             theta,
             output_gradients=v,
         )
-
-        # Hv_flat = tf.concat(
-        #     [tf.reshape(HvU, [-1]), tf.reshape(HvV, [-1])],
-        #     axis=0,
-        # )
 
         Hv_theta_flat = tf.concat(
             [tf.reshape(h, (-1,)) for h in Hv_theta],
@@ -637,54 +618,17 @@ class OptimizerCGNewton(Optimizer):
         )
 
         return Hv_theta_flat + damping * v_flat
-        # return Hv_flat + damping * v_flat
-    
-    # def _hvp(
-    #     self,
-    #     inputs: tf.Tensor,
-    #     U: tf.Tensor,
-    #     V: tf.Tensor,
-    #     v_flat: tf.Tensor,
-    #     cost_fn: Callable,
-    #     damping: tf.Tensor,
-    # ) -> tf.Tensor:
 
-    #     nU = tf.size(U)
-    #     vU = tf.reshape(v_flat[:nU], tf.shape(U))
-    #     vV = tf.reshape(v_flat[nU:], tf.shape(V))
-
-    #     with tf.autodiff.ForwardAccumulator(
-    #         primals=(U, V),
-    #         tangents=(vU, vV),
-    #     ) as acc:
-
-    #         with tf.GradientTape() as tape:
-    #             tape.watch((U, V))
-    #             cost = cost_fn(U, V, inputs)
-
-    #         gU, gV = tape.gradient(cost, (U, V))
-
-    #     HvU, HvV = acc.jvp((gU, gV))
-
-    #     Hv_flat = tf.concat(
-    #         [tf.reshape(HvU, [-1]), tf.reshape(HvV, [-1])],
-    #         axis=0,
-    #     )
-
-    #     return Hv_flat + damping * v_flat
-
-    
     def _explicit_residual(
         self,
         ctx: CGContext,
-        i: tf.Tensor,
         x: tf.Tensor,
         b: tf.Tensor,
     ) -> tf.Tensor:
         """Compute explicit residual: r = b - Ax."""
         Ax = self._hvp(ctx.inputs, x, ctx.cost_fn, ctx.damping)
         return b - Ax
-    
+
     def _implicit_residual(
         self,
         r: tf.Tensor,
@@ -693,7 +637,7 @@ class OptimizerCGNewton(Optimizer):
     ) -> tf.Tensor:
         """Compute implicit residual: r = r - alpha * Ap."""
         return r - alpha * Ap
-    
+
     def _cg_solve(
         self,
         inputs: tf.Tensor,
@@ -705,15 +649,12 @@ class OptimizerCGNewton(Optimizer):
         use_truncated: bool,
         explicit_freq: int = 50,
     ) -> tf.Tensor:
-        """Solve (H + damping I) x = b using truncated linear CG + Fletcher Reeves Quotient."""
-        
-        # Create context once
-        ctx = CGContext(
-            inputs=inputs,
-            cost_fn=cost_fn,
-            damping=damping
-        )
-        
+        """Solve (H + damping I) x = b using truncated linear CG + Fletcher Reeves quotient.
+        Using explicit and implicit residual updates for stopping criteria with a tradeoff of speed.
+        """
+
+        ctx = CGContext(inputs=inputs, cost_fn=cost_fn, damping=damping)
+
         x = tf.zeros_like(b)
         r = b
         p = r
@@ -722,50 +663,45 @@ class OptimizerCGNewton(Optimizer):
         for i in tf.range(cg_max_iter):
             if rs <= cg_tol:
                 break
-                
+
             Ap = self._hvp(ctx.inputs, p, ctx.cost_fn, ctx.damping)
             pAp = tf.tensordot(p, Ap, axes=1)
-            
+
             if use_truncated and pAp <= 0.0:
                 if i == 0:
                     x = r
                 break
-            
+
             alpha = rs / pAp
             x = x + alpha * p
-            
+
             should_compute_explicit = tf.logical_and(
-                tf.equal(tf.math.floormod(i, explicit_freq), 0),
-                i > 0
+                tf.equal(tf.math.floormod(i, explicit_freq), 0), i > 0
             )
-            
+
             r_new = tf.cond(
                 should_compute_explicit,
-                lambda: self._explicit_residual(ctx, i, x, b),
-                lambda: self._implicit_residual(r, alpha, Ap)
+                lambda: self._explicit_residual(ctx, x, b),
+                lambda: self._implicit_residual(r, alpha, Ap),
             )
-            
+
             rs_new = tf.tensordot(r_new, r_new, axes=1)
             beta = rs_new / rs
             p = r_new + beta * p
-            
+
             r = r_new
             rs = rs_new
 
         return x
 
     def _get_grad(
-        self, 
+        self,
         inputs: tf.Tensor,
         cost_fn: Callable,
-        damping: tf.Tensor,
-        cg_max_iter: int,
-        cg_tol: tf.Tensor,
-        use_truncated: bool,
     ):
-        """Compute cost, gradient, and Newton–CG step."""
+        """Compute cost and gradients (function and parameter space)."""
 
-        cost, U, V, grad_u, grad_theta = self._cost_and_grad(inputs, cost_fn)
+        cost, grad_u, grad_theta = self._cost_and_grad(inputs, cost_fn)
 
         return cost, grad_u, grad_theta
 
@@ -786,24 +722,18 @@ class OptimizerCGNewton(Optimizer):
         return tf.tensordot(tf.cast(a, dtype), tf.cast(b, dtype), axes=1)
 
     def _line_search(
-        self, 
-        theta_flat: tf.Tensor, 
-        p_flat: tf.Tensor, 
+        self,
+        theta_flat: tf.Tensor,
+        p_flat: tf.Tensor,
         input: tf.Tensor,
         cost_fn: Callable,
-        damping: tf.Tensor,
-        cg_max_iter: int,
-        cg_tol: tf.Tensor,
-        use_truncated: bool,
     ) -> tf.Tensor:
         def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
             theta_backup = self.map.copy_theta(self.map.get_theta())
             theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
 
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
-            f, _, grad_theta = self._get_grad(
-                input, cost_fn, damping, cg_max_iter, cg_tol, use_truncated
-            )
+            f, _, grad_theta = self._get_grad(input, cost_fn)
             grad_flat = self.map.flatten_theta(grad_theta)
             df = self._dot(grad_flat, p_flat)
 
@@ -829,10 +759,8 @@ class OptimizerCGNewton(Optimizer):
 
         theta_flat = self.map.flatten_theta(self.map.get_theta())
 
-        cost, grad_u, grad_theta = self._get_grad(
-            input, cost_fn, damping, cg_max_iter, cg_tol, use_truncated
-        )
-        
+        cost, grad_u, grad_theta = self._get_grad(input, cost_fn)
+
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
 
@@ -842,26 +770,31 @@ class OptimizerCGNewton(Optimizer):
 
         for iter in tf.range(self.iter_max):
 
-            cost, grad_u, grad_theta = self._get_grad(
-                input, cost_fn, damping, cg_max_iter, cg_tol, use_truncated
-            )
-            
-            # flatten grad_theta
-            grad_theta_flat = tf.concat(
-                [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
-            )        
-        
-            p_flat = self._cg_solve(
-                inputs, -grad_theta_flat, cost_fn, damping, cg_max_iter, cg_tol, use_truncated
-            )
+            cost, grad_u, grad_theta = self._get_grad(input, cost_fn)
 
-            # p_flat = self.map.flatten_theta(step_theta)
-            grad_flat = self.map.flatten_theta(grad_u)
+            # flatten grad_theta
+            grad_theta_flat = self.map.flatten_theta(grad_theta)
+            # grad_theta_flat = tf.concat(
+            #     [tf.reshape(g, (-1,)) for g in grad_theta], axis=0
+            # )
+
+            p_flat = self._cg_solve(
+                inputs,
+                -grad_theta_flat,
+                cost_fn,
+                damping,
+                cg_max_iter,
+                cg_tol,
+                use_truncated,
+            )
 
             p_flat, _ = self._force_descent(p_flat, grad_theta_flat, theta_flat)
 
             alpha = self._line_search(
-                theta_flat, p_flat, input, cost_fn, damping, cg_max_iter, cg_tol, use_truncated
+                theta_flat,
+                p_flat,
+                input,
+                cost_fn,
             )
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
 
@@ -870,7 +803,7 @@ class OptimizerCGNewton(Optimizer):
 
             costs = costs.write(iter, cost)
 
-            U, V = self.map.get_UV(input)
+            U, V = self.map.get_UV(input) # unecessarily doing another forward step - but cleaner for now..
             grad_u_norm, step_norm = self._get_grad_norm(grad_u, grad_theta)
             self._update_step_state(
                 iter, U, V, theta_flat, cost, grad_u_norm, step_norm
