@@ -4,7 +4,7 @@
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
 import tensorflow as tf
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, List
 
 from .optimizer import Optimizer
 from ..mappings import Mapping
@@ -117,7 +117,7 @@ class OptimizerCGNewton(Optimizer):
 
         v = self.map.unflatten_theta(
             v_flat
-        )  # v has same structure as theta in parameter space (and function space)
+        )  # v has same structure as theta in parameter space (and function space) (hence why we use unflatten_theta)
         
         Hv_theta = outer_tape.gradient(
             grad_theta,
@@ -211,7 +211,7 @@ class OptimizerCGNewton(Optimizer):
         self,
         inputs: tf.Tensor,
         cost_fn: Callable,
-    ):
+    ) -> Tuple[tf.Tensor, List[tf.Tensor | tf.Variable], List[tf.Tensor | tf.Variable]]:
         """Compute cost and gradients (function and parameter space)."""
 
         cost, grad_u, grad_theta = self._cost_and_grad(inputs, cost_fn)

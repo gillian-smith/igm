@@ -50,7 +50,6 @@ class OptimizerNewton(Optimizer):
         self.iter_max.assign(iter_max)
         self.damping = damping
 
-    # @tf.function
     def _analyze_hessian(
         self, h_mat: tf.Tensor, iter: tf.Tensor, n_eigs: int = 10
     ) -> None:
@@ -95,14 +94,12 @@ class OptimizerNewton(Optimizer):
 
         return tf.constant(0)  # Return dummy value
 
-    # @tf.function
     def _plot_hessian(self, h_mat: tf.Tensor, iter: tf.Tensor) -> None:
         """Plot Hessian matrix as an image."""
         tf.py_function(
             func=self._plot_hessian_wrapper, inp=[h_mat, iter], Tout=tf.int32
         )
 
-    # @tf.function
     def _get_grads_and_hessian(self, inputs: tf.Tensor):
         """Compute cost, grad_theta, and Hessian."""
 
@@ -148,12 +145,10 @@ class OptimizerNewton(Optimizer):
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
 
-    # @tf.function(reduce_retracing=True)
     def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         dtype = self.precision
         return tf.tensordot(tf.cast(a, dtype), tf.cast(b, dtype), axes=1)
 
-    # @tf.function
     def _line_search(
         self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor
     ) -> tf.Tensor:
