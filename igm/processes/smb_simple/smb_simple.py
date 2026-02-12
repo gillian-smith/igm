@@ -11,7 +11,7 @@ def initialize(cfg, state):
 
     if cfg.processes.smb_simple.array == []:
         state.smbpar = np.loadtxt(
-            cfg.processes.smb_simple.file,
+            state.original_cwd.joinpath("experiment", cfg.processes.smb_simple.file),
             skiprows=1,
             dtype=np.float32,
         )
