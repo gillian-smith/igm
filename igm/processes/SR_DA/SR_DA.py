@@ -20,6 +20,7 @@ from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoun
 from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS
 
 from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
+from igm.processes.SR_DA.objective import build_objective_from_cfg
 
 class DataAssimilation:
     def __init__(self):
@@ -30,72 +31,15 @@ class DataAssimilation:
         self.out_freq = 0
         self.result = None
 
-def masked_mean(x: tf.Tensor, mask: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
-    m = tf.cast(mask, x.dtype)
-    num = tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
-    den = tf.reduce_sum(m) + tf.cast(eps, x.dtype)
-    return num / den
 
-def smoothness_biharmonic(field, dx, lam, mask=None, eps=1e-12):
-    dtype = field.dtype
-    f = field[None, ..., None]  # [1, Ny, Nx, 1]
+def get_cost_and_obj(cfg, state, da_map):
+    objective = build_objective_from_cfg(cfg, state, da_map)
 
-    k = tf.constant([[0., 1., 0.],
-                     [1., -4., 1.],
-                     [0., 1., 0.]], dtype=dtype)[:, :, None, None]
-
-    fpad = tf.pad(f, [[0,0],[1,1],[1,1],[0,0]], mode="REFLECT")
-    lap = tf.nn.conv2d(fpad, k, strides=1, padding="VALID")  # [1, Ny, Nx, 1]
-    dx2 = tf.reshape(dx * dx, [1, tf.shape(dx)[0], tf.shape(dx)[1], 1])
-    lap = lap / tf.cast(dx2, dtype)
-
-    lap2 = tf.square(lap)[0, :, :, 0]  # [Ny, Nx]
-
-    if mask is None:
-        mean_lap2 = tf.reduce_mean(lap2)
-    else:
-        mean_lap2 = masked_mean(lap2, tf.cast(mask, tf.bool), eps=eps)
-
-    return tf.cast(lam, dtype) * tf.cast(0.5, dtype) * mean_lap2
-
-def get_cost_fn_data(cfg, state, da_map):
     def cost_function(U, V, inputs):
-        dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
+        total, misfit, reg, _ = objective(U, V, inputs)
+        return total, misfit, reg
 
-        U = U[0]
-        V = V[0]
-
-        uvelsurf, vvelsurf = get_velsurf(U, V, state.iceflow.discr_v.V_s)
-        eps = tf.cast(1e-12, dtype)
-
-        uobs = tf.cast(state.uvelsurfobs, dtype)
-        vobs = tf.cast(state.vvelsurfobs, dtype)
-
-        valid = tf.math.is_finite(uobs) & tf.math.is_finite(vobs)
-        ice = tf.cast(state.icemask, tf.bool)
-        active = valid & ice
-
-
-        std = tf.cast(cfg.processes.SR_DA.fitting.velsurfobs_std, dtype)
-        ru = (uobs - uvelsurf) / std
-        rv = (vobs - vvelsurf) / std
-
-        res2 = tf.cast(ru**2 + rv**2, dtype)  # x is float dtype
-
-        cost_data = tf.cast(0.5, dtype) * masked_mean(res2, active, eps=eps)
-
-
-        current_thk = da_map.get_physical_field("thk") # this is needed to ensure the gradient tape tracks thk
-
-        lam = tf.cast(cfg.processes.SR_DA.regularization.thk, dtype)
-        dx = tf.cast(state.dX, dtype)
-        cost_reg = smoothness_biharmonic(current_thk, dx, lam, mask=active, eps=eps)
-
-        cost_total = tf.cast(cost_data + cost_reg, dtype)
-        
-        return cost_total, tf.cast(cost_data, dtype), tf.cast(cost_reg, dtype)
-
-    return cost_function
+    return cost_function, objective
 
 def data_assimilation_initialize(cfg, state):
     cfg_da = cfg.processes.SR_DA
@@ -112,24 +56,20 @@ def data_assimilation_initialize(cfg, state):
         dx=state.dX[0, 0],
         dy=state.dX[0, 0],
     )
-    state.uvelsurfobs = tf.convert_to_tensor(state.uvelsurfobs, dtype=dtype)
-    state.vvelsurfobs = tf.convert_to_tensor(state.vvelsurfobs, dtype=dtype)
+    state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
+    state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
     state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
     state.usurf = tf.cast(state.usurf, dtype)
     state.dX = tf.cast(state.dX, dtype) 
 
-    # 1) Build mapping first
     mapping_args = InterfaceDataAssimilation.get_mapping_args(cfg, state)
     da.map = MappingDataAssimilation(**mapping_args)
 
-    # 2) Build cost_fn capturing the map
-    da.cost_fn = get_cost_fn_data(cfg, state, da.map)
+    da.cost_fn, da.objective = get_cost_and_obj(cfg, state, da.map)
 
-    # 3) Build optimizer after cost_fn exists
     optimizer_args = InterfaceLBFGS.get_optimizer_args(cfg, da.cost_fn, da.map)
     da.opt = OptimizerLBFGSBoundsDA(**optimizer_args)
 
-    # sampler wiring unchanged...
     num_patches = state.iceflow.patching.num_patches
     patch_H, patch_W, patch_C = state.iceflow.patching.patch_shape
     sampler = TrainingBatchBuilder(
@@ -177,13 +117,12 @@ def update(cfg, state):
     evaluate_iceflow(cfg, state)
     update_ncdf_optimize(cfg, state, 0)
 
-    # Build patches ONCE (mapping will inject θ-dependent fields each evaluation)
     X = fieldin_state_to_X(cfg, state)
     inputs = state.iceflow.patching.generate_patches(X)
 
     da.opt.minimize(inputs)
 
-    # Final write (ensure state matches final θ)
+    # Final write
     da.map.update_state_fields(state)
     evaluate_iceflow(cfg, state)
     update_ncdf_optimize(cfg, state, int(da.maxiter))

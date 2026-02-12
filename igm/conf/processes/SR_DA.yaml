@@ -1,12 +1,13 @@
 SR_DA:
   optimization:
     nbitmax: 100 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
-  fitting:
-    velsurfobs_std: 1.0 # 1σ obs uncertainty for BOTH u and v surface velocities; misfit uses (obs-model)/std
-  regularization:
-    thk: 10.0 # Thickness smoothness weight λ in 0.5*λ*mean((∇²thk)^2) over active mask
   output:
     freq: 200 # Callback + NetCDF write cadence in iterations (iteration 0 is always written)
-    vars_to_save: [usurf,thk,icemask,velbase_mag,velsurf_mag,velsurfobs_mag,sliding_ratio,divflux] # 2D fields saved each write; *_mag and sliding_ratio are computed in update_ncdf_optimize when requested
+    vars_to_save: [usurf,thk,icemask,velbase_mag,velsurf_mag,velsurfobs_mag] # 2D fields saved each write; *_mag and sliding_ratio are computed in update_ncdf_optimize when requested
   variables:
   - { name: thk, transform: identity,  lower_bound: 0.0 , upper_bound: 1000.0 , mask: icemask}
+  objective:
+    misfit:
+      - { name: velsurf, kind: gaussian, components: [uvelsurf, vvelsurf], obs: [uvelsurfobs, vvelsurfobs], std: 1.0 }
+    regularization:
+      - { name: thk, penalty: biharmonic, lam: 100000.0 }
