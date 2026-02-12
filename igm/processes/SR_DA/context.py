@@ -67,11 +67,12 @@ class DAEvaluationContext:
 
     # ---- data access ----
 
-    def obs(self, name: str) -> tf.Tensor:
-        """Observation tensor from state by attribute name (e.g. 'uvelsurfobs')."""
+    def state_field(self, name: str) -> tf.Tensor:
+        """Non-θ field from state (e.g. an observation like 'uvelsurfobs' or a prior like 'thk_prior')."""
         if not hasattr(self.state, name):
-            raise AttributeError(f"State has no observation field '{name}'.")
-        return tf.cast(getattr(self.state, name), self.dtype)
+            raise AttributeError(f"State has no field '{name}'")
+        x = getattr(self.state, name)
+        return tf.cast(tf.convert_to_tensor(x), self.dtype)
 
     def physical(self, name: str) -> tf.Tensor:
         """θ-dependent physical field (e.g. 'thk', 'slidingco') via mapping."""
@@ -80,7 +81,7 @@ class DAEvaluationContext:
     def model(self, name: str) -> tf.Tensor:
         """
         Model quantity provider.
-        
+
         Special cases can be added at a future date as necessary e.g. divflux
         """
         if name == "uvelsurf":

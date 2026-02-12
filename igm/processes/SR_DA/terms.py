@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence
 
 import tensorflow as tf
 
@@ -34,6 +34,7 @@ class FieldPenaltySpec:
     lam: float
     mask: Optional[str] = None
     eps: float = 1e-12
+    ref: Optional[str] = None
 
     
 class CostTerm(ABC):
@@ -60,12 +61,12 @@ class GaussianMisfitTerm(CostTerm):
 
         # Observation availability: important that no data is defined as NaN
         for obs_name in self.spec.obs:
-            y = ctx.obs(obs_name)
+            y = ctx.state_field(obs_name)
             mask = mask & tf.math.is_finite(y)
 
         res2 = None
         for comp_name, obs_name in zip(self.spec.components, self.spec.obs):
-            y = ctx.obs(obs_name)
+            y = ctx.state_field(obs_name)
             m = ctx.model(comp_name)
             r = (y - m) / std
             r = tf.where(mask, r, tf.zeros_like(r)) # important! kill NaNs that would pollute gradient
@@ -73,7 +74,36 @@ class GaussianMisfitTerm(CostTerm):
             res2 = term if res2 is None else (res2 + term)
 
         return tf.cast(0.5, dtype) * masked_sum(tf.cast(res2, dtype), mask)
+    
 
+class HuberMisfitTerm(CostTerm):
+    group = MISFIT
+    def __init__(self, spec: MisfitSpec) -> None:
+        self.spec = spec
+        self.name = f"misfit:{spec.name}"
+
+    def cost(self, ctx: DAEvaluationContext) -> tf.Tensor:
+        dtype = ctx.dtype
+        std = tf.cast(self.spec.std, dtype)
+        delta = tf.cast(1.0, dtype) # for now keep this as default
+        mask = ctx.get_mask(self.spec.mask)
+
+        for obs_name in self.spec.obs:
+            y = ctx.obs(obs_name)
+            mask = mask & tf.math.is_finite(y)
+
+        res = None
+        for comp_name, obs_name in zip(self.spec.components, self.spec.obs):
+            y = ctx.obs(obs_name)
+            m = ctx.model(comp_name)
+            r = (y - m) / std
+            r = tf.where(mask, r, tf.zeros_like(r))
+            a = tf.abs(tf.cast(r, dtype))
+            term = tf.where(a <= delta, 0.5 * tf.square(a), delta * (a - 0.5 * delta))
+            res = term if res is None else (res + term)
+
+        return masked_sum(tf.cast(res, dtype), mask)
+    
 class FieldPenaltyTerm(CostTerm):
     group = REGULARIZATION
 
@@ -91,9 +121,15 @@ class FieldPenaltyTerm(CostTerm):
         lam = tf.cast(self.spec.lam, dtype)
         mask = ctx.get_mask(self.spec.mask)  # None => icemask
 
+        ref_tensor = None
+        if self.spec.ref is not None:
+            ref_tensor = ctx.state_field(self.spec.ref)
+
         fn = PENALTY_REGISTRY[self.spec.penalty]
-        return fn(field=field, dx=ctx.dx, lam=lam, mask=mask, eps=float(self.spec.eps))
+        return fn(field=field, dx=ctx.dx, lam=lam, mask=mask, eps=float(self.spec.eps), ref=ref_tensor)
+
 
 MISFIT_REGISTRY = {
     "gaussian": GaussianMisfitTerm,
+    "huber": HuberMisfitTerm,
 }

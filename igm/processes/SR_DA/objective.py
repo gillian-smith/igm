@@ -89,12 +89,18 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
     # ---- REGULARIZATION ----
     for item in reg_list:
         d = dict(item)
+
+        ref = d.get("prior", None)
+        if ref is None:
+            ref = d.get("ref", None)
+
         spec = FieldPenaltySpec(
             name=str(d["name"]),
             penalty=str(d["penalty"]),
             lam=float(d["lam"]),
             mask=str(d["mask"]) if "mask" in d else None,
             eps=float(d.get("eps", 1e-12)),
+            ref=str(ref) if ref is not None else None,
         )
         terms.append(FieldPenaltyTerm(spec))
 

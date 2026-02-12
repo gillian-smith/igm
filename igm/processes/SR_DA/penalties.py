@@ -6,7 +6,14 @@ from typing import Optional
 import tensorflow as tf
 from .utils import masked_mean
 
-def penalty_biharmonic(field: tf.Tensor, dx: tf.Tensor, lam: tf.Tensor, mask: Optional[tf.Tensor], eps: float = 1e-12) -> tf.Tensor:
+def penalty_biharmonic(
+    field: tf.Tensor,
+    dx: tf.Tensor,
+    lam: tf.Tensor,
+    mask: Optional[tf.Tensor],
+    eps: float = 1e-12,
+    ref: Optional[tf.Tensor] = None, # not needed for this penalty
+) -> tf.Tensor:
     """
       0.5 * lam * mean( lap(field)^2 )
     """
@@ -32,7 +39,30 @@ def penalty_biharmonic(field: tf.Tensor, dx: tf.Tensor, lam: tf.Tensor, mask: Op
 
     return tf.cast(0.5, dtype) * lam * mean_lap2
 
+def penalty_l2(
+    field: tf.Tensor,
+    dx: tf.Tensor,
+    lam: tf.Tensor,
+    mask: Optional[tf.Tensor],
+    eps: float = 1e-12,
+    ref: Optional[tf.Tensor] = None,
+) -> tf.Tensor:
+    """
+      0.5 * lam * mean( (field - ref)^2 )   if ref is provided
+      0.5 * lam * mean( field^2 )          otherwise
+    """
+    dtype = field.dtype
+    diff = field if ref is None else (field - tf.cast(ref, dtype))
+    sq = tf.square(diff)
+
+    if mask is None:
+        val = tf.reduce_mean(sq)
+    else:
+        val = masked_mean(sq, tf.cast(mask, tf.bool), eps=eps)
+
+    return tf.cast(0.5, dtype) * lam * val
 
 PENALTY_REGISTRY = {
     "biharmonic": penalty_biharmonic,
+    "l2": penalty_l2,
 }
