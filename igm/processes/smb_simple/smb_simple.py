@@ -18,6 +18,9 @@ def initialize(cfg, state):
     else:
         state.smbpar = np.array(cfg.processes.smb_simple.array[1:]).astype(np.float32)
 
+    if len(state.smbpar.shape)==1:  # update() expects 2D array even if state.smbpar has only one row
+        state.smbpar = np.expand_dims(state.smbpar, axis=0)
+
     state.tlast_mb = tf.Variable(-1.0e5000)
 
 
