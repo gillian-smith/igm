@@ -6,7 +6,7 @@ from typing import Optional
 import tensorflow as tf
 from .utils import masked_mean
 
-def penalty_biharmonic(
+def lap_sq(
     field: tf.Tensor,
     dx: tf.Tensor,
     lam: tf.Tensor,
@@ -63,6 +63,6 @@ def penalty_l2(
     return tf.cast(0.5, dtype) * lam * val
 
 PENALTY_REGISTRY = {
-    "biharmonic": penalty_biharmonic,
+    "squared_laplacian": lap_sq,
     "l2": penalty_l2,
 }
