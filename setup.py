@@ -51,5 +51,6 @@ setup(
         "nvtx",
         "typeguard",
         "rich",
+        "optuna>=3.0",
     ],
 )
