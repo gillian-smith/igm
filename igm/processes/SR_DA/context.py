@@ -32,6 +32,7 @@ class DAEvaluationContext:
     _U: Optional[tf.Tensor] = None
     _V: Optional[tf.Tensor] = None
     _dx: Optional[tf.Tensor] = None
+    _A_domain: Optional[tf.Tensor] = None
 
     _uvelsurf: Optional[tf.Tensor] = None
     _vvelsurf: Optional[tf.Tensor] = None
@@ -65,7 +66,20 @@ class DAEvaluationContext:
             self._dx = tf.cast(self.state.dX, self.dtype)
         return self._dx
 
+    @property
+    def A_domain(self) -> tf.Tensor:
+        """
+        Area (A) of the inversion domain (icemask), using dA = dx^2.
+        Assumes uniform grid spacing
+        """
+        if self._A_domain is None:
+            m = self.get_mask(None)  # icemask
+            area = tf.ones_like(tf.cast(m, self.dtype), dtype=self.dtype) * (self.dx * self.dx)
+            self._A_domain = tf.reduce_sum(tf.where(m, area, tf.zeros_like(area)))
+        return self._A_domain
+
     # ---- data access ----
+
 
     def state_field(self, name: str) -> tf.Tensor:
         """Non-θ field from state (e.g. an observation like 'uvelsurfobs' or a prior like 'thk_prior')."""

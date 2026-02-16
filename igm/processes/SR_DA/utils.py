@@ -18,9 +18,22 @@ def masked_mean(x: tf.Tensor, mask: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
     den = tf.reduce_sum(m) + tf.cast(eps, x.dtype)
     return num / den
 
-
 def masked_sum(x: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
     return tf.reduce_sum(tf.where(mask, x, tf.zeros_like(x)))
+
+def cell_area_like(dx: tf.Tensor, like: tf.Tensor) -> tf.Tensor:
+    """
+    Cell area ΔA inferred from dx. Assumes square cells: ΔA = dx^2.
+    """
+    dx = tf.cast(dx, like.dtype)
+    return tf.ones_like(like, dtype=like.dtype) * (dx * dx)
+
+def masked_integral(x: tf.Tensor, mask: tf.Tensor, dx: tf.Tensor) -> tf.Tensor:
+    """
+    Discrete approximation of ∫ x dA over `mask`, with dA = dx^2.
+    """
+    area = cell_area_like(dx, x)
+    return tf.reduce_sum(tf.where(mask, x * area, tf.zeros_like(x)))
 
 def initial_thickness(
     s,                 # surface elevation [m], shape (Ny, Nx)
