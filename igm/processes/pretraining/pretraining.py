@@ -113,10 +113,10 @@ def _validate_pretraining_setup(inputs: Tuple[str, ...], Cx: int, cfg_physics, s
             f"has {len(inputs)} entries: {inputs}. These must match in count and order."
         )
 
-    if Cx == 2 and inputs != ("thk", "usurf"):
+    if Cx == 3 and inputs != ("thk", "usurf", "slidingco"):
         raise ValueError(
-            f"parse_example() assumes x channels are ('thk','usurf') in that order, but cfg inputs are {inputs}. "
-            "Either set pretraining.inputs=['thk','usurf'] or update parse_example()/TFRecords accordingly."
+            f"TFRecord x has 3 channels and parse_example() assumes ('thk','usurf','slidingco') "
+            f"in that order, but cfg inputs are {inputs}."
         )
 
     if int(getattr(cfg_physics, "dim_arrhenius", 1)) == 3 and Cx <= 2:
@@ -191,7 +191,7 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
         _reset_metrics(metrics)
 
         # --- train ---
-        for x_b, y_b in ctx.train_ds:
+        for x_b, y_b in ctx.train_ds.take(1000):
             ctx.train_step(x_b, y_b)
 
         # --- validate (fixed number of batches) ---
@@ -279,17 +279,18 @@ def initialize(cfg, state):
     # ----------------------------
     # D) Datasets
     # ----------------------------
-    shard_files = list_shards(tfrecord_root, Nz)
+    train_files = list_shards(tfrecord_root, Nz, split="train")
+    val_files   = list_shards(tfrecord_root, Nz, split="val")
 
     rng = random.Random(getattr(cfg_pretraining, "split_seed", 0))
-    rng.shuffle(shard_files)
+    rng.shuffle(train_files)  # shuffle train only; val can stay deterministic
 
     train_ds, val_ds = make_datasets(
-        shard_files=shard_files,
+        train_files=train_files,
+        val_files=val_files,
         H=H, W=W, Nz=Nz,
         compression="GZIP",
         batch_size=cfg_pretraining.batch_size,
-        val_fraction=0.1,
     )
 
     # ----------------------------
@@ -398,11 +399,11 @@ def initialize(cfg, state):
         return tf.linalg.global_norm(gs) if gs else tf.constant(0.0, tf.float32)
 
     EMA          = tf.constant(0.99, tf.float32)
-    UPDATE_EVERY = tf.constant(100, tf.int64)
+    UPDATE_EVERY = tf.constant(200, tf.int64)
     LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(1e3, tf.float32)
-    EPS          = tf.constant(1e-12, tf.float32)
-    WARMUP_STEPS = tf.constant(10000, tf.int64)
+    LAM_MAX      = tf.constant(1e2, tf.float32)
+    EPS          = tf.constant(1e-6, tf.float32)
+    WARMUP_STEPS = tf.constant(4000, tf.int64)
 
     step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
     lambda_phys = tf.Variable(1.0, trainable=False, dtype=tf.float32, name="lambda_phys")

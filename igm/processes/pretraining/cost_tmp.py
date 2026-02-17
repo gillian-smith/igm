@@ -27,7 +27,7 @@ def get_cost_fn(cfg, state):
 
     slidingco0 = cfg_physics.init_slidingco
     arrhenius0 = cfg_physics.init_arrhenius
-    dX0 = 200.0  # default value if not provided in inputs
+    dX0 = 90.0  # default value if not provided in inputs
 
     missing = ("dX", "slidingco", "arrhenius")
     energy_inputs_names = net_inputs_names + tuple(n for n in missing if n not in net_inputs_names)
