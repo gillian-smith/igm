@@ -11,6 +11,10 @@ from igm.processes.iceflow.emulate.utils import NormalizationsDict
 from igm.processes.iceflow.unified.mappings import Mappings
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
 from igm.utils.math.precision import normalize_precision
+from igm.processes.iceflow.emulate.utils.misc import (
+    get_pretrained_emulator_path,
+    load_model_from_path,
+)
 
 class InterfaceNetwork(InterfaceMapping):
 
@@ -28,10 +32,15 @@ class InterfaceNetwork(InterfaceMapping):
         Nz = int(cfg_numerics.Nz)
 
         if cfg_unified.network.pretrained:
-            dtype = normalize_precision(cfg_numerics.precision)
-            artifact_dir = cfg_unified.network.pretrained_path
-            tf.keras.mixed_precision.set_global_policy("float64" if tf.as_dtype(dtype) == tf.float64 else "float32")
-            iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
+            if cfg_unified.network.old_format:
+                warnings.warn("Loading old format pretrained emulator. This is not recommended and will not be supported in future IGM versions.")
+                dir_path = get_pretrained_emulator_path(cfg, state)
+                iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
+            else:
+                dtype = normalize_precision(cfg_numerics.precision)
+                artifact_dir = cfg_unified.network.pretrained_path
+                tf.keras.mixed_precision.set_global_policy("float64" if tf.as_dtype(dtype) == tf.float64 else "float32")
+                iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 

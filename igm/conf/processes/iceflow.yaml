@@ -131,6 +131,7 @@ iceflow:
       pretrained: true
       pretrained_path: ""
       print_summary: false
+      old_format: false
       output_scale: 1.0
       architecture: CNN
     data_preparation:
