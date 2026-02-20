@@ -28,6 +28,11 @@ import tensorflow as tf
 import yaml
 import warnings
 
+from rich.console import Console
+from rich.theme import Theme
+from rich.table import Table
+from rich.panel import Panel
+
 from igm.processes.iceflow.emulate.utils.architectures import Architectures
 from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
@@ -58,6 +63,42 @@ class EmulatorManifest:
     output_scale: float
     architecture: ArchitectureSpec
     normalization: NormalizationSpec
+
+# -----------------------------------------------------------------------------
+# Theme
+# -----------------------------------------------------------------------------
+
+_emulator_theme = Theme({
+    "label": "bold #e5e7eb",
+    "value": "#06b6d4",
+    "path": "#a78bfa",
+    "ok": "bold #22c55e",
+    "muted": "italic #64748b",
+})
+
+def _print_emulator_loaded_banner(artifact_dir: Path, manifest: EmulatorManifest, dtype: tf.DType) -> None:
+    console = Console(theme=_emulator_theme)
+
+    # 2–3 lines of info, compact + readable
+    table = Table(show_header=False, border_style="green", expand=False)
+    table.add_column("Label", style="label")
+    table.add_column("Value", style="value")
+
+    table.add_row("Architecture", str(manifest.architecture.name))
+    table.add_row("I/O", f"{manifest.nb_inputs} → {manifest.nb_outputs}   (Nz={manifest.Nz}, dtype={dtype.name})")
+    table.add_row("Artifact", f"[path]{artifact_dir}[/path]")
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[ok]✅ Emulator loaded successfully[/ok]",
+            subtitle="[muted]Weights + fixed input standardization attached[/muted]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
 # -----------------------------------------------------------------------------
 # Simple cfg <-> manifest checks (keep strict but minimal)
@@ -197,6 +238,8 @@ def save_emulator_artifact(
     return artifact_dir
 
 
+
+
 def load_emulator_artifact(
     artifact_dir: str | Path,
     cfg,
@@ -304,5 +347,7 @@ def load_emulator_artifact(
         raise RuntimeError(
             f"Model forward dtype is {tf.as_dtype(y.dtype).name}, expected {desired_dtype.name}. "
         )
+    
+    _print_emulator_loaded_banner(artifact_dir, manifest, desired_dtype)
 
     return model, manifest
