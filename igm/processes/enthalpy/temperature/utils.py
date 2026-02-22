@@ -115,3 +115,31 @@ def compute_E_cold_tf(
         c_ice * (T - T_ref),
         c_ice * (T_pmp - T_ref),
     )
+
+
+@tf.function
+def compute_T_pa_b_tf(
+    T: tf.Tensor,
+    beta: tf.Tensor,
+    rho_ice: tf.Tensor,
+    g: tf.Tensor,
+    thk: tf.Tensor,
+) -> tf.Tensor:
+    """
+    TensorFlow function to compute the pressure-adjusted basal temperature.
+
+    Adjusts the basal temperature for the pressure-melting point depression
+    via the Clausius-Clapeyron relation: T_pa_b = T_b + beta * rho_ice * g * thk,
+    where thk is the overburden ice thickness (depth at the base).
+
+    Args:
+        T: 3D temperature field (K), shape (Nz, Ny, Nx).
+        beta: Clausius-Clapeyron constant (K Pa^-1).
+        rho_ice: Ice density (kg m^-3).
+        g: Gravitational acceleration (m s^-2).
+        thk: Ice thickness (m), shape (Ny, Nx).
+
+    Returns:
+        Pressure-adjusted basal temperature T_pa_b (K).
+    """
+    return T[0] + beta * rho_ice * g * thk

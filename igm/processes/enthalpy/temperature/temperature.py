@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 
 from igm.common import State
 
-from .utils import compute_pmp_tf, compute_T_tf, compute_omega_tf
+from .utils import compute_pmp_tf, compute_T_tf, compute_omega_tf, compute_T_pa_b_tf
 
 
 def compute_temperature(cfg: DictConfig, state: State) -> None:
@@ -17,18 +17,25 @@ def compute_temperature(cfg: DictConfig, state: State) -> None:
     Converts the enthalpy field to temperature and water content using
     the pressure melting point as the threshold between cold and temperate ice.
 
-    Updates state.T (K), state.omega (-), state.T_b (K), and state.T_s (K).
+    Updates state.T (K), state.omega (-), state.T_pa_b (K), and state.T_s (K).
+    T_pa_b is the pressure-adjusted basal temperature: T_b + beta * rho_ice * g * thk.
+    T_s is the raw surface temperature T[-1] (no pressure correction since depth = 0).
     """
+    cfg_physics = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
+
+    rho_ice = cfg_physics.ice_density
+    g = cfg_physics.gravity_cst
 
     c_ice = cfg_thermal.c_ice
     L_ice = cfg_thermal.L_ice
     T_ref = cfg_thermal.T_ref
+    beta = cfg_thermal.beta
 
     state.T = compute_T_tf(state.E, state.E_pmp, state.T_pmp, T_ref, c_ice)
     state.omega = compute_omega_tf(state.E, state.E_pmp, L_ice)
 
-    state.T_b = state.T[0]
+    state.T_pa_b = compute_T_pa_b_tf(state.T, beta, rho_ice, g, state.thk)
     state.T_s = state.T[-1]
 
 
