@@ -1,0 +1,56 @@
+update_freq:
+  Type: float
+  Units: years
+  Description: "Update the climate fields each X years during simulation"
+zero_degree_isotherm:
+  Type: float
+  Units: meters a.s.l.
+  Description: "Elevation at which mean annual temperature is 0 °C"
+adiabatic_lapse_rate:
+  Type: float
+  Units: °C m-1
+  Description: "Adiabatic lapse rate for air temperature"
+air_temperature_stdev:
+  Type: float
+  Units: °C or Kelvin
+  Description: "The space-independent standard deviation of the daily temperature variability"
+precipitation_lapse_rate:
+  Type: float
+  Units: Percent per 100 m
+  Description: "Change in precipitation with altitude (in % / 100m): i.e. in % of the given reference_precipitation value."
+reference_precipitation_elevation:
+  Type: float
+  Units: meters a.s.l.
+  Description: "Elevation at which mean cummulative annual precipitation is known (e.g. a weather station)"
+reference_precipitation:
+  Type: float
+  Units: mm yr-1 w.e.
+  Description: "Mean cummulative annual precipitation (in mm yr-1 water equivalent) where it is known (e.g. a weather station)"
+min_precipitation_allowed:
+  Type: float
+  Units: mm yr-1 w.e.
+  Description: "Minimum allowed precipitation to avoid unrealistically low (e.g. negative) values"
+cosine_yearly_cycle_temp:
+  Type: boolean
+  Units: dimless
+  Description: "Keep the temperature constant throughout the year ('False'), or create an idealised seasonal sinusoidal signal of temperature change ('True')"
+cosine_yearly_cycle_amplitude:
+  Type: float
+  Units: °C or Kelvin
+  Description: "Amplitude of the cosine-based seasonal temperature variation, defining the maximum excursion from the mean annual temperature (not between min and max)"
+southern_hemisphere_climate:
+  Type: boolean
+  Units: dimless
+  Description: "Set to 'True' for Southern Hemisphere hydrological year (May - April cycle) and Southern seasonal cycle (i.e. warmest temperatures in January)"
+export_climate_ref:
+  Type: boolean
+  Units: dimless
+  Description: "Set to 'True' to export a NetCDF file called 'climate_ref.nc' which allows to view the climate fields produced from original topography and user parameters"
+time_dependent_climate:
+  Type: boolean
+  Units: dimless
+  Description: "Keep climate constant throughout simulation ('False'), or make it change in time ('True') and thus use the user-given climate_change_array"
+climate_change_array:
+  Type: list
+  Units: dimless
+  Description: "Time-dependent parameters for temperature offsets (in °C of change) and precipitation offsets (in % of the original precip field, i.e. '100' means no change, '110' means +10% precip). Array structure: [time, temperature_offset, precip_offset]"
