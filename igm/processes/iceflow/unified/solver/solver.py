@@ -5,18 +5,14 @@
 
 from omegaconf import DictConfig
 import tensorflow as tf
-from typing import List, Tuple
 
 from igm.common import State
 
 from ..optimizers import InterfaceOptimizers, Status
 from igm.processes.iceflow.utils.data_preprocessing import (
     fieldin_state_to_X,
+    split_field_into_patches,
 )
-
-from igm.utils.math.precision import normalize_precision
-from igm.processes.iceflow.unified.mappings import Mappings
-from igm.processes.iceflow.emulate.utils.normalizations import FixedAffineLayer
 from igm.processes.iceflow.unified.mappings.normalizer import (
     IdentityNormalizer,
     NetworkNormalizer,
@@ -44,15 +40,10 @@ def get_status(cfg: DictConfig, state: State, init: bool = False) -> Status:
 
 
 def get_solver_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
-    """Returns [N, H, W, C] patches (sampler handles batching/augmentation)."""
+    """Returns [N, ly, lx, C] non-overlapping patches, same strategy as emulated approach."""
     X = fieldin_state_to_X(cfg, state)
-
-    # dtype = normalize_precision(cfg.processes.iceflow.numerics.precision) # ! confirm double precision is working properly
-
-    # Create patches using the patching object
-    patches = state.iceflow.patching.generate_patches(X)
-
-    return patches
+    framesizemax = cfg.processes.iceflow.unified.data_preparation.framesizemax
+    return split_field_into_patches(X, framesizemax)
 
 
 def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
