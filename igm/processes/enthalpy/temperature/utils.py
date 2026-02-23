@@ -108,7 +108,7 @@ def compute_pa_tf(
     Returns:
         Pressure-adjusted temperature (K).
     """
-    return T - beta * rho_ice * g * depth_ice
+    return T + beta * rho_ice * g * depth_ice
 
 
 @tf.function

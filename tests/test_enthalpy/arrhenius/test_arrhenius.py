@@ -56,7 +56,7 @@ def test_T_pa_depth(depth: float, delta_expected: float) -> None:
     T_pa = compute_pa_tf(T, beta, rho_ice, g, depth_ice)
 
     np.testing.assert_allclose(
-        T.numpy()[0, 0, 0] - T_pa.numpy()[0, 0, 0],
+        T_pa.numpy()[0, 0, 0] - T.numpy()[0, 0, 0],
         delta_expected,
         rtol=1e-2,
     )

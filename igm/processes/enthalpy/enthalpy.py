@@ -27,7 +27,7 @@ def initialize(cfg: DictConfig, state: State) -> None:
     initialize_enthalpy_fields(cfg, state)
 
     # Compute E_pmp
-    E_pmp = compute_pmp(cfg, state)
+    E_pmp, _ = compute_pmp(cfg, state)
 
     # Compute (T, omega) from E
     T, omega = compute_temperature(cfg, state, E_pmp)
