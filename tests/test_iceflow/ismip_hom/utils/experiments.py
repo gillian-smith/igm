@@ -37,6 +37,7 @@ class Experiment(ABC):
             tensor = (
                 tf.constant(value, dtype=dtype)
                 if field in cls.CONST_FIELDS
+                # else tf.Variable(value)
                 else tf.Variable(value, dtype=dtype)
             )
             setattr(state, field, tensor)
@@ -134,6 +135,38 @@ class ExperimentC(Experiment):
             "topg": z_b,
             "usurf": z_s,
             "slidingco": C,
+            "arrhenius": A,
+        }
+
+
+class ExperimentCInversion(Experiment):
+    def init_fields(self, L: float, n: int) -> Dict[str, np.ndarray]:
+        nx, ny = n, n
+        x = np.linspace(0.0, L, nx)
+        y = np.linspace(0.0, L, ny)
+        dx = x[1] - x[0]
+        X, Y = np.meshgrid(x, y)
+        dX = dx * np.ones_like(X)
+
+        α_x = np.deg2rad(0.1)
+        ω = 2 * np.pi / L
+        z_s = -X * np.tan(α_x)
+        h = 1000.0 * np.ones_like(X)
+        z_b = z_s - h
+        C = 1e-3 + 1e-3 * np.sin(ω * X) * np.sin(ω * Y)
+        A = 100.0 * np.ones_like(X)
+
+        return {
+            "x": x,
+            "y": y,
+            "X": X,
+            "Y": Y,
+            "dx": dx,
+            "dX": dX,
+            "thk": h,
+            "topg": z_b,
+            "usurf": z_s,
+            "slidingco": tf.Variable(tf.ones_like(h, dtype=tf.float32), trainable=True, name="slidingco"),
             "arrhenius": A,
         }
 

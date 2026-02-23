@@ -29,7 +29,8 @@ class MappingIdentity(Mapping):
         self.U = tf.Variable(U_guess, trainable=True)
         self.V = tf.Variable(V_guess, trainable=True)
         self.input_normalizer = IdentityNormalizer()
-
+        self.name = "identity"
+        
     def get_UV_impl(self) -> Tuple[tf.Variable, tf.Variable]:
         return self.U, self.V
 

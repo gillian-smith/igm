@@ -9,7 +9,7 @@ from igm.common import State
 from .bcs import BoundaryConditions
 from igm.common import print_model_with_inputs, print_model_with_inputs_detailed
 from .mappings import Mappings, InterfaceMappings
-from .optimizers import Optimizers, InterfaceOptimizers
+from .optimizers import Optimizers, InterfaceOptimizers, SyntheticCosts
 from .evaluator import EvaluatorParams, get_evaluator_params_args, evaluate_iceflow
 from .solver import solve_iceflow
 from .utils import get_cost_fn, _print_data_preparation_summary
@@ -56,6 +56,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     # Initialize optimizer
     optimizer_name = cfg.processes.iceflow.unified.optimizer
     optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
+        # cfg=cfg, cost_fn=SyntheticCosts['quadratic_moderate'], map=mapping
         cfg=cfg, cost_fn=get_cost_fn(cfg, state), map=mapping
     )
     optimizer = Optimizers[optimizer_name](**optimizer_args)
