@@ -19,7 +19,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="igm-model",
-    version="3.1.0",
+    version="3.1.1",
     author="Guillaume Jouvet",
     author_email="guillaume.jouvet@unil.ch",
     url="https://github.com/jouvetg/igm",
@@ -36,7 +36,7 @@ setup(
         "tensorflow-probability==0.23.0",
         "matplotlib",
         "scipy",
-        "netCDF4",
+        "netCDF4==1.6.0",
         "xarray",
         "rasterio",
         "pyproj",
