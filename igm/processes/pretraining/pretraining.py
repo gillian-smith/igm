@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Tuple, Any, Callable
 import random
 import yaml
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -23,8 +24,7 @@ from .io_tfrecords import load_metadata, list_shards, make_datasets
 from .history import load_history_yaml, save_history_yaml
 from .plots import save_loss_plot, save_speed_compare
 
-from igm.processes.iceflow.emulate.utils.artifacts import EmulatorManifest, extract_architecture_spec
-from igm.processes.iceflow.emulate.utils.artifacts import NormalizationSpec  # if defined there
+from igm.processes.iceflow.emulate.utils.artifacts_schema_v3 import build_manifest_v3
 
 from igm.processes.iceflow.emulate.utils.normalizations import FixedChannelStandardization
 
@@ -109,7 +109,7 @@ def _prepare_run_dirs(out_dir: Path, resume: bool) -> Tuple[Path, Path]:
 def _validate_pretraining_setup(inputs: Tuple[str, ...], Cx: int, cfg_physics, state) -> None:
     if Cx != len(inputs):
         raise ValueError(
-            f"TFRecord x has C={Cx} channels (from metadata), but cfg.processes.pretraining.inputs "
+            f"TFRecord x has C={Cx} channels (from metadata), but cfg.processes.iceflow.unified.inputs "
             f"has {len(inputs)} entries: {inputs}. These must match in count and order."
         )
 
@@ -187,17 +187,23 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
     plotting, checkpointing, and history.yaml persistence.
 
     """
-    for epoch in range(ctx.start_epoch, ctx.n_epochs):
-        _reset_metrics(metrics)
+    TRAIN_STEPS = 1000
+    VAL_STEPS   = 20
 
+    train_it = iter(ctx.train_ds)  # infinite because of .repeat()
+
+    for epoch in range(ctx.start_epoch, ctx.n_epochs):
+
+        _reset_metrics(metrics)
         # --- train ---
-        for x_b, y_b in ctx.train_ds.take(1000):
+        for _ in range(TRAIN_STEPS):
+            x_b, y_b = next(train_it)
             ctx.train_step(x_b, y_b)
 
-        # --- validate (fixed number of batches) ---
-        itv = iter(ctx.val_ds)
-        for _ in range(50):
-            x_b, y_b = next(itv)
+        # --- validate (new iterator each epoch => new shuffle order) ---
+        val_it = iter(ctx.val_ds)  
+        for _ in range(VAL_STEPS):
+            x_b, y_b = next(val_it)
             ctx.val_step(x_b, y_b)
 
         # --- append histories ---
@@ -212,6 +218,7 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
             f"val_total={history.val_total[-1]:.6e}"
         )
         # --- plots + comparisons ---
+
         save_loss_plot(
             history.train_total, history.val_total,
             history.train_data,  history.val_data,
@@ -243,7 +250,6 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
             lambda_hist=history.lambda_phys,
         )
 
-
 def initialize(cfg, state):
     tf.config.optimizer.set_jit(False)
     # ----------------------------
@@ -268,7 +274,7 @@ def initialize(cfg, state):
     shapes = meta["example_shapes_by_nz"][str(Nz)]
     H, W, Cx = shapes["x"]
 
-    inputs = tuple(cfg_pretraining.inputs)
+    inputs = tuple(cfg_iceflow.unified.inputs) 
     _validate_pretraining_setup(inputs=inputs, Cx=Cx, cfg_physics=cfg_physics, state=state)
 
     # ----------------------------
@@ -316,45 +322,11 @@ def initialize(cfg, state):
         # Force one batch materialization so data pipeline is “ready”
         x0, y0 = next(iter(train_ds))
 
-
         mean_1d = tmp.mean.numpy().reshape(-1).astype(np.float64)
         var_1d  = tmp.variance.numpy().reshape(-1).astype(np.float64)
         eps = 1e-7  # record-keeping; your Keras version may not expose it reliably
 
         print(f"[norm-stats] computed once: mean={mean_1d} var={var_1d}")
-
-        # Write manifest immediately (only once)
-        if not manifest_path.exists():
-            arch_spec = extract_architecture_spec(cfg)
-
-            # Build normalization spec directly (do NOT depend on model.input_normalizer type)
-            norm_spec = NormalizationSpec(
-                method="keras_normalization",
-                params={
-                    "axis": -1,
-                    "variance_epsilon": float(eps),
-                    "mean_1d": mean_1d.tolist(),
-                    "var_1d": var_1d.tolist(),
-                    "stats_source": "trained_once_via_keras_normalization.adapt",
-                },
-            )
-
-            manifest = EmulatorManifest(
-                schema_version=2,
-                Nz=int(Nz),
-                inputs=list(inputs),
-                nb_inputs=int(len(inputs)),
-                nb_outputs=int(2 * int(Nz)),
-                output_scale=float(cfg.processes.iceflow.unified.network.output_scale),
-                architecture=arch_spec,
-                normalization=norm_spec,
-            )
-            manifest_path.write_text(
-                yaml.safe_dump(asdict(manifest), sort_keys=False, default_flow_style=False)
-            )
-            print(f"[manifest] wrote {manifest_path}")
-        else:
-            print(f"[manifest] exists, not overwriting: {manifest_path}")
 
         # Attach the ONLY forward-pass normalizer
         state.iceflow_model.input_normalizer = FixedChannelStandardization(
@@ -365,6 +337,24 @@ def initialize(cfg, state):
             name="input_norm",
         )
         _ = state.iceflow_model.input_normalizer(tf.zeros((1, H, W, Cx), dtype=desired_dtype))
+
+        # Write schema v3 manifest immediately 
+        if not manifest_path.exists():
+            # Ensure model is built so nb_outputs can be inferred robustly
+            dummy_x = tf.zeros((1, H, W, Cx), dtype=desired_dtype)
+            y0 = state.iceflow_model(dummy_x, training=False)
+            nb_outputs = int(y0.shape[-1])
+
+            manifest_v3 = build_manifest_v3(
+                cfg=cfg,
+                model=state.iceflow_model,
+                inputs=list(inputs),
+                nb_outputs=nb_outputs,
+            )
+            manifest_path.write_text(yaml.safe_dump(manifest_v3.to_dict(), sort_keys=False))
+            print(f"[manifest] wrote schema v3 {manifest_path}")
+        else:
+            print(f"[manifest] exists, not overwriting: {manifest_path}")
 
     else:
         print("[norm] resume=True: will attach FixedChannelStandardization from manifest after checkpoint restore")
@@ -381,32 +371,42 @@ def initialize(cfg, state):
     if lt == "huber":
         delta = float(getattr(cfg_pretraining, "huber_delta", 50.0))
         huber = tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)
-
-    def compute_losses(x_batch: tf.Tensor, y_batch: tf.Tensor):
+        
+    def compute_losses(x_batch: tf.Tensor, y_batch: tf.Tensor, in_warmup: tf.Tensor):
+        # Forward: mapping + model outputs
         U, V = mapping.get_UV(x_batch)
+
         Ut, Vt = y_batch[..., 0], y_batch[..., 1]
 
+        # Data loss 
         if lt == "huber":
             data_loss = tf.reduce_mean(huber(Ut, U) + huber(Vt, V))
-        else:  # mse
+        else:
             data_loss = tf.reduce_mean(tf.square(U - Ut) + tf.square(V - Vt))
 
-        phys_loss = physics_cost_fn(U, V, x_batch)
+        # Physics loss gated in warmup 
+        phys_loss = tf.cond(
+            in_warmup,
+            lambda: tf.zeros((), dtype=data_loss.dtype),
+            lambda: tf.cast(physics_cost_fn(U, V, x_batch), data_loss.dtype),
+        )
+
         return data_loss, phys_loss
+
 
     def safe_global_norm(grads):
         gs = [g for g in grads if g is not None]
         return tf.linalg.global_norm(gs) if gs else tf.constant(0.0, tf.float32)
 
     EMA          = tf.constant(0.99, tf.float32)
-    UPDATE_EVERY = tf.constant(200, tf.int64)
+    UPDATE_EVERY = tf.constant(100, tf.int64)
     LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(1e2, tf.float32)
+    LAM_MAX      = tf.constant(1e3, tf.float32)
     EPS          = tf.constant(1e-6, tf.float32)
-    WARMUP_STEPS = tf.constant(4000, tf.int64)
+    WARMUP_STEPS = tf.constant(100000, tf.int64)
 
     step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
-    lambda_phys = tf.Variable(1.0, trainable=False, dtype=tf.float32, name="lambda_phys")
+    lambda_phys = tf.Variable(0.1, trainable=False, dtype=tf.float32, name="lambda_phys")
 
     # ----------------------------
     # F) Metrics
@@ -432,9 +432,14 @@ def initialize(cfg, state):
         in_warmup = step <= WARMUP_STEPS
         do_update = tf.equal(step % UPDATE_EVERY, 0)
 
+        # Always validate inputs
+        tf.debugging.assert_all_finite(x_batch, "train: x_batch has NaN/Inf")
+        tf.debugging.assert_all_finite(y_batch, "train: y_batch has NaN/Inf")
+
         def update_branch():
+            # compute both gradients separately to estimate lam_hat
             with tf.GradientTape(persistent=True) as tape:
-                data_loss, phys_loss = compute_losses(x_batch, y_batch)
+                data_loss, phys_loss = compute_losses(x_batch, y_batch, in_warmup)
 
             g_data = tape.gradient(data_loss, vars_)
             g_phys = tape.gradient(phys_loss, vars_)
@@ -442,6 +447,9 @@ def initialize(cfg, state):
 
             norm_data = safe_global_norm(g_data)
             norm_phys = safe_global_norm(g_phys)
+
+            # g_data, _ = tf.clip_by_global_norm(g_data, 1.0)
+            # g_phys, _ = tf.clip_by_global_norm(g_phys, 1.0)
 
             lam_hat = norm_data / (norm_phys + EPS)
 
@@ -453,6 +461,7 @@ def initialize(cfg, state):
             lam_new = tf.clip_by_value(lam_new, LAM_MIN, LAM_MAX)
             lambda_phys.assign(lam_new)
 
+            # combine grads for actual update
             grads = []
             for gd, gp in zip(g_data, g_phys):
                 if gd is None and gp is None:
@@ -466,17 +475,29 @@ def initialize(cfg, state):
 
             opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
 
-            total_loss = data_loss + lam_new * phys_loss
+            total_loss = data_loss + tf.cast(lam_new, data_loss.dtype) * tf.cast(phys_loss, data_loss.dtype)
+
             return data_loss, phys_loss, total_loss, lam_new
 
         def normal_branch():
             with tf.GradientTape() as tape:
-                data_loss, phys_loss = compute_losses(x_batch, y_batch)
+                data_loss, phys_loss = compute_losses(x_batch, y_batch, in_warmup)
+
+                # warmup-safe total loss (no 0*NaN)
+                total_loss = tf.cond(
+                    in_warmup,
+                    lambda: data_loss,
+                    lambda: data_loss + tf.cast(lambda_phys, data_loss.dtype) * tf.cast(phys_loss, data_loss.dtype),
+                )
                 lam = tf.where(in_warmup, tf.constant(0.0, tf.float32), lambda_phys)
-                total_loss = data_loss + lam * phys_loss
 
             grads = tape.gradient(total_loss, vars_)
+
+            # (optional) clip here too to reduce Inf risk in normal training path
+            # grads, _ = tf.clip_by_global_norm(grads, 1.0)
+
             opt.apply_gradients([(g, v) for g, v in zip(grads, vars_) if g is not None])
+
             return data_loss, phys_loss, total_loss, lam
 
         data_loss, phys_loss, total_loss, lam = tf.cond(
@@ -490,13 +511,19 @@ def initialize(cfg, state):
         metrics.train_total.update_state(total_loss)
         metrics.train_lam.update_state(lam)
 
+
     @tf.function(reduce_retracing=True, jit_compile=False)
     def val_step(x_batch: tf.Tensor, y_batch: tf.Tensor):
-        data_loss, phys_loss = compute_losses(x_batch, y_batch)
-        total_loss = data_loss + lambda_phys * phys_loss
+
+        data_loss, phys_loss = compute_losses(x_batch, y_batch, in_warmup=tf.constant(False))
+
+        total_loss = data_loss + tf.cast(lambda_phys, data_loss.dtype) * tf.cast(phys_loss, data_loss.dtype)
+
         metrics.val_data.update_state(data_loss)
         metrics.val_phys.update_state(phys_loss)
         metrics.val_total.update_state(total_loss)
+
+
 
     # ----------------------------
     # H) Checkpointing + optional resume restore
@@ -535,7 +562,7 @@ def initialize(cfg, state):
         p = raw["normalization"]["params"]
         mean_1d = np.asarray(p["mean_1d"], dtype=np.float64)
         var_1d  = np.asarray(p["var_1d"],  dtype=np.float64)
-        eps = float(p.get("variance_epsilon", 1e-7))
+        eps = float(p.get("epsilon", p.get("variance_epsilon", 1e-7)))
 
         desired_dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 

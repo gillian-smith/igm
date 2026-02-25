@@ -1,176 +1,85 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 
-# Copyright (C) 2021-2025 IGM authors
-# Published under the GNU GPL (Version 3), check at the LICENSE file
+from typing import Callable, Dict
 
 import tensorflow as tf
 from omegaconf import DictConfig
-from typing import Callable
 
 from igm.common import State
 from igm.processes.iceflow.energy.energy import iceflow_energy_UV
 from igm.processes.iceflow.energy.utils import get_energy_components
 
-from igm.processes.iceflow.utils.data_preprocessing import X_to_fieldin
-import logging
-logger = logging.getLogger(__name__)
+DESIRED_INPUTS = ("thk", "usurf", "arrhenius", "slidingco", "dX")
 
-def get_cost_fn(cfg, state):
 
-    # always-needed stuff
+def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]:
     cfg_unified  = cfg.processes.iceflow.unified
     cfg_physics  = cfg.processes.iceflow.physics
     cfg_numerics = cfg.processes.iceflow.numerics
+
+    Nz = int(cfg_numerics.Nz)
+    dim_arrhenius = int(cfg_physics.dim_arrhenius)
+    if dim_arrhenius == 3:
+        raise ValueError("dim_arrhenius==3 is not supported by this simplified get_cost_fn (arrhenius must be single-channel).")
+
+    # Defaults when missing from cfg_unified.inputs
+    slidingco0 = float(cfg_physics.init_slidingco)
+    arrhenius0 = float(cfg_physics.init_arrhenius)
+    dX0 = 90.0
+
+    # Network input schema (single-channel per name, order matters)
+    net_inputs = tuple(str(x) for x in cfg_unified.inputs)
+    net_idx: Dict[str, int] = {}
+    for i, nm in enumerate(net_inputs):
+        key = nm.lower()
+        if key in net_idx:
+            raise ValueError(f"Duplicate input name in cfg.processes.iceflow.unified.inputs: '{nm}'")
+        net_idx[key] = i
+
+    expected_C = len(net_inputs)
+
     energy_components = get_energy_components(cfg)
 
-    net_inputs_names = tuple(cfg_unified.inputs)
-
-    slidingco0 = cfg_physics.init_slidingco
-    arrhenius0 = cfg_physics.init_arrhenius
-    dX0 = 90.0  # default value if not provided in inputs
-
-    missing = ("dX", "slidingco", "arrhenius")
-    energy_inputs_names = net_inputs_names + tuple(n for n in missing if n not in net_inputs_names)
-
-    # Warn ONCE (not per-iteration) when defaults will be used
-    net_lower = {n.lower() for n in net_inputs_names}
-    if "dx" not in net_lower:
-        logger.warning("Pretraining: 'dX' not in cfg.processes.iceflow.unified.inputs -> using constant dX = state.x[1]-state.x[0].")
-    if "slidingco" not in net_lower:
-        logger.warning("Pretraining: 'slidingco' not in inputs -> using constant slidingco = cfg.processes.iceflow.physics.init_slidingco (%s).", slidingco0)
-    if "arrhenius" not in net_lower:
-        logger.warning(
-            "Pretraining: 'arrhenius' not in inputs -> using constant arrhenius = cfg.processes.iceflow.physics.init_arrhenius (%s)%s.",
-            arrhenius0,
-            " expanded to Nz channels (dim_arrhenius=3)" if cfg_physics.dim_arrhenius == 3 else "",
+    @tf.function(reduce_retracing=True)
+    def build_energy_inputs(input_net: tf.Tensor) -> tf.Tensor:
+        tf.debugging.assert_rank(input_net, 4)
+        tf.debugging.assert_equal(
+            tf.shape(input_net)[-1],
+            expected_C,
+            message="input_net channel count must equal len(cfg.processes.iceflow.unified.inputs).",
         )
 
-    _warned_missing = False
-    _warned_extra = False
-    def _safe_unpack_net(X_net: tf.Tensor) -> dict:
-        nonlocal _warned_missing, _warned_extra
-        # Uses static channel count (trace-time); avoids out-of-bounds strided_slice
-        C = X_net.shape[-1]
-        if C is None:
-            # If channels are truly dynamic, you should assert instead of guessing.
-            tf.debugging.assert_rank(X_net, 4, message="Expected inputs [B,Ny,Nx,C].")
-            return X_to_fieldin(
-                X=X_net,
-                fieldin_names=list(net_inputs_names),
-                dim_arrhenius=cfg_physics.dim_arrhenius,
-                Nz=cfg_numerics.Nz,
-            )
+        proto = input_net[..., :1]  # [B,Ny,Nx,1]
+        ones1 = tf.ones_like(proto)
 
-        field = {}
-        idx = 0
-        missing_in_tensor = []
+        def const_chan(val: float) -> tf.Tensor:
+            return ones1 * tf.cast(val, input_net.dtype)
 
-        for name in net_inputs_names:
-            low = name.lower()
-
-            if low == "arrhenius" and cfg_physics.dim_arrhenius == 3:
-                need = cfg_numerics.Nz
-                if idx + need <= C:
-                    field[name] = tf.experimental.numpy.moveaxis(
-                        X_net[..., idx:idx+need], [-1], [1]
-                    )  # [B,Nz,Ny,Nx]
-                    idx += need
-                else:
-                    missing_in_tensor.append(name)
+        chans = []
+        for nm in DESIRED_INPUTS:
+            key = nm.lower()
+            if key in net_idx:
+                i = net_idx[key]
+                chans.append(input_net[..., i:i+1])
             else:
-                if idx < C:
-                    field[name] = X_net[..., idx]  # [B,Ny,Nx]
-                    idx += 1
+                if key == "dx":
+                    chans.append(const_chan(dX0))
+                elif key == "slidingco":
+                    chans.append(const_chan(slidingco0))
+                elif key == "arrhenius":
+                    chans.append(const_chan(arrhenius0))
                 else:
-                    missing_in_tensor.append(name)
+                    chans.append(const_chan(0.0))
 
-        if missing_in_tensor and not _warned_missing:
-            logger.warning(
-                "Pretraining: inputs tensor has %d channels but cfg lists more. "
-                "These configured inputs are missing in the tensor and will use defaults/zeros: %s",
-                C, missing_in_tensor
-            )
-            _warned_missing = True
-
-        if idx < C and not _warned_extra:
-            logger.warning(
-                "Pretraining: inputs tensor has %d channels but cfg consumed %d. Extra channels will be ignored.",
-                C, idx
-            )
-            _warned_extra = True
-
-        return field
-
-    def _make_energy_inputs(X_net: tf.Tensor) -> tf.Tensor:
-        """
-        X_net: [B, Ny, Nx, C_net] exactly what the network expects.
-        Returns: X_energy with channels matching energy_inputs_names
-                (and arrhenius expanded if dim_arrhenius==3).
-
-        Safety goals:
-        - Avoid creating large compile-time constants (XLA constant folding) by
-            making defaults depend on X_net at runtime.
-        - Keep shapes derived from tf.shape(X_net) to reduce retracing.
-        """
-
-        # Parse only what is actually present in the network tensor
-        field_net = _safe_unpack_net(X_net)
-
-        shp = tf.shape(X_net)
-        B, Ny, Nx = shp[0], shp[1], shp[2]
-        dtype = X_net.dtype
-
-        # A runtime-dependent prototype tensor (prevents XLA from constant-folding
-        # huge fills as compile-time constants)
-        proto = X_net[..., :1]  # [B,Ny,Nx,1], guaranteed to depend on runtime input
-
-        dX  = tf.cast(dX0, dtype)
-        sc0 = tf.cast(slidingco0, dtype)
-        ar0 = tf.cast(arrhenius0, dtype)
-
-        def _const_chan_1(val: tf.Tensor) -> tf.Tensor:
-            # runtime-dependent constant channel: [B,Ny,Nx,1]
-            return tf.ones_like(proto) * val
-
-        def _const_chan_n(val: tf.Tensor, n: int) -> tf.Tensor:
-            # runtime-dependent constant channels: [B,Ny,Nx,n]
-            return tf.tile(tf.ones_like(proto) * val, [1, 1, 1, n])
-
-        def _chan(name: str) -> tf.Tensor:
-            low = name.lower()
-
-            # Present in network inputs
-            if name in field_net:
-                if low == "arrhenius" and cfg_physics.dim_arrhenius == 3:
-                    # field_net['arrhenius'] is [B, Nz, Ny, Nx] -> [B, Ny, Nx, Nz]
-                    return tf.experimental.numpy.moveaxis(field_net[name], [1], [-1])
-                # [B,Ny,Nx] -> [B,Ny,Nx,1]
-                return field_net[name][..., tf.newaxis]
-
-            # Missing -> fill with runtime-dependent "constants"
-            if low == "dx":
-                return _const_chan_1(dX)
-            if low == "slidingco":
-                return _const_chan_1(sc0)
-            if low == "arrhenius":
-                if cfg_physics.dim_arrhenius == 3:
-                    return _const_chan_n(ar0, int(cfg_numerics.Nz))
-                return _const_chan_1(ar0)
-
-            # Safe fallback
-            return tf.zeros_like(proto)
-
-        # Assemble energy input tensor in the required channel order
-        return tf.concat([_chan(nm) for nm in energy_inputs_names], axis=-1)
-
+        return tf.concat(chans, axis=-1)
 
     def cost_fn(U: tf.Tensor, V: tf.Tensor, input_net: tf.Tensor) -> tf.Tensor:
-        input_energy = _make_energy_inputs(input_net)
+        input_energy = build_energy_inputs(input_net)
 
         energy = iceflow_energy_UV(
-            Nz=cfg_numerics.Nz,
-            dim_arrhenius=cfg_physics.dim_arrhenius,
-            inputs_names=list(energy_inputs_names),
+            Nz=Nz,
+            dim_arrhenius=dim_arrhenius,              # must be != 3 here
+            inputs_names=list(DESIRED_INPUTS),
             inputs=input_energy,
             U=U,
             V=V,
@@ -180,7 +89,6 @@ def get_cost_fn(cfg, state):
         )
 
         energy_mean = tf.reduce_mean(energy, axis=[1, 2, 3])
-        total_energy = tf.reduce_sum(energy_mean, axis=0)
+        return tf.reduce_sum(energy_mean, axis=0)
 
-        return total_energy
     return cost_fn

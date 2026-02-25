@@ -43,6 +43,7 @@ def parse_example(serialized: tf.Tensor, H: int, W: int, Nz: int) -> Tuple[tf.Te
     y = tf.ensure_shape(y, [Nz, H, W, 2])  # (U,V)
     return x, y
 
+
 def make_datasets(
     train_files: List[str],
     val_files: List[str],
@@ -52,15 +53,44 @@ def make_datasets(
     compression: str,
     batch_size: int,
     shuffle_buffer: int = 2048,
+    val_seed: int = 1234,
 ) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
 
-    def ds_from(files: List[str], training: bool) -> tf.data.Dataset:
-        ds = tf.data.TFRecordDataset(files, compression_type=compression)
-        ds = ds.map(lambda s: parse_example(s, H, W, Nz), num_parallel_calls=tf.data.AUTOTUNE)
-        if training:
-            ds = ds.shuffle(shuffle_buffer, reshuffle_each_iteration=True)
-        ds = ds.batch(batch_size, drop_remainder=True)
-        ds = ds.prefetch(tf.data.AUTOTUNE)
-        return ds
+    # --- TRAIN (infinite stream): repeat -> shuffle (no seed) -> parse -> batch -> prefetch
+    train_ds = tf.data.TFRecordDataset(
+        train_files,
+        compression_type=compression,
+        num_parallel_reads=tf.data.AUTOTUNE,
+    )
+    train_ds = train_ds.repeat()
+    train_ds = train_ds.shuffle(
+        buffer_size=shuffle_buffer,
+        reshuffle_each_iteration=True,  # mostly irrelevant with a persistent iterator, harmless
+    )
+    train_ds = train_ds.map(
+        lambda s: parse_example(s, H, W, Nz),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+    train_ds = train_ds.batch(batch_size, drop_remainder=True)
+    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
 
-    return ds_from(train_files, True), ds_from(val_files, False)
+    # --- VAL (finite each epoch): shuffle (seeded) -> parse -> batch -> prefetch
+    val_ds = tf.data.TFRecordDataset(
+        val_files,
+        compression_type=compression,
+        num_parallel_reads=tf.data.AUTOTUNE,
+    )
+    val_ds = val_ds.shuffle(
+        buffer_size=shuffle_buffer,
+        seed=val_seed,
+        reshuffle_each_iteration=True,  # new order each epoch if you recreate the iterator
+    )
+    val_ds = val_ds.map(
+        lambda s: parse_example(s, H, W, Nz),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+    val_ds = val_ds.batch(batch_size, drop_remainder=True)
+    val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
+
+    return train_ds, val_ds
+

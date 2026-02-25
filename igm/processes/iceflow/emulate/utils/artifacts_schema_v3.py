@@ -99,6 +99,12 @@ def parse_manifest_v3(raw: Dict[str, Any]) -> EmulatorManifestV3:
     arch = raw["architecture"]
     norm = raw["normalization"]
 
+    m = str(norm.get("method", ""))
+    if m != "fixed_channel_standardization":
+        raise ValueError(
+            f"Schema v3 requires normalization.method='fixed_channel_standardization', got {m!r}"
+        )
+
     return EmulatorManifestV3(
         schema_version=3,
         Nz=int(raw["Nz"]),
@@ -115,30 +121,49 @@ def parse_manifest_v3(raw: Dict[str, Any]) -> EmulatorManifestV3:
 
 def _extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
     """
-    Reads adapted stats from model.input_normalizer (tf.keras.layers.Normalization).
-    Does NOT adapt.
+    Schema v3 ONLY supports FixedChannelStandardization as the forward-pass normalizer.
+    Keras Normalization is not supported for v3 manifest writing.
+
+    Requirements on model.input_normalizer:
+      - has attributes: _mean_1d, _var_1d (1D tensors), epsilon (float)
     """
     norm = getattr(model, "input_normalizer", None)
-    if norm is None or not isinstance(norm, tf.keras.layers.Normalization):
-        raise TypeError("Saving schema v3 expects model.input_normalizer to be tf.keras.layers.Normalization")
+    if norm is None:
+        raise ValueError(
+            "Cannot write schema v3 manifest: model.input_normalizer is None. "
+            "Attach FixedChannelStandardization before saving."
+        )
 
-    mean = np.asarray(norm.mean.numpy(), dtype=np.float64).reshape(-1)
-    var = np.asarray(norm.variance.numpy(), dtype=np.float64).reshape(-1)
-    eps = float(getattr(norm, "variance_epsilon", 1e-7))
+    # must be fixed standardizer
+    missing = [a for a in ("_mean_1d", "_var_1d", "epsilon") if not hasattr(norm, a)]
+    if missing:
+        raise TypeError(
+            "Schema v3 requires model.input_normalizer to be FixedChannelStandardization "
+            f"(missing attributes: {missing}). Got: {type(norm)}"
+        )
+
+    # Read stats (stored in TF dtype; serialize in float64 for robustness)
+    mean = np.asarray(getattr(norm, "_mean_1d").numpy(), dtype=np.float64).reshape(-1)
+    var  = np.asarray(getattr(norm, "_var_1d").numpy(),  dtype=np.float64).reshape(-1)
+    eps  = float(getattr(norm, "epsilon"))
 
     if mean.size == 0 or var.size == 0:
-        raise RuntimeError("Normalization stats empty; did you call norm.adapt(...) during training?")
+        raise RuntimeError("FixedChannelStandardization stats are empty.")
     if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(var)):
-        raise RuntimeError("Normalization stats contain NaN/Inf.")
+        raise RuntimeError("FixedChannelStandardization stats contain NaN/Inf.")
+    if np.any(var < 0):
+        raise RuntimeError("FixedChannelStandardization variance contains negative values.")
+    if not np.isfinite(eps) or eps <= 0:
+        raise RuntimeError(f"FixedChannelStandardization epsilon must be finite and > 0, got {eps!r}")
 
     return NormalizationSpec(
-        method="keras_normalization",
+        method="fixed_channel_standardization",
         params={
             "axis": -1,
-            "variance_epsilon": eps,
+            "epsilon": eps,
             "mean_1d": mean.tolist(),
             "var_1d": var.tolist(),
-            "stats_source": "trained_once_via_norm.adapt",
+            "stats_source": "fixed_channel_standardization",
         },
     )
 

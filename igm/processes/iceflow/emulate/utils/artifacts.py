@@ -205,7 +205,7 @@ def load_emulator_artifact(
 
     # 3) Attach FixedChannelStandardization from manifest stats
     p = manifest.normalization.params
-    eps = float(p.get("variance_epsilon", 1e-7))
+    eps = float(p.get("epsilon", p.get("variance_epsilon", 1e-7)))
     mean_1d = np.asarray(p["mean_1d"], dtype=np.float64).reshape(-1)
     var_1d = np.asarray(p["var_1d"], dtype=np.float64).reshape(-1)
 
