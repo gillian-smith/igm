@@ -18,9 +18,6 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
     cfg_numerics = cfg.processes.iceflow.numerics
 
     Nz = int(cfg_numerics.Nz)
-    dim_arrhenius = int(cfg_physics.dim_arrhenius)
-    if dim_arrhenius == 3:
-        raise ValueError("dim_arrhenius==3 is not supported by this simplified get_cost_fn (arrhenius must be single-channel).")
 
     # Defaults when missing from cfg_unified.inputs
     slidingco0 = float(cfg_physics.init_slidingco)
@@ -77,8 +74,6 @@ def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor
         input_energy = build_energy_inputs(input_net)
 
         energy = iceflow_energy_UV(
-            Nz=Nz,
-            dim_arrhenius=dim_arrhenius,              # must be != 3 here
             inputs_names=list(DESIRED_INPUTS),
             inputs=input_energy,
             U=U,

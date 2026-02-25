@@ -1,4 +1,4 @@
-from .SR_DA import (
+from .data_assimilation_SR import (
     initialize,
     finalize,
     update

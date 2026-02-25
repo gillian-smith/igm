@@ -19,7 +19,7 @@ from igm.processes.iceflow.unified.optimizers.lbfgs_DA import OptimizerLBFGSBoun
 from igm.processes.iceflow.unified.optimizers.interfaces import InterfaceLBFGS
 
 from igm.processes.iceflow.data_preparation.batch_builder import TrainingBatchBuilder
-from igm.processes.SR_DA.objective import build_objective_from_cfg
+from igm.processes.data_assimilation_SR.objective import build_objective_from_cfg
 
 class DataAssimilation:
     def __init__(self):
@@ -41,7 +41,7 @@ def get_cost_and_obj(cfg, state, da_map):
     return cost_function, objective
 
 def data_assimilation_initialize(cfg, state):
-    cfg_da = cfg.processes.SR_DA
+    cfg_da = cfg.processes.data_assimilation_SR
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)
 
     da = DataAssimilation()

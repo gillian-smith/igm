@@ -1,4 +1,4 @@
-SR_DA:
+data_assimilation_SR:
   optimization:
     nbitmax: 100 # Max optimizer iterations (also used as the final iteration label in optimize.nc)
   output:

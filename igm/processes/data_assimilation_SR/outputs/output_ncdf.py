@@ -20,16 +20,16 @@ def update_ncdf_optimize(cfg, state, it):
 
     has_costs = hasattr(state, "da_cost_total")
         
-    if "velbase_mag" in cfg.processes.SR_DA.output.vars_to_save:
+    if "velbase_mag" in cfg.processes.data_assimilation_SR.output.vars_to_save:
         state.velbase_mag = getmag(state.uvelbase, state.vvelbase)
 
-    if "velsurf_mag" in cfg.processes.SR_DA.output.vars_to_save:
+    if "velsurf_mag" in cfg.processes.data_assimilation_SR.output.vars_to_save:
         state.velsurf_mag = getmag(state.uvelsurf, state.vvelsurf)
 
-    if "velsurfobs_mag" in cfg.processes.SR_DA.output.vars_to_save:
+    if "velsurfobs_mag" in cfg.processes.data_assimilation_SR.output.vars_to_save:
         state.velsurfobs_mag = getmag(state.uvelsurfobs, state.vvelsurfobs)
     
-    if "sliding_ratio" in cfg.processes.SR_DA.output.vars_to_save:
+    if "sliding_ratio" in cfg.processes.data_assimilation_SR.output.vars_to_save:
         state.sliding_ratio = tf.where(state.velsurf_mag > 10, state.velbase_mag / state.velsurf_mag, np.nan)
 
     if it == 0:
@@ -71,7 +71,7 @@ def update_ncdf_optimize(cfg, state, it):
             C.long_name = "DA regularization cost"
             C[0] = state.da_cost_reg
 
-        for var in cfg.processes.SR_DA.output.vars_to_save:
+        for var in cfg.processes.data_assimilation_SR.output.vars_to_save:
             E = nc.createVariable(
                 var, np.dtype("float32").char, ("iterations", "y", "x")
             )
@@ -91,7 +91,7 @@ def update_ncdf_optimize(cfg, state, it):
 
         nc.variables["iterations"][d] = it
 
-        for var in cfg.processes.SR_DA.output.vars_to_save:
+        for var in cfg.processes.data_assimilation_SR.output.vars_to_save:
             nc.variables[var][d, :, :] = vars(state)[var].numpy()
 
         nc.close()

@@ -55,7 +55,7 @@ def build_objective_from_cfg(cfg: Any, state: Any, da_map: Any) -> DAObjective:
     Builds DAObjective from misfit and regularization terms defined in cfg
     """
 
-    cfg_da = cfg.processes.SR_DA
+    cfg_da = cfg.processes.data_assimilation_SR
     obj_cfg = cfg_da.objective
 
     misfit_list = list(getattr(obj_cfg, "misfit", []) or [])
