@@ -6,5 +6,4 @@ pretraining:
   loss_type: "huber"
   learning_rate: 0.0001
   out_dir: "/path/to/save/models/"
-  inputs: [thk, usurf] # note these can be different from iceflow.unified.inputs - you can train a network for only a subset of the inputs used in iceflow simulations
   resume: false

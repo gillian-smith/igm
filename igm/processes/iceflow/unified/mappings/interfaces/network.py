@@ -24,10 +24,7 @@ class InterfaceNetwork(InterfaceMapping):
         cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
 
-        if cfg.processes.iceflow.do_pretraining:
-            inputs = list(cfg.processes.pretraining.inputs)
-        else:
-            inputs = list(cfg_unified.inputs)
+        inputs = list(cfg_unified.inputs)
             
         Nz = int(cfg_numerics.Nz)
 
@@ -57,6 +54,8 @@ class InterfaceNetwork(InterfaceMapping):
             if cfg.processes.iceflow.do_pretraining:
                 iceflow_model.input_normalizer = None # this is handled in pretraining process
             else:
+                # print warning that using old normalizer
+                tf.print("Using old normalizer. This behavior is deprecated and will be removed in future versions.")
                 # Inference / non-pretraining: keep Brandon's config-driven behavior for now
                 method = cfg_unified.normalization.method
                 normalizing_class = NormalizationsDict[method]
