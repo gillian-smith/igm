@@ -86,6 +86,8 @@ class InterfaceDataAssimilation(InterfaceMapping):
         precision = cfg.processes.iceflow.numerics.precision
 
         bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+        fieldin_names = cfg.processes.iceflow.unified.inputs
+        field_to_channel = {name: i for i, name in enumerate(fieldin_names)}
 
         return {
             "bcs": bcs,
@@ -95,4 +97,5 @@ class InterfaceDataAssimilation(InterfaceMapping):
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
             "precision": precision,
+            "field_to_channel": field_to_channel,
         }
