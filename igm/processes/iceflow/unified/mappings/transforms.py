@@ -112,10 +112,30 @@ class SoftplusTransform(ParameterTransform):
 
         return L, U
 
+class MpaToKpaThetaTransform(ParameterTransform):
+    """
+    Optimize in kPa while the physical parameter remains MPa.
 
+    theta = 1000 * x_phys(MPa)   [kPa]
+    x_phys = theta / 1000        [MPa]
+    """
+    name = "mpa_to_kpa_theta"
+
+    def to_theta(self, x_phys: tf.Tensor, eps: float = 1e-12) -> tf.Tensor:
+        return x_phys * tf.cast(1000.0, x_phys.dtype)
+
+    def to_physical(self, theta: tf.Tensor) -> tf.Tensor:
+        return theta / tf.cast(1000.0, theta.dtype)
+
+    def theta_bounds(self, lower_phys, upper_phys, dtype, eps: float = 1e-12):
+        L = -tf.constant(float("inf"), dtype) if lower_phys is None else tf.constant(lower_phys * 1000.0, dtype)
+        U =  tf.constant(float("inf"), dtype) if upper_phys is None else tf.constant(upper_phys * 1000.0, dtype)
+        return L, U
+    
 # registry
 TRANSFORMS: Dict[str, Type[ParameterTransform]] = {
     "identity": IdentityTransform,
     "log10": Log10Transform,
     "softplus": SoftplusTransform,
+    "mpa_to_kpa_theta": MpaToKpaThetaTransform,
 }
