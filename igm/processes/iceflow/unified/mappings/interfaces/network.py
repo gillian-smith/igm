@@ -21,10 +21,7 @@ class InterfaceNetwork(InterfaceMapping):
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
         cfg_numerics = cfg.processes.iceflow.numerics
-        cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
-
-        inputs = list(cfg_unified.inputs)
             
         Nz = int(cfg_numerics.Nz)
 
@@ -41,7 +38,7 @@ class InterfaceNetwork(InterfaceMapping):
         else:
             warnings.warn("No pretrained emulator selected. Starting from scratch.")
 
-            nb_inputs = len(inputs) + (cfg_physics.dim_arrhenius == 3) * (Nz - 1)
+            nb_inputs = len(cfg_unified.inputs) 
             nb_outputs = 2 * Nz
 
             arch_name = cfg_unified.network.architecture
