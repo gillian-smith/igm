@@ -45,10 +45,13 @@ def test_matrices_shapes(cfg: DictConfig) -> None:
     assert discr.zeta.shape == (1,)
     assert discr.V_q.shape == (1, 1)
     assert discr.V_q_grad.shape == (1, 1)
-    assert discr.V_q_int.shape == (1, 1)
     assert discr.V_b.shape == (1,)
     assert discr.V_s.shape == (1,)
     assert discr.V_bar.shape == (1,)
+    assert discr.V_int.shape == (1, 1)
+    assert discr.V_corr_b.shape == (1, 1)
+    assert discr.V_corr_s.shape == (1, 1)
+    assert discr.V_const.shape == (1,)
 
 
 def test_matrices_properties(cfg: DictConfig) -> None:
@@ -66,20 +69,22 @@ def test_matrices_basis(cfg: DictConfig) -> None:
 
     phi0 = lambda x: tf.ones_like(x)
     grad_phi0 = lambda x: tf.zeros_like(x)
-    int_phi0 = lambda x: x
 
     x_quad = tf.constant([0.5])
     w_quad = tf.constant([1.0])
 
-    V_q, V_q_grad, V_q_int, V_b, V_s, V_bar = compute_matrices(
-        (phi0,), (grad_phi0,), (int_phi0,), x_quad, w_quad
+    V_q, V_q_grad, V_b, V_s, V_bar = compute_matrices(
+        (phi0,), (grad_phi0,), x_quad, w_quad
     )
 
     np.testing.assert_allclose(discr.w, w_quad)
     np.testing.assert_allclose(discr.zeta, x_quad)
     np.testing.assert_allclose(discr.V_q, V_q)
     np.testing.assert_allclose(discr.V_q_grad, V_q_grad)
-    np.testing.assert_allclose(discr.V_q_int, V_q_int)
     np.testing.assert_allclose(discr.V_b, V_b)
     np.testing.assert_allclose(discr.V_s, V_s)
     np.testing.assert_allclose(discr.V_bar, V_bar)
+    np.testing.assert_allclose(discr.V_int, [[0.0]])
+    np.testing.assert_allclose(discr.V_corr_b, [[0.0]])
+    np.testing.assert_allclose(discr.V_corr_s, [[0.0]])
+    np.testing.assert_allclose(discr.V_const, [1.0])

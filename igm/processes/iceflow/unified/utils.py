@@ -26,16 +26,12 @@ def get_cost_fn(
     """Create cost function for ice flow optimization."""
 
     cfg_unified = cfg.processes.iceflow.unified
-    cfg_physics = cfg.processes.iceflow.physics
-    cfg_numerics = cfg.processes.iceflow.numerics
 
     energy_components = get_energy_components(cfg)
 
     def cost_fn(U: tf.Tensor, V: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
         """Cost function from velocity fields and inputs."""
         energy = iceflow_energy_UV(
-            Nz=cfg_numerics.Nz,
-            dim_arrhenius=cfg_physics.dim_arrhenius,
             inputs_names=tuple(cfg_unified.inputs),
             inputs=input,
             U=U,

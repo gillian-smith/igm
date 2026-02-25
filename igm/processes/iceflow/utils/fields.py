@@ -21,8 +21,7 @@ def initialize_iceflow_fields(cfg: DictConfig, state: State) -> None:
 
     if not hasattr(state, "arrhenius"):
         init_value = cfg_physics.init_arrhenius * cfg_physics.enhancement_factor
-        shape = shape_3d if cfg_physics.dim_arrhenius == 3 else shape_2d
-        state.arrhenius = tf.ones(shape) * init_value
+        state.arrhenius = tf.ones(shape_2d) * init_value
 
     if not hasattr(state, "slidingco"):
         state.slidingco = tf.ones(shape_2d) * cfg_physics.init_slidingco

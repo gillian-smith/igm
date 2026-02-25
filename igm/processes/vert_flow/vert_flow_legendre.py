@@ -6,32 +6,31 @@
 import tensorflow as tf
 
 from igm.utils.grad.grad import grad_xy
-from igm.processes.iceflow.utils.velocities import get_velbase
 
 
 def compute_vertical_velocity_legendre(cfg, state):
+    """
+    Compute vertical velocity in Legendre basis from incompressibility.
 
-    vertical_discr = state.iceflow.discr_v
+    From ∂w/∂z = -(∂u/∂x + ∂v/∂y), integrating from the bed:
+        w(ζ) = ub_z - H ∫₀^ζ (∂u/∂x + ∂v/∂y) dζ'
+    """
 
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    discr_v = state.iceflow.discr_v
 
-    uvelbase, vvelbase = get_velbase(state.U, state.V, vertical_discr.V_b)
+    # Basal vertical velocity from kinematic boundary condition: w_b = u_b · ∇b
+    dbdx, dbdy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    w_b = state.uvelbase * dbdx + state.vvelbase * dbdy
 
-    wvelbase = uvelbase * sloptopgx + vvelbase * sloptopgy  # Lagrange basis
-
+    # Horizontal divergence in Legendre basis: ∂u/∂x + ∂v/∂y
     dUdx, _ = grad_xy(state.U, state.dX, state.dX, False)
     _, dVdy = grad_xy(state.V, state.dX, state.dX, False)
+    div_zeta = dUdx + dVdy
 
-    # Lagrange basis
-    WLA = (
-        wvelbase[None, ...]
-        - tf.tensordot(vertical_discr.V_q_int, dUdx + dVdy, axes=[[1], [0]])
-        * state.thk[None, ...]
-    )
+    # Basal velocity term: w_b only contributes to mode 0 (since P₀ = 1)
+    W = w_b[None, ...] * discr_v.V_const[:, None, None]
 
-    # Legendre basis
-    return tf.einsum(
-        "ji,jkl->ikl",
-        vertical_discr.V_q,
-        WLA * state.dzeta[:, None, None],
-    )
+    # Divergence integral term: -H · V_int · div
+    W = W - state.thk[None, ...] * tf.einsum("mn,nkl->mkl", discr_v.V_int, div_zeta)
+
+    return W

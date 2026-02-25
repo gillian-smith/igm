@@ -1,7 +1,7 @@
 version:
   Type: integer
   Units: dimless
-  Description: "Version of the vert_flow method (1 original, 2 improved by claire-mathilde)."
+  Description: "Version of the vert_flow method (1: original, by GJ; 2: improved, by CMS; 3: unified, by TG)."
 method:
   Type: string
   Units: dimless

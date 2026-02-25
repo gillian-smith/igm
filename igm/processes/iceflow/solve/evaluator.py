@@ -19,16 +19,13 @@ from igm.processes.iceflow.utils.velocities import (
 class EvaluatorParams(tf.experimental.ExtensionType):
     Nz: int
     force_max_velbar: float
-    dim_arrhenius: int
 
 
 def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
 
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "dim_arrhenius": cfg_physics.dim_arrhenius,
         "Nz": cfg_numerics.Nz,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
     }

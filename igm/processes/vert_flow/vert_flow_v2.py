@@ -1,20 +1,41 @@
 #!/usr/bin/env python3
 
-"""
 # Copyright (C) 2021-2025 IGM authors
-Published under the GNU GPL (Version 3), check at the LICENSE file
-"""
+# Published under the GNU GPL (Version 3), check at the LICENSE file
 
-import numpy as np
+
 import tensorflow as tf
 
 from igm.utils.grad.grad import grad_xy
-from igm.utils.grad.compute_divflux import compute_divflux
-
 from igm.processes.iceflow.utils.vertical_discretization import (
     compute_levels,
     compute_dz,
 )
+from igm.processes.vert_flow.vert_flow_legendre import (
+    compute_vertical_velocity_legendre,
+)
+
+
+def compute_vertical_velocity_v2(cfg, state):
+    basis_vertical = cfg.processes.iceflow.numerics.basis_vertical.lower()
+
+    if basis_vertical == "lagrange":
+        method = cfg.processes.vert_flow.method.lower()
+        if method == "kinematic":
+            return compute_vertical_velocity_kinematic_v2(cfg, state)
+        elif method == "incompressibility":
+            return compute_vertical_velocity_incompressibility_v2(cfg, state)
+        else:
+            raise ValueError(f"❌ Unknown method: <{method}>.")
+
+    elif basis_vertical == "legendre":
+        return compute_vertical_velocity_legendre(cfg, state)
+
+    elif basis_vertical == "molho":
+        return compute_vertical_velocity_twolayers(cfg, state)
+
+    else:
+        raise ValueError(f"❌ Unsupported vertical basis: <{basis_vertical}>.")
 
 
 def compute_vertical_velocity_kinematic_v2(cfg, state):
@@ -230,16 +251,17 @@ def compute_divflux_d(u, v, h, dx, dy):
 
 def compute_vertical_velocity_twolayers(cfg, state):
 
-    sloptopgx, sloptopgy = grad_xy(state.topg, state.dx, state.dx, False, "extrapolate")
+    ub_x = state.uvelbase
+    ub_y = state.vvelbase
+    us_x = state.uvelsurf
+    us_y = state.vvelsurf
 
-    slopusurfx, slopusurfy = grad_xy(
-        state.usurf, state.dx, state.dx, False, "extrapolate"
-    )
+    dbdx, dbdy = grad_xy(state.topg, state.dX, state.dX, False, "extrapolate")
+    dsdx, dsdy = grad_xy(state.usurf, state.dX, state.dX, False, "extrapolate")
 
-    div = compute_divflux_d(state.ubar, state.vbar, state.thk, state.dx, state.dx)
+    div_flux = compute_divflux_d(state.ubar, state.vbar, state.thk, state.dx, state.dx)
 
-    wbase = state.U[0] * sloptopgx + state.V[0] * sloptopgy
+    ub_z = ub_x * dbdx + ub_y * dbdy
+    us_z = us_x * dsdx + us_y * dsdy - div_flux[-1]
 
-    wsurf = state.U[-1] * slopusurfx + state.V[-1] * slopusurfy - div[-1]
-
-    return tf.stack([wbase, wsurf], axis=0)
+    return tf.stack([ub_z, us_z], axis=0)

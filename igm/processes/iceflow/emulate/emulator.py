@@ -37,7 +37,6 @@ class EmulatorParams(tf.experimental.ExtensionType):
     Nz: int
     iz: int
     multiple_window_size: int
-    arrhenius_dimension: int
     fieldin_names: Tuple[str, ...]
     print_cost: bool
 
@@ -46,7 +45,6 @@ def get_emulator_params_args(cfg: DictConfig, Nx: int, Ny: int) -> Dict[str, Any
 
     cfg_emulator = cfg.processes.iceflow.emulator
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
 
     return {
         "lr_decay": cfg_emulator.lr_decay,
@@ -55,7 +53,6 @@ def get_emulator_params_args(cfg: DictConfig, Nx: int, Ny: int) -> Dict[str, Any
         "Nz": cfg_numerics.Nz,
         "iz": cfg_emulator.exclude_borders,
         "multiple_window_size": cfg_emulator.network.multiple_window_size,
-        "arrhenius_dimension": cfg_physics.dim_arrhenius,
         "fieldin_names": tuple(cfg_emulator.fieldin),
         "print_cost": cfg_emulator.print_cost,
     }
@@ -142,7 +139,6 @@ def update_emulator(
 
                 energy = iceflow_energy_XY(
                     Nz=parameters.Nz,
-                    dim_arrhenius=parameters.arrhenius_dimension,
                     fieldin_names=parameters.fieldin_names,
                     X=X[i, :, iz : Ny - iz, iz : Nx - iz, :],
                     Y=Y[:, iz : Ny - iz, iz : Nx - iz, :],
@@ -229,9 +225,7 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
     else:
         warnings.warn("No pretrained emulator found. Starting from scratch.")
 
-        nb_inputs = len(cfg_emulator.fieldin) + (cfg_physics.dim_arrhenius == 3) * (
-            cfg_numerics.Nz - 1
-        )
+        nb_inputs = len(cfg_emulator.fieldin)
         nb_outputs = 2 * cfg_numerics.Nz
 
         state.iceflow_model = getattr(

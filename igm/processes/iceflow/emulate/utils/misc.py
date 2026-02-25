@@ -38,9 +38,7 @@ def get_emulator_path(cfg: DictConfig):
         + str(cfg.processes.iceflow.emulator.network.nb_out_filter)
         + "_"
     )
-    dir_name += (
-        str(cfg.processes.iceflow.physics.dim_arrhenius) + "_" + str(int(1)) + "_" + L
-    )
+    dir_name += "2" + "_" + str(int(1)) + "_" + L
 
     return dir_name
 
@@ -99,7 +97,7 @@ def save_iceflow_model(cfg, state):
 
     state.iceflow_model.save(os.path.join(directory, "model.h5"))
 
-    #    fieldin_dim=[0,0,1*(cfg.processes.iceflow.physics.dim_arrhenius==3),0,0]
+    #    fieldin_dim=[0,0,0,0,0]
 
     fid = open(os.path.join(directory, "fieldin.dat"), "w")
     #    for key,gg in zip(cfg.processes.iceflow.emulator.fieldin,fieldin_dim):

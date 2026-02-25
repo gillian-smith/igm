@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 from omegaconf import DictConfig
+from typing import Callable, Tuple
 
 from .vertical import VerticalDiscr
 
@@ -12,8 +13,10 @@ from .vertical import VerticalDiscr
 class SSADiscr(VerticalDiscr):
     """Shallow Shelf Approximation (SSA) vertical discretization (single layer)."""
 
-    def _compute_discr(self, cfg: DictConfig) -> None:
-        """Compute SSA discretization matrices."""
+    def _compute_discr(
+        self, cfg: DictConfig
+    ) -> Tuple[Callable[[tf.Tensor], tf.Tensor], ...]:
+        """Compute SSA discretization matrices. Returns basis functions."""
 
         cfg_numerics = cfg.processes.iceflow.numerics
 
@@ -26,7 +29,14 @@ class SSADiscr(VerticalDiscr):
         self.zeta = tf.constant([0.5], dtype=self.dtype)
         self.V_q = tf.constant([[1.0]], dtype=self.dtype)
         self.V_q_grad = tf.constant([[0.0]], dtype=self.dtype)
-        self.V_q_int = tf.constant([[0.5]], dtype=self.dtype)
         self.V_b = tf.constant([1.0], dtype=self.dtype)
         self.V_s = tf.constant([1.0], dtype=self.dtype)
         self.V_bar = tf.constant([1.0], dtype=self.dtype)
+        self.V_int = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_corr_b = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_corr_s = tf.constant([[0.0]], dtype=self.dtype)
+        self.V_const = tf.constant([1.0], dtype=self.dtype)
+
+        basis_fct = (lambda z: tf.ones_like(z),)
+
+        return basis_fct

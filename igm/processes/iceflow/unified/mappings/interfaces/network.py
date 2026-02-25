@@ -30,7 +30,7 @@ class InterfaceNetwork(InterfaceMapping):
 
         if cfg_unified.network.pretrained:
             if cfg_unified.network.old_format:
-                warnings.warn("Loading old format pretrained emulator. This is not recommended and will not be supported in future IGM versions.")
+                warnings.warn("Loading old format pretrained emulator. This may not be supported in future IGM versions.")
                 dir_path = get_pretrained_emulator_path(cfg, state)
                 iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
             else:
@@ -54,9 +54,7 @@ class InterfaceNetwork(InterfaceMapping):
             if cfg.processes.iceflow.do_pretraining:
                 iceflow_model.input_normalizer = None # this is handled in pretraining process
             else:
-                # print warning that using old normalizer
-                tf.print("Using old normalizer. This behavior is deprecated and will be removed in future versions.")
-                # Inference / non-pretraining: keep Brandon's config-driven behavior for now
+                # Inference / non-pretraining: keep config-driven behavior for now
                 method = cfg_unified.normalization.method
                 normalizing_class = NormalizationsDict[method]
 

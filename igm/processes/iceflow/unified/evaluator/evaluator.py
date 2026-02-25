@@ -10,11 +10,7 @@ from omegaconf import DictConfig
 from igm.common import State
 from igm.utils.math.precision import normalize_precision
 
-from igm.processes.iceflow.utils.data_preprocessing import (
-    fieldin_to_X_2d,
-    fieldin_to_X_3d,
-    match_fieldin_dimensions,
-)
+from igm.processes.iceflow.utils.data_preprocessing import fieldin_to_X_2d
 from igm.processes.iceflow.utils.velocities import (
     get_velbase,
     get_velsurf,
@@ -28,17 +24,14 @@ class EvaluatorParams(tf.experimental.ExtensionType):
 
     Nz: int
     force_max_velbar: float
-    dim_arrhenius: int
 
 
 def get_evaluator_params_args(cfg: DictConfig) -> Dict[str, Any]:
     """Extract evaluator parameters from configuration."""
 
     cfg_numerics = cfg.processes.iceflow.numerics
-    cfg_physics = cfg.processes.iceflow.physics
 
     return {
-        "dim_arrhenius": cfg_physics.dim_arrhenius,
         "Nz": cfg_numerics.Nz,
         "force_max_velbar": cfg.processes.iceflow.force_max_velbar,
     }
@@ -59,17 +52,12 @@ def get_kwargs_from_state(state: State) -> Dict[str, Any]:
 def get_evaluator_inputs_from_state(cfg: DictConfig, state: State) -> tf.Tensor:
     """Prepare input tensor from state variables for ice flow evaluation."""
 
-    cfg_physics = cfg.processes.iceflow.physics
     cfg_unified = cfg.processes.iceflow.unified
 
     inputs = [vars(state)[input] for input in cfg_unified.inputs]
 
-    if cfg_physics.dim_arrhenius == 3:
-        inputs = match_fieldin_dimensions(inputs)
-        inputs = fieldin_to_X_3d(cfg_physics.dim_arrhenius, inputs)
-    elif cfg_physics.dim_arrhenius == 2:
-        inputs = tf.stack(inputs, axis=-1)
-        inputs = fieldin_to_X_2d(inputs)
+    inputs = tf.stack(inputs, axis=-1)
+    inputs = fieldin_to_X_2d(inputs)
 
     # not sure if this is needed but need to verify double precision in other places...
     dtype = normalize_precision(cfg.processes.iceflow.numerics.precision)

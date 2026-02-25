@@ -10,7 +10,7 @@ from igm.utils.grad.compute_divflux import compute_divflux
 from igm.utils.math.gaussian_filter_tf import gaussian_filter_tf
 from ..cost_terms.total_cost import total_cost
 
-# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model, match_fieldin_dimensions
+# from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator, save_iceflow_model
 # from igm.processes.iceflow.utils.misc import is_retrain, prepare_data, get_emulator_data
 
 from igm.processes.iceflow.emulate.emulated import update_iceflow_emulated
