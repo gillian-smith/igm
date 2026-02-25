@@ -9,7 +9,6 @@ from igm.processes.iceflow.utils.data_preprocessing import fieldin_state_to_X
 from igm.processes.iceflow.unified.evaluator import evaluate_iceflow
 
 from .outputs.output_ncdf import update_ncdf_optimize
-from igm.processes.iceflow.utils.velocities import get_velsurf
 
 from .utils import initial_thickness
 from igm.utils.math.precision import normalize_precision
@@ -47,7 +46,8 @@ def data_assimilation_initialize(cfg, state):
 
     da = DataAssimilation()
 
-    # Initial thickness guess (physical)
+    # Initial thickness and slidingco guess (for now keep this simple, could be improved in the future with more sophisticated initializations)
+    # mainly I just want to avoid cheating by unintentionally using the true thickness as initial guess
     thk0 = initial_thickness(
         s=state.usurf,
         u=state.uvelsurfobs,
@@ -56,9 +56,12 @@ def data_assimilation_initialize(cfg, state):
         dx=state.dX[0, 0],
         dy=state.dX[0, 0],
     )
+    slidingco0 = np.zeros_like(thk0) + cfg.processes.iceflow.physics.init_slidingco 
+
     state.uvelsurfobs = tf.cast(state.uvelsurfobs, dtype=dtype)
     state.vvelsurfobs = tf.cast(state.vvelsurfobs, dtype=dtype)
     state.thk = tf.convert_to_tensor(thk0, dtype=dtype)
+    state.slidingco = tf.convert_to_tensor(slidingco0, dtype=dtype)     
     state.usurf = tf.cast(state.usurf, dtype)
     state.dX = tf.cast(state.dX, dtype) 
 
