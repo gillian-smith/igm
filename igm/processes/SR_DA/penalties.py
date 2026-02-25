@@ -17,34 +17,45 @@ def lap_sq(
     ref: Optional[tf.Tensor] = None,  # unused here
 ) -> tf.Tensor:
     """
-    0.5 * lam * ( ∫ lap(field)^2 dA ) / A_domain
+    0.5 * lam * ( ∫_mask lap_mask(field)^2 dA ) / A_domain
+
+    lap_mask uses only neighbours that are inside mask (Neumann-like at mask boundary),
+    so outside-mask frozen values do NOT influence the penalty.
     """
     dtype = field.dtype
-    f = field[None, ..., None]  # [1, Ny, Nx, 1]
+    f = tf.cast(field, dtype)
+    if ref is not None:
+        f = f - tf.cast(ref, dtype)
 
-    k = tf.constant(
-        [[0.0, 1.0, 0.0],
-         [1.0, -4.0, 1.0],
-         [0.0, 1.0, 0.0]],
-        dtype=dtype
-    )[:, :, None, None]
+    m = tf.ones_like(f, tf.bool) if mask is None else tf.cast(mask, tf.bool)
+    mf = tf.cast(m, dtype)
 
-    fpad = tf.pad(f, [[0, 0], [1, 1], [1, 1], [0, 0]], mode="REFLECT")
-    lap = tf.nn.conv2d(fpad, k, strides=1, padding="VALID")  # [1, Ny, Nx, 1]
+    # Pad domain boundary (array edges). Mask outside array is False.
+    fpad = tf.pad(f, [[1, 1], [1, 1]], mode="SYMMETRIC")
+    mpad = tf.pad(mf, [[1, 1], [1, 1]], mode="CONSTANT", constant_values=0.0)
 
-    # dx^2 can be scalar [] or field [Ny,Nx].
-    dx2 = tf.cast(dx * dx, dtype)
+    c  = fpad[1:-1, 1:-1]
+    mu = mpad[0:-2, 1:-1]
+    md = mpad[2:  , 1:-1]
+    ml = mpad[1:-1, 0:-2]
+    mr = mpad[1:-1, 2:  ]
 
-    dx2_4d = tf.reshape(dx2, tf.concat([[1], tf.shape(dx2), [1]], axis=0))
+    fu = fpad[0:-2, 1:-1]
+    fd = fpad[2:  , 1:-1]
+    fl = fpad[1:-1, 0:-2]
+    fr = fpad[1:-1, 2:  ]
 
-    lap = lap / dx2_4d
+    # Only count neighbour differences when neighbour is inside mask.
+    lap_num = mu * (fu - c) + md * (fd - c) + ml * (fl - c) + mr * (fr - c)
 
-    lap2 = tf.square(lap)[0, :, :, 0]  # [Ny, Nx]
+    dx = tf.cast(dx, dtype)
+    dx2 = dx * dx
+    lap = lap_num / dx2
 
-    m = tf.ones_like(lap2, dtype=tf.bool) if mask is None else tf.cast(mask, tf.bool)
-    integral = masked_integral(lap2, m, dx)
-
+    lap2 = tf.square(lap)
+    integral = masked_integral(lap2, tf.cast(m, tf.bool), dx)
     denom = tf.cast(A_domain, dtype) + tf.cast(eps, dtype)
+
     return tf.cast(0.5, dtype) * lam * integral / denom
 
 
