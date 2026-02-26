@@ -11,6 +11,12 @@ from igm.processes.iceflow.energy.utils import get_energy_components
 
 DESIRED_INPUTS = ("thk", "usurf", "arrhenius", "slidingco", "dX")
 
+"""
+This is a temporary replacement for the default energy cost since that does not currently support certain fields missing from the inputs cfg 
+(e.g. no Arrhenius-related channels, or no sliding coefficient channel). This is needed to allow for pretraining more varied networks but
+hopefully can be removed in the future once we have a more flexible + robust energy cost implementation that can handle missing fields more gracefully.
+
+"""
 
 def get_cost_fn(cfg: DictConfig, state: State) -> Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]:
     cfg_unified  = cfg.processes.iceflow.unified

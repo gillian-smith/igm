@@ -88,7 +88,7 @@ def save_loss_plot(
 def save_speed_compare(mapping, x_b, y_b, Nz: int, fig_path: Path) -> None:
     """
     Saves a 3-panel image: true surface speed, predicted surface speed, difference.
-    Assumes 'surface' is the last vertical level (Nz-1). If your convention is opposite, change k=0.
+    This needs to be redone at a later stage, right now it's really just a quick diagnostic for sanity checking the emulator predictions on a batch of training data
     """
     fig_path.parent.mkdir(parents=True, exist_ok=True)
 

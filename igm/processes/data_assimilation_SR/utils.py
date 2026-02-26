@@ -52,6 +52,14 @@ def initial_thickness(
     smooth_sigma_cells=2, # Gaussian sigma in grid cells
     Hmin=10.0, Hmax=3000.0
 ):
+
+    """
+    Computes an initial thickness field by blending between:
+    1) SIA-based thickness (reliable where speed is high, but can be very wrong where speed is low or surface slope is shallow)
+    2) Distance-based thickness (reliable near the margin, but can be very wrong in the interior)
+    The blending is based on speed: where speed >> U0, trust SIA; where speed << U0, trust distance; in between, blend smoothly. The final field is then smoothed and clamped to [Hmin, Hmax].
+    """
+
     s = np.asarray(s)
     u = np.asarray(u)
     v = np.asarray(v)

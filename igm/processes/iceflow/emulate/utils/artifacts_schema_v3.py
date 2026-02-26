@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2021-2026 IGM authors
 
-"""
-artifacts_schema_v3.py
-
-Schema v3:
-- manifest is complete: Nz, basis_vertical, basis_horizontal, inputs are required
-- numerics mismatches (Nz/basis_*) => rich error + exception (do NOT override cfg)
-- other mismatches => rich warnings + override cfg to manifest
-- precision mismatch => rich warning (no cfg change; weights cast via TF policy)
-- also owns v3 manifest writing to avoid format drift
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -29,6 +18,13 @@ from rich.table import Table
 from rich.panel import Panel
 
 from igm.utils.math.precision import normalize_precision
+
+""" 
+
+    Defines the schema for emulator artifacts (manifest.json) version 3, and provides parsing + validation utilities.
+    This schema version is the current standard for all new artifacts.
+
+"""
 
 
 # -----------------------------------------------------------------------------
@@ -122,7 +118,6 @@ def parse_manifest_v3(raw: Dict[str, Any]) -> EmulatorManifestV3:
 def _extract_normalization_spec(model: tf.keras.Model) -> NormalizationSpec:
     """
     Schema v3 ONLY supports FixedChannelStandardization as the forward-pass normalizer.
-    Keras Normalization is not supported for v3 manifest writing.
 
     Requirements on model.input_normalizer:
       - has attributes: _mean_1d, _var_1d (1D tensors), epsilon (float)
@@ -193,9 +188,7 @@ def _extract_architecture_spec(cfg) -> ArchitectureSpec:
 
 
 def build_manifest_v3(cfg, model: tf.keras.Model, inputs: List[str], nb_outputs: int) -> EmulatorManifestV3:
-    """
-    Single source of truth for how schema v3 is written.
-    """
+
     cfg_unified = cfg.processes.iceflow.unified
     cfg_numerics = cfg.processes.iceflow.numerics
 
@@ -256,13 +249,7 @@ def _raise_numerics_incompatibility(artifact_dir: Path, manifest: EmulatorManife
 
 
 def validate_and_reconcile_cfg_v3(cfg, manifest: EmulatorManifestV3, artifact_dir: Path) -> List[str]:
-    """
-    Schema v3 behavior:
-      - ERROR if Nz/basis_vertical/basis_horizontal mismatch (no overrides)
-      - WARN + override cfg for inputs, architecture, output_scale
-      - WARN (no override) if trained_precision differs from cfg precision
-    Returns: warnings list (to be shown by core loader).
-    """
+
     cfg_unified = cfg.processes.iceflow.unified
     cfg_numerics = cfg.processes.iceflow.numerics
     desired_dtype = normalize_precision(cfg_numerics.precision)

@@ -337,6 +337,19 @@ class NormalizationLayer(tf.keras.layers.Layer):
 
 
 class FixedChannelStandardization(tf.keras.layers.Layer):
+
+
+    """
+    
+    A verfy simple fixed standardization layer that normalizes each channel using provided mean and variance.
+    This is the main normalization strategy used for the pretrained emulators
+    Stats are calculated on the original training set and retained in the manifest, then loaded and attached to the model at inference time.
+    This is preferable over calculating stats on new data at inference time, which would degrade emulator performance without potentially
+        large amounts of retraining which we are particularly keen to avoid for data assimilation, however this design choice can be revisisted
+        if needed in the future.
+
+    """
+
     def __init__(self, mean_1d, var_1d, epsilon=1e-7, dtype=tf.float32, name="input_norm", **kwargs):
         super().__init__(dtype=tf.as_dtype(dtype), name=name, **kwargs)
         mean_1d = np.asarray(mean_1d, dtype=np.float64).reshape(-1)

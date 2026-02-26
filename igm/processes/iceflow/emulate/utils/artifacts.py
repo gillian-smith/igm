@@ -156,7 +156,7 @@ def load_emulator_artifact(
 
     Flow:
       1) read + parse manifest
-      2) validate (v2 strict error, v3 rich warn/error + possible cfg overrides)
+      2) validate (v2 for old format, v3 is the current standard)
       3) rebuild model, load weights
       4) attach FixedChannelStandardization from manifest stats
       5) print rich summary (including warnings)

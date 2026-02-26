@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # Copyright (C) 2021-2026 IGM authors
 
-"""
-artifacts_schema_v2.py
-
-Schema v2:
-- strict, simple validation (raise on mismatch)
-- checks a smaller set of fields
-"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List
+
+"""
+    Defines the schema for emulator artifacts (manifest.json) version 2, and provides parsing + validation utilities.
+    This schema version is for backwards compatibility with older artifacts, will not be supported in future.
+"""
+
 
 @dataclass
 class ArchitectureSpec:

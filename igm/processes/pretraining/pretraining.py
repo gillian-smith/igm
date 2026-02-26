@@ -119,13 +119,6 @@ def _validate_pretraining_setup(inputs: Tuple[str, ...], Cx: int, cfg_physics, s
             f"in that order, but cfg inputs are {inputs}."
         )
 
-    if int(getattr(cfg_physics, "dim_arrhenius", 1)) == 3 and Cx <= 2:
-        raise ValueError(
-            "cfg.processes.iceflow.physics.dim_arrhenius == 3 but TFRecord inputs appear to have only 2 channels. "
-            "If 3D Arrhenius is enabled, you likely need additional Arrhenius-related channels in TFRecords "
-            "(or set dim_arrhenius=1 for this pretraining run)."
-        )
-
     if not hasattr(state, "iceflow") or not hasattr(state.iceflow, "discr_v") or state.iceflow.discr_v is None:
         raise RuntimeError(
             "state.iceflow.discr_v is missing, but the physics cost requires it. "
