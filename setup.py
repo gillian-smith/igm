@@ -51,6 +51,8 @@ setup(
         "nvtx",
         "typeguard",
         "rich",
-        "optuna>=3.0",
     ],
+    extras_require={
+        "optuna": ["optuna>=3.0"],
+    },
 )
