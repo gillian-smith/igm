@@ -252,7 +252,7 @@ class OptimizerLBFGS(Optimizer):
         # Accessory variables
         halt_status = tf.constant(HaltStatus.CONTINUE.value, dtype=tf.int32)
         iter_last = tf.constant(-1, dtype=tf.int32)
-        costs = tf.TensorArray(dtype=cost.dtype, size=0, dynamic_size=True)
+        costs = tf.TensorArray(dtype=cost.dtype, size=int(self.iter_max))
 
         for iter in tf.range(self.iter_max):
 
