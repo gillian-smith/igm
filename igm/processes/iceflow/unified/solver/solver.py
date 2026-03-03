@@ -78,7 +78,7 @@ def solve_iceflow(cfg: DictConfig, state: State, init: bool = False) -> None:
     if do_solve:
         inputs = get_solver_inputs_from_state(cfg, state)
 
-        if not cfg.processes.iceflow.unified.network.pretrained: # the pretrained network uses a different normalization scheme
+        if (not cfg.processes.iceflow.unified.network.pretrained) or cfg.processes.iceflow.unified.network.old_format: # the new pretrained network uses a different normalization scheme
 
             # # Compute and set stats can be linked inside the class, so we can get rid of the liskov violation here (when means in one transformation is not means in another)
             means, variances = mapping.input_normalizer.compute_stats(inputs)
