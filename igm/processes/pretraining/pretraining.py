@@ -180,8 +180,8 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
     plotting, checkpointing, and history.yaml persistence.
 
     """
-    TRAIN_STEPS = 1000
-    VAL_STEPS   = 20
+    TrainSteps = 1000
+    ValSteps   = 20
 
     train_it = iter(ctx.train_ds)  # infinite because of .repeat()
 
@@ -189,13 +189,13 @@ def _run_training_loop(ctx: LoopContext, metrics: MetricsBundle, history: Histor
 
         _reset_metrics(metrics)
         # --- train ---
-        for _ in range(TRAIN_STEPS):
+        for _ in range(TrainSteps):
             x_b, y_b = next(train_it)
             ctx.train_step(x_b, y_b)
 
         # --- validate (new iterator each epoch => new shuffle order) ---
         val_it = iter(ctx.val_ds)  
-        for _ in range(VAL_STEPS):
+        for _ in range(ValSteps):
             x_b, y_b = next(val_it)
             ctx.val_step(x_b, y_b)
 
@@ -391,12 +391,12 @@ def initialize(cfg, state):
         gs = [g for g in grads if g is not None]
         return tf.linalg.global_norm(gs) if gs else tf.constant(0.0, tf.float32)
 
-    EMA          = tf.constant(0.99, tf.float32)
-    UPDATE_EVERY = tf.constant(100, tf.int64)
-    LAM_MIN      = tf.constant(1e-3, tf.float32)
-    LAM_MAX      = tf.constant(1e3, tf.float32)
-    EPS          = tf.constant(1e-6, tf.float32)
-    WARMUP_STEPS = tf.constant(100000, tf.int64)
+    Ema          = tf.constant(0.99, tf.float32)
+    UpdateEvery = tf.constant(100, tf.int64)
+    LamMin      = tf.constant(1e-3, tf.float32)
+    LamMax      = tf.constant(1e3, tf.float32)
+    Eps          = tf.constant(1e-6, tf.float32)
+    WarmupSteps = tf.constant(100000, tf.int64)
 
     step = tf.Variable(0, trainable=False, dtype=tf.int64, name="step")
     lambda_phys = tf.Variable(0.1, trainable=False, dtype=tf.float32, name="lambda_phys")
@@ -422,8 +422,8 @@ def initialize(cfg, state):
         vars_ = state.iceflow_model.trainable_variables
         step.assign_add(1)
 
-        in_warmup = step <= WARMUP_STEPS
-        do_update = tf.equal(step % UPDATE_EVERY, 0)
+        in_warmup = step <= WarmupSteps
+        do_update = tf.equal(step % UpdateEvery, 0)
 
         # Always validate inputs
         tf.debugging.assert_all_finite(x_batch, "train: x_batch has NaN/Inf")
@@ -444,14 +444,14 @@ def initialize(cfg, state):
             # g_data, _ = tf.clip_by_global_norm(g_data, 1.0)
             # g_phys, _ = tf.clip_by_global_norm(g_phys, 1.0)
 
-            lam_hat = norm_data / (norm_phys + EPS)
+            lam_hat = norm_data / (norm_phys + Eps)
 
-            MAX_UP   = tf.constant(2.0, tf.float32)
-            MAX_DOWN = tf.constant(2.0, tf.float32)
-            lam_hat = tf.clip_by_value(lam_hat, lambda_phys / MAX_DOWN, lambda_phys * MAX_UP)
+            MaxUp   = tf.constant(2.0, tf.float32)
+            MaxDown = tf.constant(2.0, tf.float32)
+            lam_hat = tf.clip_by_value(lam_hat, lambda_phys / MaxDown, lambda_phys * MaxUp)
 
-            lam_new = EMA * lambda_phys + (1.0 - EMA) * tf.stop_gradient(lam_hat)
-            lam_new = tf.clip_by_value(lam_new, LAM_MIN, LAM_MAX)
+            lam_new = Ema * lambda_phys + (1.0 - Ema) * tf.stop_gradient(lam_hat)
+            lam_new = tf.clip_by_value(lam_new, LamMin, LamMax)
             lambda_phys.assign(lam_new)
 
             # combine grads for actual update
