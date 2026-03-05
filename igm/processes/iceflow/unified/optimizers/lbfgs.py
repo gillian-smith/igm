@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
+from math import cos
 import tensorflow as tf
 from typing import Callable, Optional, Tuple
 
@@ -10,9 +11,6 @@ from .optimizer import Optimizer
 from .line_searches import LineSearches, ValueAndGradient
 from ..mappings import Mapping
 from ..halt import Halt, HaltStatus
-
-tf.config.optimizer.set_jit(True)
-
 
 class OptimizerLBFGS(Optimizer):
     def __init__(
@@ -29,6 +27,8 @@ class OptimizerLBFGS(Optimizer):
         iter_max: int = int(1e5),
         alpha_min: float = 0.0,
         memory: int = 10,
+        gamma_min: float = 1e-6,
+        gamma_max: float = 1e6,
         **kwargs
     ):
         super().__init__(
@@ -48,6 +48,8 @@ class OptimizerLBFGS(Optimizer):
         self.iter_max = tf.Variable(iter_max, dtype=tf.int32)
         self.alpha_min = tf.Variable(alpha_min, dtype=self.precision)
         self.memory = memory
+        self.gamma_min = tf.constant(gamma_min, dtype=self.precision)
+        self.gamma_max = tf.constant(gamma_max, dtype=self.precision)
         if self.precision == tf.float32:
             self.eps = tf.constant(1e-12, self.precision)
         else:
@@ -98,6 +100,10 @@ class OptimizerLBFGS(Optimizer):
         last_y = y_list[num_elems - 1]
         last_s = s_list[num_elems - 1]
         gamma = self._dot(last_y, last_s) / (self._dot(last_y, last_y) + self.eps)
+
+        # basic safety checks
+        gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
+        gamma = tf.clip_by_value(gamma, self.gamma_min, self.gamma_max)
         gamma = tf.cast(gamma, q.dtype)
 
         # Tempering
@@ -108,6 +114,7 @@ class OptimizerLBFGS(Optimizer):
             s_i = s_list[i]
             y_i = y_list[i]
             rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
+            rho = tf.minimum(rho, tf.cast(1e3, rho.dtype))   # cap effect of bad pairs
             beta = rho * self._dot(y_i, r)
             beta = tf.cast(beta, r.dtype)
             alpha_i = alpha_list.read(i)
@@ -125,7 +132,7 @@ class OptimizerLBFGS(Optimizer):
         self, theta_flat: tf.Tensor, alpha: tf.Tensor, p_flat: tf.Tensor
     ) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         return theta_flat + alpha * p_flat, None
-
+    
     def _constrain_pair(
         self,
         s: tf.Tensor,
@@ -133,9 +140,40 @@ class OptimizerLBFGS(Optimizer):
         w_old: tf.Tensor,
         theta_trial: Optional[tf.Tensor],
         mask: Optional[tf.Tensor],
+        w_new: Optional[tf.Tensor] = None,
+        g_new: Optional[tf.Tensor] = None,
     ) -> Tuple[tf.Tensor, tf.Tensor]:
         return s, y
+    
+    def _clip_alpha(
+        self, alpha: tf.Tensor, theta_flat: tf.Tensor, p_flat: tf.Tensor
+    ) -> tf.Tensor:
+        # Unbounded default: no clipping
+        return alpha
+    
+    def _step_base_point(
+        self,
+        theta_flat: tf.Tensor,
+        grad_theta_flat: tf.Tensor,
+        input: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor, Optional[tf.Tensor]]:
+        """
+        Returns:
+        theta_base: base point to step from (default: current theta)
+        grad_base_flat: gradient used for direction / descent checks (default: current grad)
+        mask_base: optional boolean mask for a subspace (default: None)
+        """
+        return theta_flat, grad_theta_flat, None
 
+    def _mask_memory_for_subspace(
+        self,
+        s_list: tf.Tensor,  # [m, w_dim]
+        y_list: tf.Tensor,  # [m, w_dim]
+        mask: Optional[tf.Tensor],
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        # Unbounded default: no masking
+        return s_list, y_list
+    
     @tf.function(reduce_retracing=True)
     def _update_memory(
         self,
@@ -164,9 +202,7 @@ class OptimizerLBFGS(Optimizer):
 
             return tf.cond(idx_memory < self.memory, append, shift)
 
-        return tf.cond(
-            dot_ys > self.eps, update, lambda: (s_flat_mem, y_flat_mem, idx_memory)
-        )
+        return tf.cond(dot_ys > self.eps, update, lambda: (s_flat_mem, y_flat_mem, idx_memory))
 
     @tf.function
     def _line_search(
@@ -238,24 +274,34 @@ class OptimizerLBFGS(Optimizer):
             # Tempering
             tau = self._compute_tau(iter)
 
-            # Direction
+            # choose base point / gradient for the step (bounded subclass overrides this)
+            theta_base, grad_base_flat, mask_base = self._step_base_point(
+                theta_flat, grad_theta_flat, input
+            )
+
+            # mask L-BFGS memory to the subspace if needed
+            s_list = s_flat_mem[:idx_memory]
+            y_list = y_flat_mem[:idx_memory]
+            s_list, y_list = self._mask_memory_for_subspace(s_list, y_list, mask_base)
+
+            # Direction computed in (possibly) reduced subspace
             p_flat = self._compute_direction(
-                grad_theta_flat,
-                s_flat_mem[:idx_memory],
-                y_flat_mem[:idx_memory],
+                grad_base_flat,
+                s_list,
+                y_list,
                 idx_memory,
                 tau,
             )
 
-            # Force descent
-            p_flat, mask = self._force_descent(p_flat, grad_theta_flat, theta_flat)
+            # Force descent (bounded can use the mask_base if it wants)
+            p_flat, mask = self._force_descent(p_flat, grad_base_flat, theta_base)
 
             # Line search
-            alpha = self._line_search(theta_flat, p_flat, input)
+            alpha = self._line_search(theta_base, p_flat, input)
             alpha = tf.maximum(alpha, tf.cast(self.alpha_min, alpha.dtype))
+            alpha = self._clip_alpha(alpha, theta_base, p_flat)
 
-            # Apply step
-            theta_flat, theta_trial = self._apply_step(theta_flat, alpha, p_flat)
+            theta_flat, theta_trial = self._apply_step(theta_base, alpha, p_flat)
 
             # New weights, cost, and grads
             self.map.set_theta(self.map.unflatten_theta(theta_flat))
@@ -264,14 +310,14 @@ class OptimizerLBFGS(Optimizer):
 
             # Curvature pair
             s, y = theta_flat - theta_prev, grad_theta_flat - grad_theta_prev
-            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask)
+            s, y = self._constrain_pair(s, y, theta_prev, theta_trial, mask, theta_flat, grad_theta_flat)
 
             # Update memory
             s_flat_mem, y_flat_mem, idx_memory = self._update_memory(
                 s_flat_mem, y_flat_mem, idx_memory, s, y
             )
 
-            # TODO: check if this is necessary
+            # this is needed e.g. for data assimilation logging
             self.map.on_step_end(iter)
 
             costs = costs.write(iter, cost)

@@ -1,5 +1,6 @@
 iceflow:
   method: emulated
+  do_pretraining: false
   force_max_velbar: 0.0
   physics:
     energy_components: [viscosity, gravity, sliding]
@@ -8,17 +9,21 @@ iceflow:
       weertman:
         regu: 1.0e-10
         exponent: 3.0
+        u_ref: 100.0  # (m/yr)
       coulomb:
         regu: 1.0e-10
         exponent: 3.0
+        u_ref: 100.0  # (m/yr)
         mu: 0.4
       budd:
         regu: 1.0e-10
         exponent: 3.0
+        u_ref: 100.0  # (m/yr)
+        N_ref: 1.0
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
-    init_slidingco: 0.0464 # do we need this anymore?
+    init_slidingco: 0.2154 # equivalent to old value with uref = 100m/yr
     init_arrhenius: 78.0
     enhancement_factor: 1.0
     exp_glen: 3.0
@@ -129,7 +134,9 @@ iceflow:
       debug_mode: false
       debug_freq: 100
       pretrained: true
+      pretrained_path: ""
       print_summary: false
+      old_format: false
       output_scale: 1.0
       architecture: CNN
     data_preparation:

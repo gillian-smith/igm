@@ -47,9 +47,6 @@ def initialize(cfg: DictConfig, state: State) -> None:
     # Create ice flow object
     state.iceflow = Iceflow()
 
-    # Initialize ice-flow fields: U, V, slidingco, arrhenius
-    initialize_iceflow_fields(cfg, state)
-
     # Initialize discretization
     cfg_numerics = cfg.processes.iceflow.numerics
 
@@ -64,6 +61,13 @@ def initialize(cfg: DictConfig, state: State) -> None:
     state.vert_weight = define_vertical_weight(
         cfg_numerics.Nz, cfg_numerics.vert_spacing
     )
+
+    if cfg.processes.iceflow.do_pretraining is True:
+        print("Iceflow pretraining mode activated. Skipping iceflow initialization.")
+        return
+
+    # Initialize ice-flow fields: U, V, slidingco, arrhenius
+    initialize_iceflow_fields(cfg, state)
 
     # Initialize ice-flow method
     iceflow_method = cfg.processes.iceflow.method.lower()
@@ -84,7 +88,8 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
-
+    if cfg.processes.iceflow.do_pretraining is True:
+        return
     # Logger
     if hasattr(state, "logger"):
         state.logger.info("Update ICEFLOW at iteration : " + str(state.it))
@@ -108,6 +113,8 @@ def update(cfg: DictConfig, state: State) -> None:
 
 def finalize(cfg: DictConfig, state: State) -> None:
     """Finalize the iceflow module."""
+    if cfg.processes.iceflow.do_pretraining is True:
+        return
 
     # Save emulated model
     iceflow_method = cfg.processes.iceflow.method.lower()

@@ -17,7 +17,7 @@ class InterfaceCG(InterfaceOptimizer):
         precision = cfg.processes.iceflow.numerics.precision
 
         if isinstance(map, MappingDataAssimilation) or isinstance(map, MappingCombinedDataAssimilation):
-            nbit = cfg.processes.SR_DA.optimization.nbitmax
+            nbit = cfg.processes.data_assimilation_SR.optimization.nbitmax
         else:
             nbit = u.nbit
         return {
@@ -45,4 +45,4 @@ class InterfaceCG(InterfaceOptimizer):
         else:
             return False
         optimizer.update_parameters(iter_max=iter_max, alpha_min=alpha_min)
-        return True
+        return iter_max > 0

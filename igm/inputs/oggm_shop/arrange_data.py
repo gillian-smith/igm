@@ -73,7 +73,7 @@ def arrange_data(cfg, state, path_RGI, ds, RGI_version, RGI_product):
         if RGI_version == 6:
             with open(os.path.join(path_RGI, "glacier_grid.json")) as f:
                 proj = json.load(f)["proj"]
-            thkobs = read_glathida_v6(ds.x.values, ds.y.values, ds_vars["usurfobs"].values, \
+            thkobs = read_glathida_v6(ds.x.values, ds.y.values, ds_vars["usurf"].values, \
                                       proj, cfg.inputs.oggm_shop.path_glathida, state)
         else:
             path_glathida = os.path.join(path_RGI, "glathida_data.csv")

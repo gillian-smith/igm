@@ -11,6 +11,7 @@ from ..optimizer import Optimizer
 from .interface import InterfaceOptimizer, Status
 from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
+from ...mappings.data_assimilation import MappingDataAssimilation
 
 
 class InterfaceLBFGS(InterfaceOptimizer):
@@ -25,6 +26,11 @@ class InterfaceLBFGS(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
+        if isinstance(map, MappingDataAssimilation):
+            nbit = cfg.processes.data_assimilation_SR.optimization.nbitmax
+        else:
+            nbit = cfg_unified.nbit
+
         halt_args = InterfaceHalt.get_halt_args(cfg)
         halt = Halt(**halt_args)
 
@@ -33,7 +39,7 @@ class InterfaceLBFGS(InterfaceOptimizer):
             "map": map,
             "halt": halt,
             "line_search_method": cfg_unified.line_search,
-            "iter_max": cfg_unified.nbit,
+            "iter_max": nbit,
             "alpha_min": cfg_unified.lbfgs.alpha_min,
             "memory": cfg_unified.lbfgs.memory,
             "print_cost": cfg_unified.display.print_cost,
@@ -69,4 +75,4 @@ class InterfaceLBFGS(InterfaceOptimizer):
 
         optimizer.update_parameters(iter_max=iter_max, alpha_min=alpha_min)
 
-        return True
+        return iter_max > 0

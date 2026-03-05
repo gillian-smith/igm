@@ -28,7 +28,7 @@ class InterfaceAdam(InterfaceOptimizer):
         if isinstance(map, MappingDataAssimilation) or isinstance(
             map, MappingCombinedDataAssimilation
         ):
-            lr = cfg.processes.SR_DA.optimization.learning_rate
+            lr = cfg.processes.data_assimilation_SR.optimization.learning_rate
 
         else:
             lr = cfg_unified.adam.lr
@@ -87,4 +87,4 @@ class InterfaceAdam(InterfaceOptimizer):
             iter_max=iter_max, lr=lr, lr_decay=lr_decay, lr_decay_steps=lr_decay_steps
         )
 
-        return True
+        return iter_max > 0

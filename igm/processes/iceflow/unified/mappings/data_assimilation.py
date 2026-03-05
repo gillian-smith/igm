@@ -47,7 +47,6 @@ class MappingDataAssimilation(Mapping):
         bcs: List[str],
         network: tf.keras.Model,
         Nz: tf.Tensor,
-        cost_fn: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor],
         output_scale,
         state,
         variables: List[VariableSpec],
@@ -66,7 +65,8 @@ class MappingDataAssimilation(Mapping):
         self.output_scale = tf.cast(output_scale, self.precision)
         self.vars: List[VariableSpec] = variables
         self.eps = eps
-        self.cost_fn = cost_fn
+        self._da_step_callback = None  # python callable
+        self._da_out_freq = 0          # python int
 
         for v in self.network.trainable_variables:
             if v.dtype != self.precision:
@@ -83,22 +83,6 @@ class MappingDataAssimilation(Mapping):
             "slidingco": 3,
             "dX": 4,
         }
-
-        self.base_cost_reference = tf.Variable(
-            float("nan"),
-            trainable=False,
-            name="base_cost_reference",
-            dtype=self.precision,
-        )
-        self._base_cost_tol = tf.constant(0.1, dtype=self.precision)  # 10% threshold
-        self._base_cost_eps = tf.constant(
-            1e-12, dtype=self.precision
-        )  # Small epsilon for division
-
-        # Diagnostics used by the halt criterion
-        self.base_cost = tf.Variable(
-            0.0, trainable=False, name="base_cost", dtype=self.precision
-        )
 
         # Ensure state fields are tf.Variable and keep references (for initialization parity).
         self._field_refs: Dict[str, tf.Variable] = {}
@@ -121,8 +105,15 @@ class MappingDataAssimilation(Mapping):
         self._sizes_int: List[Optional[int]] = []
         self._full_shapes: List[tf.TensorShape] = []
         self._mask_bool: List[Optional[tf.Tensor]] = []
-        self._mask_indices: List[Optional[tf.Tensor]] = []
-        self._mask_backgrounds: List[Optional[tf.Tensor]] = []
+        self._mask_flat_idx: List[Optional[tf.Tensor]] = []
+        self._background_phys_flat: List[Optional[tf.Tensor]] = []
+
+        # Map variable name -> index in self.vars / self._theta / etc.
+        self._varname_to_idx: Dict[str, int] = {}
+        for i, spec in enumerate(self.vars):
+            if spec.name in self._varname_to_idx:
+                raise ValueError(f"Duplicate variable name in DA mapping: {spec.name}")
+            self._varname_to_idx[spec.name] = i
 
         for spec in self.vars:
             tname = (spec.transform or "identity").lower()
@@ -134,50 +125,60 @@ class MappingDataAssimilation(Mapping):
             self.transforms.append(tform)
 
             x0_var = self._field_refs[spec.name]
-            x0 = tf.convert_to_tensor(x0_var)
+            x0 = tf.cast(tf.convert_to_tensor(x0_var), self.precision)
+
+            # Build theta0_full in compute precision (important for numerical consistency)
+            theta0_full = tform.to_theta(x0, eps=self.eps)
+            full_shape_static = theta0_full.shape
+            self._full_shapes.append(full_shape_static)
 
             mask_bool = None
-            mask_indices = None
-            mask_background = None
+            flat_idx = None
+            background_phys_flat = None
+
             if spec.mask is not None:
                 mask_tensor = self._resolve_mask(state, spec.mask)
                 mask_bool = tf.cast(mask_tensor, tf.bool)
+
                 if mask_bool.shape != x0.shape:
                     raise ValueError(
                         f"❌ Mask '{spec.mask}' shape {mask_bool.shape} does not match field '{spec.name}' shape {x0.shape}."
                     )
-                if not bool(tf.reduce_any(mask_bool)):
+
+                flat_mask = tf.reshape(mask_bool, [-1])
+                flat_idx = tf.where(flat_mask)[:, 0]
+                flat_idx = tf.cast(flat_idx, tf.int32)
+                flat_idx = tf.sort(flat_idx)  # make ordering explicit and deterministic
+
+                # robust emptiness check (works regardless of tracing/eager)
+                if int(tf.size(flat_idx).numpy()) == 0:
                     raise ValueError(
                         f"❌ Mask '{spec.mask}' for '{spec.name}' has no active elements."
                     )
-                mask_indices = tf.where(mask_bool)
-                mask_background = tf.where(mask_bool, tf.zeros_like(x0), x0)
 
-            theta0_full = tform.to_theta(x0_var, eps=self.eps)
-            self._full_shapes.append(theta0_full.shape)
+                theta0_full_flat = tf.reshape(theta0_full, [-1])
+                theta0 = tf.gather(theta0_full_flat, flat_idx)
 
-            if mask_bool is not None:
-                theta0 = tf.boolean_mask(theta0_full, mask_bool)
+                # physical background outside mask should remain at initial physical values
+                background_phys_flat = tf.reshape(x0, [-1])
             else:
-                theta0 = theta0_full
+                theta0 = theta0_full  # unmasked: keep full field shape
 
-            # Keep θ in compute precision
             theta = tf.Variable(
                 tf.cast(theta0, self.precision),
                 trainable=True,
                 name=f"theta_{spec.name}",
             )
             self._theta.append(theta)
+
             self._shapes.append(theta.shape)
             self._sizes.append(tf.size(theta))
-            self._sizes_int.append(
-                theta.shape.num_elements()
-                if theta.shape.num_elements() is not None
-                else None
-            )
+            self._sizes_int.append(theta.shape.num_elements() if theta.shape.num_elements() is not None else None)
+
             self._mask_bool.append(mask_bool)
-            self._mask_indices.append(mask_indices)
-            self._mask_backgrounds.append(mask_background)
+            self._mask_flat_idx.append(flat_idx)
+            self._background_phys_flat.append(background_phys_flat)
+
 
         # Precompute θ-space bounds for optimizer consumption.
         self._L_list: List[tf.Tensor] = []
@@ -202,32 +203,48 @@ class MappingDataAssimilation(Mapping):
             obj = getattr(obj, attr)
         return tf.convert_to_tensor(obj)
 
+    @tf.function(reduce_retracing=True, jit_compile=False)
     def _theta_to_field(self, idx: int) -> tf.Tensor:
         mask_bool = self._mask_bool[idx]
         tform = self.transforms[idx]
         theta = self._theta[idx]
-        full_shape = self._full_shapes[idx]
+        full_shape_static = self._full_shapes[idx]
 
         if mask_bool is None:
             val = tform.to_physical(theta)
-            val.set_shape(full_shape)
+            val.set_shape(full_shape_static)
             return val
+
+        flat_idx = self._mask_flat_idx[idx]
+        background_flat = self._background_phys_flat[idx]
 
         updates = tform.to_physical(theta)
         updates = tf.reshape(updates, [-1])
-        background = tf.cast(self._mask_backgrounds[idx], updates.dtype)
-        indices = self._mask_indices[idx]
-        field = tf.tensor_scatter_nd_update(background, indices, updates)
-        field.set_shape(full_shape)
+
+        # sanity: updates length must match number of active indices
+        tf.debugging.assert_equal(tf.shape(updates)[0], tf.shape(flat_idx)[0])
+
+        field_flat = tf.tensor_scatter_nd_update(
+            tf.cast(background_flat, updates.dtype),
+            flat_idx[:, None],
+            updates,
+        )
+
+        # reshape using runtime shape of the actual state field (robust)
+        name = self.vars[idx].name
+        shape_dyn = tf.shape(self._field_refs[name])
+        field = tf.reshape(field_flat, shape_dyn)
+        field.set_shape(full_shape_static)
         return field
+
 
     @tf.function(reduce_retracing=True)
     def synchronize_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         updated_inputs = self.apply_theta_to_inputs(inputs)
         return updated_inputs
 
-    @tf.function(jit_compile=True)
-    def get_UV(self, inputs: tf.Tensor) -> Tuple[TV, TV]:
+    @tf.function(jit_compile=False)
+    def get_UV(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         processed_inputs = self.synchronize_inputs(inputs)
         self.set_inputs(processed_inputs)
         U, V = self.get_UV_impl()
@@ -240,10 +257,34 @@ class MappingDataAssimilation(Mapping):
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
 
-        # Diagnostics for halt criterion use the same cost function as the base mapping
-        current_base_cost = self.cost_fn(U, V, self.inputs)
-        self.base_cost.assign(current_base_cost)
         return U, V
+    
+    def set_step_callback(self, callback, out_freq: int) -> None:
+        """
+        Register a python callback to be run every out_freq accepted iterations.
+        The callback will be invoked via tf.py_function from on_step_end().
+        """
+        self._da_step_callback = callback
+        self._da_out_freq = int(out_freq)
+
+    @tf.function(reduce_retracing=True)
+    def on_step_end(self, it: tf.Tensor) -> tf.Tensor:
+        """
+        Called by the optimizer once per accepted iteration.
+        Runs a python callback periodically .
+        """
+        # Always return a dummy tensor so this can sit inside tf.function control flow if needed.
+        if self._da_step_callback is None or self._da_out_freq <= 0:
+            return tf.constant(0, dtype=tf.int32)
+
+        of = tf.cast(self._da_out_freq, it.dtype)
+        do_call = tf.equal(tf.math.floormod(it, of), 0)
+
+        def _call():
+            tf.py_function(self._da_step_callback, [it], Tout=[])
+            return tf.constant(0, dtype=tf.int32)
+
+        return tf.cond(do_call, _call, lambda: tf.constant(0, dtype=tf.int32))
 
     # ------- State update -----------------------------------------------------
 
@@ -301,16 +342,11 @@ class MappingDataAssimilation(Mapping):
             return [tf.reshape(t, s) for t, s in zip(splits, self._shapes)]
 
     def on_minimize_start(self, iter_max: int) -> None:
-        """
-        Reset the base-cost reference used by the halt criterion.
-        Called eagerly at the start of each minimize call.
-        """
-        reset_value = tf.constant(float("nan"), dtype=self.base_cost_reference.dtype)
-        self.base_cost_reference.assign(reset_value)
+        pass
 
     # ------- Input channel patching --------------------------------
 
-    @tf.function(reduce_retracing=True)
+    @tf.function(reduce_retracing=True, jit_compile=False)
     def apply_theta_to_inputs(self, inputs: tf.Tensor) -> tf.Tensor:
         """
         Patch BHWC inputs with current physical-space values for selected fields.
@@ -330,3 +366,15 @@ class MappingDataAssimilation(Mapping):
             right = updated[:, :, :, ch + 1 :]
             updated = tf.concat([left, phys_b, right], axis=-1)
         return updated
+        
+    def get_physical_field(self, name: str) -> tf.Tensor:
+        """
+        Differentiable physical field derived from current theta.
+        Safe to call inside tf.function
+        """
+        if name not in self._varname_to_idx:
+            raise ValueError(
+                f"Unknown field '{name}'. Available: {list(self._varname_to_idx.keys())}"
+            )
+        idx = self._varname_to_idx[name]
+        return tf.cast(self._theta_to_field(idx), self.precision)

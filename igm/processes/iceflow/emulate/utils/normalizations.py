@@ -334,3 +334,40 @@ class NormalizationLayer(tf.keras.layers.Layer):
             }
         )
         return config
+
+
+class FixedChannelStandardization(tf.keras.layers.Layer):
+
+
+    """
+    
+    A verfy simple fixed standardization layer that normalizes each channel using provided mean and variance.
+    This is the main normalization strategy used for the pretrained emulators
+    Stats are calculated on the original training set and retained in the manifest, then loaded and attached to the model at inference time.
+    This is preferable over calculating stats on new data at inference time, which would degrade emulator performance without potentially
+        large amounts of retraining which we are particularly keen to avoid for data assimilation, however this design choice can be revisisted
+        if needed in the future.
+
+    """
+
+    def __init__(self, mean_1d, var_1d, epsilon=1e-7, dtype=tf.float32, name="input_norm", **kwargs):
+        super().__init__(dtype=tf.as_dtype(dtype), name=name, **kwargs)
+        mean_1d = np.asarray(mean_1d, dtype=np.float64).reshape(-1)
+        var_1d  = np.asarray(var_1d,  dtype=np.float64).reshape(-1)
+        self.epsilon = float(epsilon)
+        self._mean_1d = tf.convert_to_tensor(mean_1d, dtype=self.dtype)
+        self._var_1d  = tf.convert_to_tensor(var_1d,  dtype=self.dtype)
+
+    def build(self, input_shape):
+        c = int(input_shape[-1])
+        if int(self._mean_1d.shape[0]) != c:
+            raise ValueError(f"mean length {int(self._mean_1d.shape[0])} != channels {c}")
+        if int(self._var_1d.shape[0]) != c:
+            raise ValueError(f"var length {int(self._var_1d.shape[0])} != channels {c}")
+        self._mean = tf.reshape(self._mean_1d, (1, 1, 1, c))
+        self._inv_std = tf.math.rsqrt(tf.reshape(self._var_1d, (1, 1, 1, c)) + tf.cast(self.epsilon, self.dtype))
+        super().build(input_shape)
+
+    def call(self, x):
+        x = tf.cast(x, self.dtype)
+        return (x - self._mean) * self._inv_std
