@@ -18,7 +18,7 @@ class BuddParams(tf.experimental.ExtensionType):
     regu: float
     exponent: float
     u_ref: float  # (m/yr)
-    N_ref: float 
+    N_ref: float
 
 
 class Budd(SlidingComponent):
@@ -53,7 +53,7 @@ def cost_budd(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    tau_ref = fieldin["slidingco"] 
+    tau_ref = fieldin["slidingco"]
     dx = fieldin["dX"]
 
     V_b = discr_v.V_b
@@ -61,10 +61,11 @@ def cost_budd(
     dtype = U.dtype
     m = tf.cast(budd_params.exponent, dtype)
     u_regu = tf.cast(budd_params.regu, dtype)
-    u_ref  = tf.cast(budd_params.u_ref, dtype)
-    N_ref  = tf.cast(budd_params.N_ref, dtype)
+    u_ref = tf.cast(budd_params.u_ref, dtype)
+    N_ref = tf.cast(budd_params.N_ref, dtype)
 
     return _cost(U, V, h, s, tau_ref, dx, m, u_regu, u_ref, N_ref, discr_h, V_b)
+
 
 @tf.function()
 def _cost(
@@ -72,7 +73,7 @@ def _cost(
     V: tf.Tensor,
     h: tf.Tensor,
     s: tf.Tensor,
-    tau_ref: tf.Tensor,   # <- was C
+    tau_ref: tf.Tensor,  # <- was C
     dx: tf.Tensor,
     m: tf.Tensor,
     u_regu: tf.Tensor,
@@ -101,9 +102,9 @@ def _cost(
     tau_ref : tf.Tensor
         Reference basal shear stress (MPa)
     u_ref : tf.Tensor
-        Reference velocity 
+        Reference velocity
     N_ref : tf.Tensor
-        Reference effective pressure 
+        Reference effective pressure
     dx : tf.Tensor
         Grid spacing (m)
     m : tf.Tensor

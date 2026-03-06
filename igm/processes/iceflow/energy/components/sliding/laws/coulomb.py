@@ -20,6 +20,7 @@ class CoulombParams(tf.experimental.ExtensionType):
     mu: float
     u_ref: float  # (m/yr)
 
+
 class Coulomb(SlidingComponent):
     """Sliding component implementing Coulomb's sliding law."""
 
