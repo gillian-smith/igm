@@ -33,7 +33,7 @@ def update_enthalpy(
         E_pmp: Pressure melting point enthalpy (J kg^-1).
         E_s: Surface enthalpy boundary condition (J kg^-1).
 
-    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
     """
     # Horizontal advection (explicit)
     update_horizontal(cfg, state)

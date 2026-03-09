@@ -37,17 +37,14 @@ def update_vertical(
         E_pmp: Pressure melting point enthalpy (J kg^-1).
         E_s: Surface enthalpy boundary condition (J kg^-1).
 
-    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
     """
     cfg_thermal = cfg.processes.enthalpy.thermal
-    cfg_drainage = cfg.processes.enthalpy.drainage
     cfg_physics = cfg.processes.iceflow.physics
     cfg_solver = cfg.processes.enthalpy.solver
 
     rho_ice = cfg_physics.ice_density
     dz_min = cfg_physics.thr_ice_thk
-
-    rho_water = cfg_drainage.water_density
 
     k_ice = cfg_thermal.k_ice
     c_ice = cfg_thermal.c_ice
@@ -92,12 +89,18 @@ def update_vertical(
     # Solve system
     state.E = solve_tridiagonal_system(L, M, U, R)
 
+    # Clamp basal enthalpy to E_pmp at dry-bed points to avoid spurious melt spikes
+    E_base = tf.where(
+        state.h_water_till <= 0.0, tf.minimum(state.E[0], E_pmp[0]), state.E[0]
+    )
+    state.E = tf.concat([E_base[None, ...], state.E[1:]], axis=0)
+
     # Enforce bounds
     E_min = c_ice * (T_min - T_ref)
     E_max = E_pmp + L_ice
     state.E = tf.clip_by_value(state.E, E_min, E_max)
 
-    # Compute basal heat flux
+    # Compute basal melt rate
     state.basal_melt_rate = compute_basal_melt_rate(
         state.E,
         E_pmp,
@@ -107,7 +110,7 @@ def update_vertical(
         k_ice,
         c_ice,
         K_ratio,
-        rho_water,
+        rho_ice,
         L_ice,
         tf.maximum(dz[0], dz_min),
     )

@@ -22,7 +22,7 @@ def update_drainage(cfg: DictConfig, state: State, E_pmp: tf.Tensor) -> None:
     Args:
         E_pmp: Pressure melting point enthalpy (J kg^-1).
 
-    Updates state.E (J kg^-1) and state.basal_melt_rate (m yr^-1).
+    Updates state.E (J kg^-1) and state.basal_melt_rate (m ice yr^-1).
     """
     cfg_physics = cfg.processes.iceflow.physics
     cfg_thermal = cfg.processes.enthalpy.thermal
@@ -53,10 +53,12 @@ def update_drainage(cfg: DictConfig, state: State, E_pmp: tf.Tensor) -> None:
         omega_threshold_1,
         omega_threshold_2,
         omega_threshold_3,
+        rho_ice,
+        rho_water,
         dz,
         state.dt,
     )
 
-    state.E -= fraction_drained * L_ice
+    state.E -= (rho_water / rho_ice) * fraction_drained * L_ice
 
-    state.basal_melt_rate += (rho_ice / rho_water) * h_drained / state.dt
+    state.basal_melt_rate += (rho_water / rho_ice) * h_drained / state.dt

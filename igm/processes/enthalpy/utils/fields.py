@@ -21,7 +21,7 @@ def initialize_enthalpy_fields(cfg: DictConfig, state: State) -> None:
     already exist in state. Initializes enthalpy at the pressure melting point
     and default values for till hydrology and friction.
 
-    Initializes state.basal_melt_rate (m yr^-1), state.E (J kg^-1),
+    Initializes state.basal_melt_rate (m ice yr^-1), state.E (J kg^-1),
     state.h_water_till (m), state.basal_heat_flux (W m^-2), state.N (Pa),
     state.phi (°), and state.tauc (Pa).
     """
