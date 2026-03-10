@@ -1,172 +1,279 @@
+#!/usr/bin/env python3
+# Copyright (C) 2021-2025 IGM authors
+# Published under the GNU GPL (Version 3), check at the LICENSE file
+
+from __future__ import annotations
+
 import tensorflow as tf
-from typing import Any, Callable, Optional, Tuple
+from typing import Tuple
 
-from ..mappings import Mapping
-from .lbfgs import OptimizerLBFGS  # reuse your existing LBFGS base
-from rich.theme import Theme
-from rich.console import Console
-from rich.progress import (
-    Progress,
-    BarColumn,
-    MofNCompleteColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    TextColumn,
-)
+from .lbfgs_bounds import OptimizerLBFGSBounds
+from .line_searches import ValueAndGradient  # NEW
+from .da_progress_optimizer import _DAProgressOptimizer  # NEW
 
-progress_theme = Theme(
-    {
-        "label": "bold #e5e7eb",
-        "value.cost": "#f59e0b",
-        "value.grad": "#06b6d4",
-        "value.delta": "#a78bfa",
-        "bar.incomplete": "grey35",
-        "bar.complete": "#22c55e",
-    }
-)
 
-class OptimizerLBFGSDataAssimilation(OptimizerLBFGS):
+class OptimizerLBFGSBoundsDA(OptimizerLBFGSBounds):
+    """
+    Bounded L-BFGS for data assimilation with scale-aware rho spike clamping.
+    """
 
     def __init__(
         self,
-        cost_fn: Callable[[tf.Tensor], tf.Tensor],
-        map: Mapping,
-        precision: str,
-        iter_max: int = 100,
-        print_cost: bool = True,
-        print_cost_freq: int = 10,
-        memory: int = 10,
-        **kwargs: Any
+        *args,
+        rho_spike_factor: float = 20.0,
+        rho_warmup: int = 5,
+        rho_ema_beta: float = 0.99,
+        **kwargs
     ):
-        super().__init__(
-            cost_fn=cost_fn,
-            map=map,
-            iter_max=iter_max,
-            precision=precision,
-            print_cost=print_cost,
-            print_cost_freq=print_cost_freq,
-            memory=memory,
-            **kwargs
-        )
+        super().__init__(*args, **kwargs)
 
-        self.name = "LBFGS_Data_Assimilation"
-        
-        # Initialize cost component properties with proper dtype
-        self.data_cost = tf.Variable(0.0, dtype=self.precision, trainable=False, name="data_cost")
-        self.physics_cost = tf.Variable(0.0, dtype=self.precision, trainable=False, name="physics_cost")
+        dtype = getattr(self.map, "precision", tf.float32)
+
+        self.last_total = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_data  = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.last_reg   = tf.Variable(0.0, trainable=False, dtype=dtype)
+
+        self.rho_mean  = tf.Variable(0.0, trainable=False, dtype=dtype)
+        self.rho_count = tf.Variable(0,   trainable=False, dtype=tf.int64)
+
+        self.rho_spike_factor = tf.constant(rho_spike_factor, dtype=dtype)
+        self.rho_warmup       = tf.constant(rho_warmup, dtype=tf.int64)
+        self.rho_ema_beta     = tf.constant(rho_ema_beta, dtype=dtype)
+
+        # swap display for DA-specific one, preserving enabled/freq
+        self.display = _DAProgressOptimizer(enabled=self.display.enabled, freq=self.display.freq)
+
+    def minimize(self, inputs: tf.Tensor) -> tf.Tensor:
+        self.rho_mean.assign(tf.cast(0.0, self.rho_mean.dtype))
+        self.rho_count.assign(0)
+        return super().minimize(inputs)
+
+    @tf.function(reduce_retracing=True)
+    def _dot(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+        acc = tf.tensordot(tf.cast(a, tf.float64), tf.cast(b, tf.float64), axes=1)
+        return tf.cast(acc, self.precision)
+
+    @tf.function(reduce_retracing=True)
+    def _rho_cap(self) -> tf.Tensor:
+        inf = tf.constant(float("inf"), dtype=self.rho_mean.dtype)
+
+        def cap():
+            mean = tf.maximum(self.rho_mean, tf.cast(self.eps, self.rho_mean.dtype))
+            return tf.cast(self.rho_spike_factor, mean.dtype) * mean
+
+        return tf.cond(self.rho_count >= self.rho_warmup, cap, lambda: inf)
+
+    @tf.function(reduce_retracing=True)
+    def _update_memory(
+        self,
+        s_flat_mem: tf.Tensor,
+        y_flat_mem: tf.Tensor,
+        idx_memory: tf.Tensor,
+        s: tf.Tensor,
+        y: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+
+        dot_ys = self._dot(y, s)
+        finite = tf.math.is_finite(dot_ys)
+        accept = finite & (dot_ys > self.eps)
+
+        def _update_stats():
+            rho = 1.0 / (dot_ys + self.eps)
+            beta = tf.cast(self.rho_ema_beta, self.rho_mean.dtype)
+            rho_cast = tf.cast(rho, self.rho_mean.dtype)
+
+            def init():
+                self.rho_mean.assign(rho_cast)
+                self.rho_count.assign_add(1)
+                return 0
+
+            def ema():
+                self.rho_mean.assign(beta * self.rho_mean + (1.0 - beta) * rho_cast)
+                self.rho_count.assign_add(1)
+                return 0
+
+            return tf.cond(self.rho_count <= 0, init, ema)
+
+        tf.cond(accept, lambda: tf.cast(_update_stats(), tf.int32), lambda: tf.constant(0, tf.int32))
+
+        def update():
+            def append():
+                return (
+                    tf.tensor_scatter_nd_update(s_flat_mem, [[idx_memory]], [s]),
+                    tf.tensor_scatter_nd_update(y_flat_mem, [[idx_memory]], [y]),
+                    idx_memory + 1,
+                )
+
+            def shift():
+                return (
+                    tf.concat([s_flat_mem[1:], [s]], axis=0),
+                    tf.concat([y_flat_mem[1:], [y]], axis=0),
+                    idx_memory,
+                )
+
+            return tf.cond(idx_memory < self.memory, append, shift)
+
+        return tf.cond(accept, update, lambda: (s_flat_mem, y_flat_mem, idx_memory))
+
+    @tf.function(reduce_retracing=True)
+    def _compute_direction(
+        self,
+        grad: tf.Tensor,
+        s_list: tf.Tensor,
+        y_list: tf.Tensor,
+        num_elems: tf.Tensor,
+        tau: tf.Tensor,
+    ) -> tf.Tensor:
+
+        if tf.equal(num_elems, 0):
+            return -grad
+
+        rho_cap = tf.cast(self._rho_cap(), grad.dtype)
+
+        q = grad
+        alpha_list = tf.TensorArray(dtype=grad.dtype, size=num_elems, dynamic_size=False)
+
+        for i in tf.range(num_elems - 1, -1, -1):
+            s_i = s_list[i]
+            y_i = y_list[i]
+
+            rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
+            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
+
+            alpha_i = rho * self._dot(s_i, q)
+            alpha_list = alpha_list.write(i, tf.cast(alpha_i, q.dtype))
+            q = q - tf.cast(alpha_i, q.dtype) * y_i
+
+        last_y = y_list[num_elems - 1]
+        last_s = s_list[num_elems - 1]
+        gamma = self._dot(last_y, last_s) / (self._dot(last_y, last_y) + self.eps)
+
+        gamma = tf.where(tf.math.is_finite(gamma), gamma, tf.constant(1.0, gamma.dtype))
+        gamma = tf.clip_by_value(gamma, tf.constant(1e-6, gamma.dtype), tf.constant(1e6, gamma.dtype))
+        gamma = tf.cast(gamma, q.dtype)
+
+        r = tau * gamma * q
+
+        for i in tf.range(num_elems):
+            s_i = s_list[i]
+            y_i = y_list[i]
+
+            rho = 1.0 / (self._dot(y_i, s_i) + self.eps)
+            rho = tf.minimum(tf.cast(rho, grad.dtype), rho_cap)
+
+            beta = rho * self._dot(y_i, r)
+            alpha_i = alpha_list.read(i)
+            r = r + s_i * (tf.cast(alpha_i, r.dtype) - tf.cast(beta, r.dtype))
+
+        return -r
+
+    @tf.function(reduce_retracing=True)
+    def _get_grad_trial(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, list[tf.Tensor]]:
+        # the point of a separate method here is to avoid writing the wrong costs to the display when doing line search evaluations, which can be confusing when the line search evaluates points with much higher cost than the current iterate
+        theta = self.map.get_theta()
+
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
+
+            U, V = self.map.get_UV(inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+            total, _, _ = self.cost_fn(U, V, inputs_used)
+
+        grad_theta = tape.gradient(total, theta)
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+        return total, grad_theta
 
     @tf.function
-    def _get_grad(
-        self, inputs: tf.Tensor
-    ) -> Tuple[tf.Tensor, list[tf.Tensor]]:
-        w = self.map.get_theta()
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            for wi in w:
-                tape.watch(wi)
-            U, V = self.map.get_UV(inputs)
-            processed_inputs = self.map.synchronize_inputs(inputs)
-            cost, data_cost, physics_cost = self.cost_fn(U, V, processed_inputs)
+    def _line_search(self, theta_flat: tf.Tensor, p_flat: tf.Tensor, input: tf.Tensor) -> tf.Tensor:
+        L, U = self.map.get_box_bounds_flat()
+        amax = self._alpha_max(theta_flat, p_flat, L, U)
 
-        # Store the individual cost components
-        self.data_cost.assign(tf.cast(data_cost, self.precision))
-        self.physics_cost.assign(tf.cast(physics_cost, self.precision))
+        def eval_fn(alpha: tf.Tensor) -> ValueAndGradient:
+            alpha_eff = tf.minimum(alpha, amax)
 
-        grad_theta = tape.gradient(cost, theta)
-        del tape
-        return cost, grad_theta
+            theta_backup = self.map.copy_theta(self.map.get_theta())
+            theta_alpha, _ = self._apply_step(theta_flat, alpha_eff, p_flat)
 
-    def _progress_setup(self) -> None:
-        if not self.print_cost:
+            self.map.set_theta(self.map.unflatten_theta(theta_alpha))
+
+            f, grad_theta = self._get_grad_trial(input)
+            grad_flat = self.map.flatten_theta(grad_theta)
+
+            mask = self._get_mask(theta_alpha, grad_flat, L, U)
+            p_masked = tf.where(mask, p_flat, tf.zeros_like(p_flat))
+            df = self._dot(grad_flat, p_masked)
+
+            self.map.set_theta(theta_backup)
+            return ValueAndGradient(x=alpha_eff, f=f, df=tf.cast(df, grad_flat.dtype))
+
+        return self.line_search.search(theta_flat, p_flat, eval_fn)
+
+
+    def _update_display(self) -> None:
+        if not getattr(self.display, "enabled", False):
             return
 
-        self.console = Console(theme=progress_theme)
+        def update_display(iter_val, total_val, data_val, reg_val, *crit_data):
+            if crit_data:
+                n = len(crit_data) // 2
+                values = [float(crit_data[i].numpy()) for i in range(n)]
+                satisfied = [bool(crit_data[n + i].numpy()) for i in range(n)]
+            else:
+                values = None
+                satisfied = None
 
-        self.progress = Progress(
-            "🎯",
-            BarColumn(
-                bar_width=None, style="bar.incomplete", complete_style="bar.complete"
-            ),
-            MofNCompleteColumn(),
-            "[label]•[/]",
-            TextColumn("[label]Cost:[/] [value.cost]{task.fields[cost]}"),
-            "[label]•[/]",
-            TextColumn("[label]Data:[/] [value.cost]{task.fields[data_cost]}"),
-            "[label]•[/]",
-            TextColumn("[label]Physics:[/] [value.cost]{task.fields[physics_cost]}"),
-            "[label]•[/]",
-            TextColumn("[label]Time:[/]"),
-            TimeElapsedColumn(),
-            "[label]•[/]",
-            TextColumn("[label]ETA:[/]"),
-            TimeRemainingColumn(),
-            console=self.console,
-            expand=True,
-        )
-
-        self.task = self.progress.add_task(
-            "progress",
-            total=int(self.iter_max.numpy()),
-            cost="N/A",
-            data_cost="N/A",
-            physics_cost="N/A",
-        )
-
-        self.progress.start()
-
-    def _progress_update(self, iter: tf.Tensor, cost: tf.Tensor, grad_norm: tf.Tensor) -> tf.Tensor:
-
-        do_update = tf.logical_and(
-            tf.constant(self.print_cost, dtype=tf.bool),
-            tf.equal(tf.math.mod(iter, self.print_cost_freq), 0),
-        )
-
-        def update(iter: tf.Tensor, cost: tf.Tensor, data_cost: tf.Tensor, physics_cost: tf.Tensor) -> float:
-            self.progress.update(
-                self.task,
-                completed=int(iter.numpy()) + 1,
-                cost=f"{float(cost.numpy()):.4e}",
-                data_cost=f"{float(data_cost.numpy()):.4e}",
-                physics_cost=f"{float(physics_cost.numpy()):.4e}",
+            self.display.update(
+                int(iter_val.numpy()),
+                float(total_val.numpy()),
+                float(data_val.numpy()),
+                float(reg_val.numpy()),
+                values,
+                satisfied,
             )
             return 1.0
 
+        should_update = self.display.should_update(self.step_state.iter)
+
+        py_func_args = [
+            self.step_state.iter,
+            self.last_total.read_value(),
+            self.last_data.read_value(),
+            self.last_reg.read_value(),
+        ]
+
+        if self.halt_state.criterion_values and self.halt_state.criterion_satisfied:
+            py_func_args.extend(self.halt_state.criterion_values)
+            py_func_args.extend(self.halt_state.criterion_satisfied)
+
         tf.cond(
-            do_update,
-            lambda: tf.py_function(
-                update,
-                [iter, cost, self.data_cost, self.physics_cost],
-                cost.dtype,
-            ),
-            lambda: tf.constant(0.0, dtype=cost.dtype),
+            should_update,
+            lambda: tf.py_function(update_display, py_func_args, tf.float32),
+            lambda: tf.constant(0.0, dtype=tf.float32),
         )
 
-        # Check stopping criteria
-        should_check = tf.greater(iter, 0)
-        
-        converged = tf.logical_and(should_check, grad_norm < self.convergence_tolerance)
-        max_iter_reached = tf.greater_equal(iter + 1, self.iter_max)  # Check if next iter would exceed max
-        
-        should_stop = tf.logical_or(converged, max_iter_reached)
+    @tf.function(reduce_retracing=True)
+    def _get_grad(
+        self, inputs: tf.Tensor
+    ) -> Tuple[tf.Tensor, list[tf.Tensor], list[tf.Tensor]]:
+        theta = self.map.get_theta()
 
-        # Finalize progress and show exit message when stopping
-        def finalize_with_reason(converged_val: tf.Tensor) -> int:
-            if self.print_cost:
-                self.progress.stop()
-                
-                # Use the passed boolean value (now accessible via .numpy())
-                if converged_val.numpy():
-                    self.console.print("✅ [bold green]Optimization converged![/bold green] Gradient norm below threshold.")
-                else:  # max_iter_reached
-                    self.console.print("🏁 [bold blue]Optimization completed![/bold blue] Maximum iterations reached.")
-                
-                self.console.print()  # Add spacing
-            return 0
+        with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
+            for t in theta:
+                tape.watch(t)
 
-        # Call finalize when stopping - pass the boolean tensor as argument
-        tf.cond(
-            should_stop,
-            lambda: tf.py_function(finalize_with_reason, [converged], tf.int32),
-            lambda: tf.constant(0)
-        )
-        
-        return should_stop
+            U, V = self.map.get_UV(inputs)
+            inputs_used = self.map.inputs if hasattr(self.map, "inputs") else inputs
+            total, data, reg = self.cost_fn(U, V, inputs_used)
+
+        grad_u = tape.gradient(total, [U, V])
+        grad_theta = tape.gradient(total, theta)
+        del tape
+
+        grad_theta = [tf.zeros_like(t) if g is None else g for g, t in zip(grad_theta, theta)]
+
+        self.last_total.assign(tf.stop_gradient(total))
+        self.last_data.assign(tf.stop_gradient(data))
+        self.last_reg.assign(tf.stop_gradient(reg))
+
+        return total, grad_u, grad_theta

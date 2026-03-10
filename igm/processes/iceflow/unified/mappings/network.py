@@ -16,7 +16,6 @@ class MappingNetwork(Mapping):
         self,
         bcs: List[BoundaryCondition],
         network: tf.keras.Model,
-        normalizer: tf.keras.layers.Layer,
         Nz: tf.Tensor,
         output_scale: tf.Tensor = 1.0,
         precision: str = "float32",
@@ -24,15 +23,16 @@ class MappingNetwork(Mapping):
         super().__init__(bcs, precision)
         self.network = network
         self.output_scale = output_scale
-        self.network.input_normalizer = normalizer
         self.shapes = [w.shape for w in network.trainable_variables]
         self.sizes = [tf.reduce_prod(s) for s in self.shapes]
         self.Nz = Nz
-
+        self.name = "network"
+        
     def get_UV_impl(self) -> Tuple[tf.Tensor, tf.Tensor]:
         Y = self.network(self.inputs) * self.output_scale
         U, V = Y_to_UV(self.Nz, Y)
         return U, V
+
 
     def copy_theta(self, theta: list[tf.Variable]) -> list[tf.Tensor]:
         return [theta_i.read_value() for theta_i in theta]

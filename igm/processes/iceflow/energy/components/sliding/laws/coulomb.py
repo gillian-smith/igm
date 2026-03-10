@@ -18,6 +18,7 @@ class CoulombParams(tf.experimental.ExtensionType):
     regu: float
     exponent: float
     mu: float
+    u_ref: float  # (m/yr)
 
 
 class Coulomb(SlidingComponent):
@@ -52,7 +53,7 @@ def cost_coulomb(
 
     h = fieldin["thk"]
     s = fieldin["usurf"]
-    C = fieldin["slidingco"]
+    tau_ref = fieldin["slidingco"]
     dx = fieldin["dX"]
 
     V_b = discr_v.V_b
@@ -61,8 +62,9 @@ def cost_coulomb(
     m = tf.cast(coulomb_params.exponent, dtype)
     u_regu = tf.cast(coulomb_params.regu, dtype)
     μ = tf.cast(coulomb_params.mu, dtype)
+    u_ref = tf.cast(coulomb_params.u_ref, dtype)
 
-    return _cost(U, V, h, s, C, dx, m, μ, u_regu, discr_h, V_b)
+    return _cost(U, V, h, s, tau_ref, dx, m, μ, u_regu, u_ref, discr_h, V_b)
 
 
 @tf.function()
@@ -71,11 +73,12 @@ def _cost(
     V: tf.Tensor,
     h: tf.Tensor,
     s: tf.Tensor,
-    C: tf.Tensor,
+    tau_ref: tf.Tensor,
     dx: tf.Tensor,
     m: tf.Tensor,
     μ: tf.Tensor,
     u_regu: tf.Tensor,
+    u_ref: tf.Tensor,
     discr_h: HorizontalDiscr,
     V_b: tf.Tensor,
 ) -> tf.Tensor:
@@ -95,8 +98,10 @@ def _cost(
         Ice thickness (m)
     s : tf.Tensor
         Upper-surface elevation (m)
-    C : tf.Tensor
-        Friction coefficient (Pa (m/year)^(-1/m))
+    tau_ref : tf.Tensor
+        Reference basal shear stress (MPa)
+    u_ref : tf.Tensor
+        Reference velocity (m/year)
     dx : tf.Tensor
         Grid spacing (m)
     m : tf.Tensor
@@ -119,7 +124,7 @@ def _cost(
     # Interpolate to horizontal quad points
     U_h = discr_h.interp_h(U)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
     V_h = discr_h.interp_h(V)  # -> (batch, Nq_h, Nz, Ny-1, Nx-1)
-    C_h = discr_h.interp_h(C)  # -> (batch, Nq_h, Ny-1, Nx-1)
+    tau_ref_h = discr_h.interp_h(tau_ref)  # -> (batch, Nq_h, Ny-1, Nx-1)
     h_h = discr_h.interp_h(h)  # -> (batch, Nq_h, Ny-1, Nx-1)
 
     # Extract basal velocity -> (batch, Nq_h, Ny-1, Nx-1)
@@ -141,6 +146,8 @@ def _cost(
 
     # Effective exponent
     p = 1.0 + 1.0 / m
+
+    C_h = tau_ref_h / tf.pow(u_ref, 1.0 / m)
 
     # Compute smooth transition between Weertman and Coulomb (Shapero et al. 2021)
     τ_c = μ * N_h

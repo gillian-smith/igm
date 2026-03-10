@@ -1,80 +1,81 @@
-#!/usr/bin/env python3
-
-# Copyright (C) 2021-2025 IGM authors
-# Published under the GNU GPL (Version 3), check at the LICENSE file
+import tensorflow as tf
 
 import warnings
-from omegaconf import DictConfig
 from typing import Any, Dict
-
-
-import igm
+from omegaconf import DictConfig
+from .interface import InterfaceMapping
 from igm.common import State
+from igm.processes.iceflow.emulate.utils.artifacts import load_emulator_artifact
+from igm.processes.iceflow.emulate.utils.architectures import Architectures
+from igm.processes.iceflow.emulate.utils import NormalizationsDict
+from igm.processes.iceflow.unified.mappings import Mappings
 from igm.processes.iceflow.unified.bcs.utils import init_bcs
+from igm.utils.math.precision import normalize_precision
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
 )
-from .interface import InterfaceMapping
-from igm.processes.iceflow.emulate import Architectures, NormalizationsDict
-
 
 class InterfaceNetwork(InterfaceMapping):
 
     @staticmethod
     def get_mapping_args(cfg: DictConfig, state: State) -> Dict[str, Any]:
-
         cfg_numerics = cfg.processes.iceflow.numerics
-        cfg_physics = cfg.processes.iceflow.physics
         cfg_unified = cfg.processes.iceflow.unified
-
-        normalizing_method = cfg_unified.normalization.method
-        normalizing_class = NormalizationsDict[normalizing_method]
-        if normalizing_method == "adaptive":
-            nb_channels = len(cfg.processes.iceflow.unified.inputs)
-            normalizing_layer = normalizing_class(nb_channels)
-        elif normalizing_method == "fixed":
-            offsets = cfg_unified.normalization.fixed.inputs_offsets
-            variances = cfg_unified.normalization.fixed.inputs_variances
-            normalizing_layer = normalizing_class(offsets, variances)
-        elif normalizing_method == "automatic":
-            normalizing_layer = normalizing_class()
-        elif normalizing_method == "none":
-            normalizing_layer = normalizing_class()
-        else:
-            raise ValueError(f"Unknown normalizing method: {normalizing_method}")
+            
+        Nz = int(cfg_numerics.Nz)
 
         if cfg_unified.network.pretrained:
-            dir_path = get_pretrained_emulator_path(cfg, state)
-            iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
-        else:
-            warnings.warn("No pretrained emulator found. Starting from scratch.")
-
-            nb_inputs = len(cfg_unified.inputs)
-            nb_outputs = 2 * cfg_numerics.Nz
-            architecture_name = cfg_unified.network.architecture
-
-            # Get the function from the networks module
-            if architecture_name in Architectures:
-                architecture_class = Architectures[architecture_name]
-                iceflow_model = architecture_class(cfg, nb_inputs, nb_outputs)
-
+            if cfg_unified.network.old_format:
+                warnings.warn("Loading old format pretrained emulator. This may not be supported in future IGM versions.")
+                dir_path = get_pretrained_emulator_path(cfg, state)
+                iceflow_model = load_model_from_path(dir_path, cfg_unified.inputs)
             else:
-                raise ValueError(
-                    f"Unknown network architecture: {architecture_name}. "
-                    f"Available architectures: {Architectures.keys()}"
-                )
+                dtype = normalize_precision(cfg_numerics.precision)
+                artifact_dir = cfg_unified.network.pretrained_path
+                tf.keras.mixed_precision.set_global_policy("float64" if tf.as_dtype(dtype) == tf.float64 else "float32")
+                iceflow_model, _manifest = load_emulator_artifact(artifact_dir, cfg)
+        else:
+            warnings.warn("No pretrained emulator selected. Starting from scratch.")
+
+            nb_inputs = len(cfg_unified.inputs) 
+            nb_outputs = 2 * Nz
+
+            arch_name = cfg_unified.network.architecture
+            if arch_name not in Architectures:
+                raise ValueError(f"Unknown network architecture: {arch_name}. Available: {Architectures.keys()}")
+
+            iceflow_model = Architectures[arch_name](cfg, nb_inputs, nb_outputs)
+
+            # Build normalizer and attach to model
+            if cfg.processes.iceflow.do_pretraining:
+                iceflow_model.input_normalizer = None # this is handled in pretraining process
+            else:
+                # Inference / non-pretraining: keep config-driven behavior for now
+                method = cfg_unified.normalization.method
+                normalizing_class = NormalizationsDict[method]
+
+                if method == "adaptive":
+                    normalizing_layer = normalizing_class(nb_inputs)
+                elif method == "fixed":
+                    offsets = cfg_unified.normalization.fixed.inputs_offsets
+                    variances = cfg_unified.normalization.fixed.inputs_variances
+                    normalizing_layer = normalizing_class(offsets, variances)
+                elif method in ("automatic", "none"):
+                    normalizing_layer = normalizing_class()
+                else:
+                    raise ValueError(f"Unknown normalizing method: {method}")
+
+                iceflow_model.input_normalizer = normalizing_layer
+
 
         state.iceflow_model = iceflow_model
-        state.iceflow_model.compile(
-            jit_compile=False
-        )  # not all architectures support jit_compile=True
+        state.iceflow_model.compile(jit_compile=False)
 
-        bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+        bcs = init_bcs(cfg, state, cfg_unified.bcs)
 
         return {
             "bcs": bcs,
-            "normalizer": normalizing_layer,
             "network": state.iceflow_model,
             "Nz": cfg_numerics.Nz,
             "output_scale": cfg_unified.network.output_scale,

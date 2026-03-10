@@ -6,6 +6,10 @@ force_max_velbar:
   Type: float
   Description: "Upper-bound value for the velocities; applied if strictly positive."
   Units: m y^{-1}
+do_pretraining:
+  Type: boolean
+  Description: "If true, the iceflow process is skipped to allow pretraining of the ice-flow emulator."
+  Units: dimless
 physics:
   energy_components:
     Type: list
@@ -311,7 +315,7 @@ unified:
     Units: dimless
   bcs:
     Type: list
-    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we."
+    Description: "List of the applied boundary conditions; the available bcs are: frozen_bed, periodic_ns, periodic_we, no_slip, periodic_ns_global, periodic_we_global, no_slip_global."
     Units: dimless
   optimizer:
     Type: string

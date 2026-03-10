@@ -30,7 +30,7 @@ class InterfaceDataAssimilation(InterfaceMapping):
     @staticmethod
     def _parse_specs(cfg: DictConfig) -> List[VariableSpec]:
         specs = []
-        for item in cfg.processes.SR_DA.variables:
+        for item in cfg.processes.data_assimilation_SR.variables:
             name = str(item["name"])
             transform = str(item.get("transform", "identity")).lower()
             if transform not in TRANSFORMS.keys():
@@ -83,18 +83,19 @@ class InterfaceDataAssimilation(InterfaceMapping):
                 "❌ Data assimilation currently expects a MappingNetwork as the base mapping."
             )
 
-        cost_fn = state.iceflow.optimizer.cost_fn
         precision = cfg.processes.iceflow.numerics.precision
 
         bcs = init_bcs(cfg, state, cfg.processes.iceflow.unified.bcs)
+        fieldin_names = cfg.processes.iceflow.unified.inputs
+        field_to_channel = {name: i for i, name in enumerate(fieldin_names)}
 
         return {
             "bcs": bcs,
             "network": base_mapping.network,
             "Nz": base_mapping.Nz,
-            "cost_fn": cost_fn,  # for halt diagnostics
             "output_scale": base_mapping.output_scale,
             "state": state,  # Still needed for initialization to read field values
             "variables": variables,
             "precision": precision,
+            "field_to_channel": field_to_channel,
         }
