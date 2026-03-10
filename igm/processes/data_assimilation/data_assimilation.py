@@ -12,7 +12,7 @@ from .outputs.prints import print_costs, save_rms_std, print_info_data_assimilat
 from .outputs.plots import update_plot_inversion, plot_cost_functions
 from .outputs.write_vtp import update_vtp
 
-from igm.processes.iceflow.emulate.emulate import update_iceflow_emulator
+from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator
 from igm.processes.iceflow import initialize as iceflow_initialize
 
 def initialize(cfg, state):
@@ -43,9 +43,9 @@ def initialize(cfg, state):
             
         # retraning the iceflow emulator
         if cfg.processes.data_assimilation.optimization.retrain_iceflow_model:
-            update_iceflow_emulator(cfg, state, i+1, 
-                                    pertubate=cfg.processes.data_assimilation.optimization.pertubate) 
-            cost["glen"] = state.COST_EMULATOR[-1]
+            state.it = i + 1
+            update_iceflow_emulator(cfg, state)
+            cost["glen"] = state.cost_emulator[-1]
             
         print_costs(cfg, state, cost, i)
         print_info_data_assimilation(cfg, state,  cost, i)
