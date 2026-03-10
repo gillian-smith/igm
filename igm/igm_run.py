@@ -31,6 +31,8 @@ from igm.common import (
     setup_igm_modules,
     print_gpu_info,
     add_logger,
+    get_igm_version,
+    write_igm_version,
     download_unzip_and_store,
     print_comp,
     check_incompatilities_in_parameters_file,
@@ -53,11 +55,11 @@ def main(cfg: DictConfig) -> None:
     state = State()  # class acting as a dictionary
 
     state.original_cwd = Path(get_original_cwd())
-
     state.saveresult = True
-
     state.start_time = datetime.now()
 
+    write_igm_version(Path(os.getcwd()))
+    
     if cfg.core.check_compat_params:
         check_incompatilities_in_parameters_file(cfg, state.original_cwd)
 
@@ -94,7 +96,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.core.logging:
         add_logger(cfg=cfg, state=state)
         tf.get_logger().setLevel(cfg.core.tf_logging_level)
-
+    
     if cfg.core.print_params:
         print(OmegaConf.to_yaml(cfg))
 
