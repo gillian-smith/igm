@@ -4,6 +4,7 @@ import importlib.util
 import subprocess
 from pathlib import Path
 import sys
+from typing import Tuple
 
 def download_unzip_and_store(url, folder_path) -> None:
     """
@@ -87,9 +88,11 @@ def add_logger(cfg, state) -> None:
     sys.stdout = TeeStream(sys.__stdout__, "terminal.log")
     sys.stderr = TeeStream(sys.__stderr__, "terminal.log", mode="a")  # append so both go to same file
 
-def get_igm_version() -> str:
+def get_igm_version() -> Tuple[str, str]:
     try:
-        return importlib.metadata.version("igm")
+        version = importlib.metadata.version("igm")
+        source = 'PyPi'
+        return (source, version)
     except importlib.metadata.PackageNotFoundError:
         pass
 
@@ -100,30 +103,15 @@ def get_igm_version() -> str:
             cwd=igm_root,
             stderr=subprocess.DEVNULL
         ).decode().strip()
-        return f"git-{hash}"
+        source = 'git'
+        return (source, hash)
     except Exception:
         pass
 
-    return "unknown"
-
-def get_igm_version() -> str:
-    try:
-        return importlib.metadata.version("igm")
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    try:
-        igm_root = Path(__file__).resolve().parent
-        hash = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=igm_root,
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
-        return f"git-{hash}"
-    except Exception:
-        pass
-    return "unknown"
-
+    return ("unknown", "unknown")
 
 def write_igm_version(output_dir: Path) -> None:
-    version = get_igm_version()
-    (output_dir / "igm_version.txt").write_text(version + "\n", encoding="utf-8")
+    source, version = get_igm_version()
+    with open(output_dir / "version.txt", "a", encoding="utf-8") as f:
+        f.write(f"source: {source}\n")
+        f.write(f"version: {version}\n")
