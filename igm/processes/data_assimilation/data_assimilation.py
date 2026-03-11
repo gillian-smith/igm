@@ -22,7 +22,11 @@ def initialize(cfg, state):
     optimize_initialize(cfg, state)
 
     # update_iceflow_emulator(cfg, state, 0) # initialize the emulator
-  
+
+    # Early stopping state
+    patience = getattr(cfg.processes.data_assimilation.optimization, "patience", 0)
+    velsurf_history = []
+
     # iterate over the optimization process
     for i in range(cfg.processes.data_assimilation.optimization.nbitmax+1):
 
@@ -34,18 +38,18 @@ def initialize(cfg, state):
             optimize_update_lbfgs(cfg, state, cost, i)
         else:
             raise ValueError(f"Unknown optim. method: {cfg.processes.data_assimilation.optimization.method}")
-        
+
         if i == cfg.processes.data_assimilation.optimization.nbitmax:
             if cfg.processes.data_assimilation.optimization.nb_relaxation_steps > 0:
                 apply_relaxation(cfg, state)
 
         compute_rms_std_optimization(state, i)
-            
+
         # retraining the iceflow model (emulator or unified solver)
         if cfg.processes.data_assimilation.optimization.retrain_iceflow_model:
             state.it = i + 1
             cost["glen"] = iceflow_retrain(cfg, state)
-            
+
         print_costs(cfg, state, cost, i)
         print_info_data_assimilation(cfg, state,  cost, i)
 
@@ -56,11 +60,24 @@ def initialize(cfg, state):
                 update_ncdf_optimize(cfg, state, i)
                 update_vtp(cfg, state, i)
 
-            # stopping criterion: stop if the cost no longer decrease
-            # if i>cfg.processes.data_assimilation.optimization.nbitmin:
-            #     cost = [c[0] for c in costs]
-            #     if np.mean(cost[-10:])>np.mean(cost[-20:-10]):
-            #         break;  
+        # Early stopping: compare rolling average of velsurf cost over
+        # the last 'patience' iters vs the best rolling average seen so far.
+        # Stop if the recent average is >10% worse than the best (0 = disabled).
+        if patience > 0 and "velsurf" in cost:
+            velsurf_val = float(cost["velsurf"].numpy() if hasattr(cost["velsurf"], 'numpy') else cost["velsurf"])
+            velsurf_history.append(velsurf_val)
+            if i >= cfg.processes.data_assimilation.optimization.nbitmin \
+               and len(velsurf_history) >= 2 * patience:
+                recent_avg = sum(velsurf_history[-patience:]) / patience
+                best_avg = min(
+                    sum(velsurf_history[j:j+patience]) / patience
+                    for j in range(len(velsurf_history) - patience)
+                )
+                if recent_avg > best_avg * 1.1:
+                    print(f"[data_assimilation] Early stopping at iter {i}: "
+                          f"recent avg velsurf ({recent_avg:.2f}) > "
+                          f"1.1 * best avg ({best_avg:.2f}) over window={patience}")
+                    break
 
         state.topg = state.usurf - state.thk
 
