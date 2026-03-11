@@ -91,6 +91,12 @@ iceflow:
   unified:
     mapping: network
     bcs: []
+    bc:
+      dirichlet:
+        left: 0
+        right: 0
+        top: 0
+        bottom: 0
     optimizer: adam
     nbit: 1
     nbit_init: 1
@@ -142,7 +148,7 @@ iceflow:
     data_preparation:
       patch_size: 1000
       overlap: 0.0
-      batch_size: 32
+      batch_size: 1
       rotation_probability: 0.0
       flip_probability: 0.0
       noise_type: none
