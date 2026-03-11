@@ -62,7 +62,7 @@ def iceflow_retrain(cfg, state):
 
         solve_iceflow(cfg, state)
         evaluate_iceflow(cfg, state)
-        return state.cost if hasattr(state, "cost") else 0.0
+        return state.cost[-1] if hasattr(state, "cost") and len(state.cost) > 0 else 0.0
 
     else:
         raise ValueError(
