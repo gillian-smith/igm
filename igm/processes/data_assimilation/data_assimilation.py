@@ -84,7 +84,10 @@ def initialize(cfg, state):
     if not cfg.processes.data_assimilation.output.save_result_in_ncdf=="":
         output_ncdf_optimize_final(cfg, state)
 
-    plot_cost_functions() # ! Bug right now with plotting values... (extra headers)
+    try:
+        plot_cost_functions()
+    except Exception as e:
+        print(f"[data_assimilation] plot_cost_functions failed: {e}")
 
     save_rms_std(cfg, state) 
  
