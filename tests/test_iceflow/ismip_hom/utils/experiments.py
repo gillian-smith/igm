@@ -58,7 +58,6 @@ class ExperimentA(Experiment):
         h = 1000.0 - 500.0 * np.sin(ω * X) * np.sin(ω * Y)
         z_b = z_s - h
         C = 1.0 * np.ones_like(X)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -91,7 +90,6 @@ class ExperimentB(Experiment):
         h = 1000.0 - 500.0 * np.sin(ω * X)
         z_b = z_s - h
         C = 1.0 * np.ones_like(X)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -124,7 +122,6 @@ class ExperimentC(Experiment):
         h = 1000.0 * np.ones_like(X)
         z_b = z_s - h
         C = 1e-3 + 1e-3 * np.sin(ω * X) * np.sin(ω * Y)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -157,7 +154,6 @@ class ExperimentCInversion(Experiment):
         h = 1000.0 * np.ones_like(X)
         z_b = z_s - h
         C = 1e-3 + 1e-3 * np.sin(ω * X) * np.sin(ω * Y)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -192,7 +188,6 @@ class ExperimentD(Experiment):
         h = 1000.0 * np.ones_like(X)
         z_b = z_s - h
         C = 1e-3 + 1e-3 * np.sin(ω * X)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -231,7 +226,6 @@ class ExperimentE1(Experiment):
         dX = dx * np.ones_like(X)
 
         C = 1.0 * np.ones_like(X)
-        C = C * (100.0 ** (1.0 / 1.0))
         A = 100.0 * np.ones_like(X)
 
         return {
@@ -271,7 +265,6 @@ class ExperimentE2(Experiment):
         dX = dx * np.ones_like(X)
 
         C = 1.0 * np.ones_like(X)
-        C = C * (100.0 ** (1.0 / 1.0))
         C[:, idx_bc == 1.0] = 0.0
         A = 100.0 * np.ones_like(X)
 
