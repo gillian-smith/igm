@@ -111,6 +111,10 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
+    cg_newton:
+      cg_tol: 1e-10
+      cg_max_iter: 100
+      truncated: true
     hessian:
       damping: 1e-6
     sequential:

@@ -46,7 +46,7 @@ class OptimizerCGNewton(Optimizer):
         damping: float = 2e-2,
         cg_max_iter: int = 100,
         cg_tol: float = 1e-10,
-        use_truncated_cg: bool = True,
+        truncated: bool = True,
         **kwargs,
     ):
         super().__init__(
@@ -71,7 +71,7 @@ class OptimizerCGNewton(Optimizer):
         self.damping = tf.constant(damping, dtype=self.precision)
         self.cg_max_iter = tf.constant(cg_max_iter, dtype=tf.int32)
         self.cg_tol = tf.constant(cg_tol, dtype=self.precision)
-        self.use_truncated_cg = tf.constant(use_truncated_cg, dtype=tf.bool)
+        self.truncated = tf.constant(truncated, dtype=tf.bool)
         self._p_prev = None
 
     def update_parameters(self, iter_max: int, damping: float) -> None:
@@ -84,7 +84,7 @@ class OptimizerCGNewton(Optimizer):
     ):
         """Compute cost and gradient w.r.t. theta."""
         theta = self.map.get_theta()
-        with tf.GradientTape(persistent=False, watch_accessed_variables=False) as tape:
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
             for theta_i in theta:
                 tape.watch(theta_i)
             U, V = self.map.get_UV(inputs)
@@ -166,7 +166,7 @@ class OptimizerCGNewton(Optimizer):
         damping: float,
         cg_max_iter: int,
         cg_tol: float,
-        use_truncated: bool,
+        is_truncated: bool,
         explicit_freq: int = 50,
     ) -> tf.Tensor:
         """Solve (H + damping I) x = b using truncated linear CG + Fletcher Reeves quotient.
@@ -190,7 +190,7 @@ class OptimizerCGNewton(Optimizer):
             Ap = self._hvp(inputs, p, damping)
             pAp = tf.tensordot(p, Ap, axes=1)
 
-            if use_truncated and pAp <= 0.0:
+            if is_truncated and pAp <= 0.0:
                 if i == 0:
                     x = r
                 break
@@ -219,7 +219,7 @@ class OptimizerCGNewton(Optimizer):
         
         return x
 
-    def _get_grad(
+    def _get_grad_cg_newton(
         self,
         inputs: tf.Tensor
     ) -> Tuple[tf.Tensor, List[tf.Tensor | tf.Variable], List[tf.Tensor | tf.Variable]]:
@@ -256,7 +256,7 @@ class OptimizerCGNewton(Optimizer):
             theta_alpha, _ = self._apply_step(theta_flat, alpha, p_flat)
 
             self.map.set_theta(self.map.unflatten_theta(theta_alpha))
-            f, _, grad_theta = self._get_grad(input)
+            f, _, grad_theta = self._get_grad_cg_newton(input)
             grad_flat = self.map.flatten_theta(grad_theta)
             df = self._dot(grad_flat, p_flat)
 
@@ -279,11 +279,11 @@ class OptimizerCGNewton(Optimizer):
         damping = self.damping
         cg_max_iter = self.cg_max_iter
         cg_tol = self.cg_tol
-        use_truncated = self.use_truncated_cg
+        is_truncated = self.truncated
 
         theta_flat = self.map.flatten_theta(self.map.get_theta())
 
-        cost, grad_u, grad_theta = self._get_grad(input)
+        cost, grad_u, grad_theta = self._get_grad_cg_newton(input)
 
         U, V = self.map.get_UV(input)
         self._init_step_state(U, V, theta_flat)
@@ -294,7 +294,7 @@ class OptimizerCGNewton(Optimizer):
 
         for iter in tf.range(self.iter_max):
 
-            cost, grad_u, grad_theta = self._get_grad(input)
+            cost, grad_u, grad_theta = self._get_grad_cg_newton(input)
             grad_theta_flat = self.map.flatten_theta(grad_theta)
 
             p_flat = self._cg_solve(
@@ -303,7 +303,7 @@ class OptimizerCGNewton(Optimizer):
                 damping=damping,
                 cg_max_iter=cg_max_iter,
                 cg_tol=cg_tol,
-                use_truncated=use_truncated,
+                is_truncated=is_truncated,
             )
 
             p_flat, _ = self._force_descent(p_flat, grad_theta_flat, theta_flat)

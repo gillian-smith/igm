@@ -39,6 +39,9 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            "cg_max_iter": cfg_unified.cg_newton.cg_max_iter,
+            "cg_tol": cfg_unified.cg_newton.cg_tol,
+            "truncated": cfg_unified.cg_newton.truncated,
         }
 
     @staticmethod
