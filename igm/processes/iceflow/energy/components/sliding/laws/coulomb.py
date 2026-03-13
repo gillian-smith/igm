@@ -65,7 +65,7 @@ def cost_coulomb(
     μ = tf.cast(coulomb_params.mu, dtype)
     u_ref = tf.cast(coulomb_params.u_ref, dtype)
 
-    return _cost(U, V, h, s, tau_ref, dx, m, μ, u_regu, u_ref, discr_h, V_b)
+    return _cost(U, V, h, N, s, tau_ref, dx, m, μ, u_regu, u_ref, discr_h, V_b)
 
 
 @tf.function()
