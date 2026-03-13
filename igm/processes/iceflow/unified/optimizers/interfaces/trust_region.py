@@ -30,7 +30,7 @@ class InterfaceTrustRegion(InterfaceOptimizer):
             "map": map,
             "halt": halt,
             "iter_max": cfg_unified.nbit,
-            "damping": cfg_unified.hessian.damping,
+            "damping": cfg_unified.trust_region.damping,
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
@@ -38,6 +38,11 @@ class InterfaceTrustRegion(InterfaceOptimizer):
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
             "debug_mode": cfg_unified.network.debug_mode,
             "debug_freq": cfg_unified.network.debug_freq,
+            "cg_max_iter": cfg_unified.trust_region.cg_max_iter,
+            "cg_tol": cfg_unified.trust_region.cg_tol,
+            "delta_init": cfg_unified.trust_region.delta_init,
+            "delta_max": cfg_unified.trust_region.delta_max,
+            "eta": cfg_unified.trust_region.eta,
         }
 
     @staticmethod
@@ -59,7 +64,7 @@ class InterfaceTrustRegion(InterfaceOptimizer):
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        damping = tf.constant(cfg_unified.hessian.damping, dtype=tf.float32)
+        damping = tf.constant(cfg_unified.trust_region.damping, dtype=tf.float32)
         optimizer.update_parameters(iter_max=iter_max, damping=damping)
 
         return True

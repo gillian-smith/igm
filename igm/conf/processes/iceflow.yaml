@@ -115,7 +115,13 @@ iceflow:
       cg_tol: 1e-10
       cg_max_iter: 100
       truncated: true
-    hessian:
+      damping: 1e-6
+    trust_region:
+      cg_max_iter: 100
+      cg_tol: 1e-12
+      delta_init: 1e2
+      delta_max: 1e10
+      eta: 0.15
       damping: 1e-6
     sequential:
       stages: []

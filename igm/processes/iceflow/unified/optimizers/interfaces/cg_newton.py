@@ -42,6 +42,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
             "cg_max_iter": cfg_unified.cg_newton.cg_max_iter,
             "cg_tol": cfg_unified.cg_newton.cg_tol,
             "truncated": cfg_unified.cg_newton.truncated,
+            "damping": cfg_unified.cg_newton.damping,
         }
 
     @staticmethod
@@ -63,7 +64,7 @@ class InterfaceCGNewton(InterfaceOptimizer):
         else:
             raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
 
-        damping = cfg_unified.hessian.damping
+        damping = cfg_unified.cg_newton.damping
         optimizer.update_parameters(iter_max=iter_max, damping=damping)
 
         return True

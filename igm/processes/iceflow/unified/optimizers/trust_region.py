@@ -1650,8 +1650,6 @@ class OptimizerTrustRegion(Optimizer):
         damping: tf.Tensor,
     ) -> tf.Tensor:
         """Compute (H + damping I) v using reverse-over-reverse Hessian-vector product."""
-
-        print("TRACING", "_hvp")
         
         theta = self.map.get_theta()
 
@@ -1694,7 +1692,6 @@ class OptimizerTrustRegion(Optimizer):
         On negative curvature or boundary hit, moves to the trust region boundary.
         """
 
-        print("TRACING", "_cg_trust_region")
         ctx = CGContext(inputs=inputs, cost_fn=cost_fn, damping=damping)
 
         x = tf.zeros_like(g_flat)
@@ -1775,7 +1772,6 @@ class OptimizerTrustRegion(Optimizer):
     ) -> Tuple[tf.Tensor, List[tf.Tensor | tf.Variable], List[tf.Tensor | tf.Variable]]:
         """Compute cost and gradients (function and parameter space)."""
 
-        print("TRACING", "_get_grad")
         cost, grad_u, grad_theta = self._cost_and_grad(inputs, cost_fn)
 
         return cost, grad_u, grad_theta
