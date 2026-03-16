@@ -29,14 +29,21 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     optimizer_name = cfg_unified.optimizer
     optimizer_args = InterfaceOptimizers[optimizer_name].get_optimizer_args(
         # cfg=cfg, cost_fn=SyntheticCosts['quadratic_moderate'], map=mapping
-        cfg=cfg, cost_fn=get_cost_fn(cfg, state), map=mapping
+        cfg=cfg,
+        cost_fn=get_cost_fn(cfg, state),
+        map=mapping,
     )
-    # Clamp batch_size to actual number of patches
     if "batch_size" in optimizer_args:
         framesizemax = cfg_unified.data_preparation.framesizemax
         X = fieldin_state_to_X(cfg, state)
         ny, nx = int(X.shape[0]), int(X.shape[1])
         num_patches = (ny // framesizemax + 1) * (nx // framesizemax + 1)
+        if num_patches > 1 and mapping_name != "network":
+            raise ValueError(
+                f"❌ Multiple batching requires mapping=network, "
+                f"but mapping={mapping_name!r} was specified "
+                f"(domain produces {num_patches} patches with framesizemax={framesizemax})."
+            )
         optimizer_args["batch_size"] = min(optimizer_args["batch_size"], num_patches)
     optimizer = Optimizers[optimizer_name](**optimizer_args)
     state.iceflow.optimizer = optimizer
@@ -46,7 +53,7 @@ def initialize_iceflow_unified(cfg: DictConfig, state: State) -> None:
     evaluator_params = EvaluatorParams(**evaluator_params_args)
     state.iceflow.evaluator_params = evaluator_params
 
-    if cfg_unified.mapping == "network" and cfg_unified.network.print_summary:
+    if mapping_name == "network" and cfg_unified.network.print_summary:
         X = fieldin_state_to_X(cfg, state)
         fieldin_dict = X_to_fieldin(X, fieldin_names=cfg_unified.inputs)
         print_model_with_inputs_detailed(
