@@ -9,21 +9,21 @@ iceflow:
       weertman:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
       coulomb:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
         mu: 0.4
       budd:
         regu: 1.0e-10
         exponent: 3.0
-        u_ref: 100.0  # (m/yr)
+        u_ref: 1.0  # (m/yr)
         N_ref: 1.0
     gravity_cst: 9.81
     ice_density: 910.0
     water_density: 1000.0
-    init_slidingco: 0.2154 # equivalent to old value with uref = 100m/yr
+    init_slidingco: 0.0464
     init_arrhenius: 78.0
     enhancement_factor: 1.0
     exp_glen: 3.0
@@ -91,6 +91,12 @@ iceflow:
   unified:
     mapping: network
     bcs: []
+    bc:
+      dirichlet:
+        left: 0
+        right: 0
+        top: 0
+        bottom: 0
     optimizer: adam
     nbit: 1
     nbit_init: 1
@@ -105,8 +111,30 @@ iceflow:
     lbfgs:
       memory: 10
       alpha_min: 0.0
-    hessian:
+    cg_newton:
+      cg_tol: 1e-10
+      cg_max_iter: 100
+      truncated: true
       damping: 1e-6
+    trust_region:
+      cg_max_iter: 100
+      cg_tol: 1e-12
+      delta_init: 1e2
+      delta_max: 1e10
+      eta: 0.15
+      damping: 1e-6
+    muon:
+      lr: 2.0e-02
+      momentum: 0.95
+      ns_steps: 5
+      lr_1d: 3.0e-04
+    soap:
+      lr: 3.0e-04
+      beta1: 0.95
+      beta2: 0.999
+      eps: 1.0e-08
+      precond_freq: 10
+      damping: 1.0e-08
     sequential:
       stages: []
     line_search: hager-zhang

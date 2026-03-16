@@ -47,11 +47,17 @@ def register_sweeper():
 
     # Make "hydra_plugins.igm_optuna" importable
     # Also ensure the parent "hydra_plugins" namespace exists (needed when
-    # IGM is pip-installed normally rather than in editable mode)
+    # IGM is pip-installed normally rather than in editable mode).
+    # Preserve existing __path__ so other Hydra plugins (e.g. joblib
+    # launcher) remain discoverable.
     if "hydra_plugins" not in sys.modules:
-        ns = types.ModuleType("hydra_plugins")
-        ns.__path__ = []
-        sys.modules["hydra_plugins"] = ns
+        import importlib
+        try:
+            ns = importlib.import_module("hydra_plugins")
+        except ImportError:
+            ns = types.ModuleType("hydra_plugins")
+            ns.__path__ = []
+            sys.modules["hydra_plugins"] = ns
 
     mod = types.ModuleType("hydra_plugins.igm_optuna")
     mod.IGMOptunaSweeper = _HydraClass

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 # Copyright (C) 2021-2025 IGM authors
 # Published under the GNU GPL (Version 3), check at the LICENSE file
 
@@ -12,7 +13,8 @@ from ...mappings import Mapping
 from ...halt import Halt, InterfaceHalt
 
 
-class InterfaceCGNewton(InterfaceOptimizer):
+class InterfaceMuon(InterfaceOptimizer):
+
     @staticmethod
     def get_optimizer_args(
         cfg: DictConfig,
@@ -22,49 +24,41 @@ class InterfaceCGNewton(InterfaceOptimizer):
         cfg_unified = cfg.processes.iceflow.unified
         cfg_numerics = cfg.processes.iceflow.numerics
 
-        halt_args = InterfaceHalt.get_halt_args(cfg)
-        halt = Halt(**halt_args)
+        halt = Halt(**InterfaceHalt.get_halt_args(cfg))
 
         return {
             "cost_fn": cost_fn,
             "map": map,
             "halt": halt,
+            "lr": cfg_unified.muon.lr,
+            "momentum": cfg_unified.muon.momentum,
+            "ns_steps": cfg_unified.muon.ns_steps,
+            "lr_1d": cfg_unified.muon.lr_1d,
             "iter_max": cfg_unified.nbit,
-            "damping": cfg_unified.hessian.damping,
             "print_cost": cfg_unified.display.print_cost,
             "print_cost_freq": cfg_unified.display.print_cost_freq,
             "precision": cfg_numerics.precision,
             "ord_grad_u": cfg_numerics.ord_grad_u,
-            "line_search_method": cfg_unified.line_search,
             "ord_grad_theta": cfg_numerics.ord_grad_theta,
-            "debug_mode": cfg_unified.network.debug_mode,
-            "debug_freq": cfg_unified.network.debug_freq,
-            "cg_max_iter": cfg_unified.cg_newton.cg_max_iter,
-            "cg_tol": cfg_unified.cg_newton.cg_tol,
-            "truncated": cfg_unified.cg_newton.truncated,
-            "damping": cfg_unified.cg_newton.damping,
         }
 
     @staticmethod
     def set_optimizer_params(
-        cfg: DictConfig,
-        status: Status,
-        optimizer: Optimizer,
+        cfg: DictConfig, status: Status, optimizer: Optimizer
     ) -> bool:
         cfg_unified = cfg.processes.iceflow.unified
 
-        if status == Status.INIT:
-            iter_max = cfg_unified.nbit_init
-        elif status == Status.WARM_UP:
+        lr = cfg_unified.muon.lr
+
+        if status == Status.INIT or status == Status.WARM_UP:
             iter_max = cfg_unified.nbit_init
         elif status == Status.DEFAULT:
             iter_max = cfg_unified.nbit
         elif status == Status.IDLE:
             return False
         else:
-            raise ValueError(f"❌ Unknown optimizer status: <{status.name}>.")
+            iter_max = cfg_unified.nbit
 
-        damping = cfg_unified.cg_newton.damping
-        optimizer.update_parameters(iter_max=iter_max, damping=damping)
+        optimizer.update_parameters(iter_max=iter_max, lr=lr)
 
-        return True
+        return iter_max > 0

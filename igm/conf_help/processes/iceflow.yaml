@@ -367,6 +367,48 @@ unified:
       Type: float
       Description: "Minimal value for the step size in the line search."
       Units: dimless
+  muon:
+    lr:
+      Type: float
+      Description: "Learning rate for matrix parameters (conv kernels, Dense kernels) in the Muon optimizer."
+      Units: dimless
+    momentum:
+      Type: float
+      Description: "Nesterov momentum coefficient for the Muon optimizer."
+      Units: dimless
+    ns_steps:
+      Type: integer
+      Description: "Number of Newton-Schulz iterations used to orthogonalize the gradient update in the Muon optimizer."
+      Units: dimless
+    lr_1d:
+      Type: float
+      Description: "Learning rate for rank-1 parameters (biases) in the Muon optimizer; these receive plain Nesterov SGD."
+      Units: dimless
+  soap:
+    lr:
+      Type: float
+      Description: "Adam learning rate for the SOAP optimizer."
+      Units: dimless
+    beta1:
+      Type: float
+      Description: "Adam first-moment decay coefficient for the SOAP optimizer."
+      Units: dimless
+    beta2:
+      Type: float
+      Description: "Adam second-moment decay coefficient for the SOAP optimizer; also used to update the Kronecker preconditioner factors."
+      Units: dimless
+    eps:
+      Type: float
+      Description: "Epsilon for numerical stability in the Adam update of the SOAP optimizer."
+      Units: dimless
+    precond_freq:
+      Type: integer
+      Description: "Number of iterations between eigendecompositions of the Kronecker preconditioner factors in the SOAP optimizer."
+      Units: dimless
+    damping:
+      Type: float
+      Description: "Regularization added to the Kronecker preconditioner factors before eigendecomposition in the SOAP optimizer."
+      Units: dimless
   sequential:
     stages:
       Type: list
