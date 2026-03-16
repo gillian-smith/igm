@@ -123,6 +123,18 @@ iceflow:
       delta_max: 1e10
       eta: 0.15
       damping: 1e-6
+    muon:
+      lr: 2.0e-02
+      momentum: 0.95
+      ns_steps: 5
+      lr_1d: 3.0e-04
+    soap:
+      lr: 3.0e-04
+      beta1: 0.95
+      beta2: 0.999
+      eps: 1.0e-08
+      precond_freq: 10
+      damping: 1.0e-08
     sequential:
       stages: []
     line_search: hager-zhang
