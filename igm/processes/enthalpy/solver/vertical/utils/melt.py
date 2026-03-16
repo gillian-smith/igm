@@ -23,7 +23,7 @@ def compute_basal_melt_rate(
     """
     TensorFlow function to compute the basal melt rate from the heat-flux imbalance.
 
-        Mb = (q_basal - q_ice) / (rho_ice * L_ice)
+        Mb = (q_basal - q_ice) / (rho_ice * (1 - omega_basal) * L_ice)
 
     q_ice uses cold-ice diffusivity K_c = k_ice/c_ice, or K_ratio*K_c when the
     first interior layer is temperate (Aschwanden et al. 2012, Eq. 3 & 11).
@@ -51,6 +51,9 @@ def compute_basal_melt_rate(
     ICE_COLD = E[1] < E_pmp[1]
     IS_DRY = h_water_till <= 0.0
 
+    # Water fraction at the base (zero for cold ice)
+    omega_basal = tf.maximum(0.0, (E[0] - E_pmp[0]) / L_ice)
+
     # Conductive flux into ice (positive = upward, away from bed)
     q_ice = tf.where(
         ICE_COLD,
@@ -62,7 +65,7 @@ def compute_basal_melt_rate(
     basal_melt_rate = tf.where(
         COLD_AND_DRY,
         tf.zeros(shape_2d),
-        (q_basal - q_ice) / (rho_ice * L_ice),
+        (q_basal - q_ice) / (rho_ice * (1.0 - omega_basal) * L_ice),
     )
 
     # No refreezing on a dry bed (no liquid available)
