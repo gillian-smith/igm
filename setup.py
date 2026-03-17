@@ -51,5 +51,6 @@ setup(
         "nvtx",
         "typeguard",
         "rich",
+        "pyvista",
     ],
 )
