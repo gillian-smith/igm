@@ -47,13 +47,14 @@ def oggm_util(cfg, path_RGIs, RGI_version, RGI_product):
         # We need the outlines here
         if RGI_version==6:
             rgi_ids = RGIs  # rgi_ids = utils.get_rgi_glacier_entities(RGIs)
-            base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/exps/igm_v2" )
+            base_url = ( "https://cluster.klima.uni-bremen.de/~oggm/gdirs/oggm_v1.6/L3-L5_files/2025.6/elev_bands_w_data/W5E5/per_glacier/" )
             gdirs = workflow.init_glacier_directories(
                 # Start from level 3 if you want some climate data in them
                 rgi_ids,
-                prepro_border=40,
+                prepro_border=80,
                 from_prepro_level=3,
                 prepro_base_url=base_url,
+                prepro_rgi_version='62',
             )
         else:
             rgi_ids = RGIs
