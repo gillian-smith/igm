@@ -5,6 +5,7 @@
 
 import numpy as np
 import tensorflow as tf
+from igm.processes.data_assimilation.utils import ave4
 
 def regu_thk(cfg,state):
     if cfg.processes.data_assimilation.regularization.thk_version == 1:
@@ -15,6 +16,9 @@ def regu_thk(cfg,state):
 #######################################
 
 def regu_thk_v1(cfg,state):
+
+    state.flowdirx = ave4(state.flowdirx)
+    state.flowdiry = ave4(state.flowdiry)
 
     areaicemask = tf.reduce_sum(tf.where(state.icemask>0.5,1.0,0.0))*state.dx**2
 

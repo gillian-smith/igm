@@ -104,8 +104,8 @@ def compute_flow_direction_for_anisotropic_smoothing_vel(state):
     state.flowdirx = tf.where(tf.math.is_nan(state.flowdirx), 0.0, state.flowdirx)
     state.flowdiry = tf.where(tf.math.is_nan(state.flowdiry), 0.0, state.flowdiry)
 
-    state.flowdirx = ave4(state.flowdirx)
-    state.flowdiry = ave4(state.flowdiry)
+    # state.flowdirx = ave4(state.flowdirx)
+    # state.flowdiry = ave4(state.flowdiry)
 
 def compute_flow_direction_for_anisotropic_smoothing_usurf(state):
  
@@ -137,8 +137,8 @@ def compute_flow_direction_for_anisotropic_smoothing_usurf(state):
     state.flowdirx = -sx/mag
     state.flowdiry = -sy/mag
 
-    state.flowdirx = ave4(state.flowdirx)
-    state.flowdiry = ave4(state.flowdiry)
+    # state.flowdirx = ave4(state.flowdirx)
+    # state.flowdiry = ave4(state.flowdiry)
 
 def gaussian_filter_tf(input_tensor, sigma=1.0, kernel_size=5, mask=None):
     """
