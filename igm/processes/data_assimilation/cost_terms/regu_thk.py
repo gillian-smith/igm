@@ -17,9 +17,6 @@ def regu_thk(cfg,state):
 
 def regu_thk_v1(cfg,state):
 
-    state.flowdirx = ave4(state.flowdirx)
-    state.flowdiry = ave4(state.flowdiry)
-
     areaicemask = tf.reduce_sum(tf.where(state.icemask>0.5,1.0,0.0))*state.dx**2
 
     # here we had factor 8*np.pi*0.04, which is equal to 1
@@ -53,6 +50,9 @@ def regu_thk_v1(cfg,state):
                 - gamma * tf.math.reduce_sum(state.thk)
             )
     else:
+        state.flowdirx = ave4(state.flowdirx)
+        state.flowdiry = ave4(state.flowdiry)
+
         dbdx = (field[:, 1:] - field[:, :-1])/state.dx
         dbdx = (dbdx[1:, :] + dbdx[:-1, :]) / 2.0
         dbdy = (field[1:, :] - field[:-1, :])/state.dx
