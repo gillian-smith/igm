@@ -61,8 +61,8 @@ def initialize(cfg, state):
             update_iceflow_emulator(cfg, state, initial=False)
 
             cost["glen"] = (
-                state.COST_EMULATOR[-1]
-                if hasattr(state, "COST_EMULATOR")
+                state.cost_emulator[-1]
+                if hasattr(state, "cost_emulator")
                 else tf.constant(0.0)
             )
 
