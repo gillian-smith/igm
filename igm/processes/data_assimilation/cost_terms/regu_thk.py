@@ -222,7 +222,8 @@ def _kernels(dx: float):
     ky  = tf.constant([[0.,-1.,0.],[0., 0.,0.],[0., 1.,0.]], tf.float32) / (2.0*dx)
     kxx = tf.constant([[0.,0.,0.],[1.,-2.,1.],[0.,0.,0.]], tf.float32) / (dx*dx)
     kyy = tf.constant([[0.,1.,0.],[0.,-2.,0.],[0.,1.,0.]], tf.float32) / (dx*dx)
-    kxy = tf.constant([[ 1., 0.,-1.],[ 0., 0., 0.],[-1., 0., 1.]], tf.float32) / (4.0*dx*dx)
+    #kxy = tf.constant([[ 1., 0.,-1.],[ 0., 0., 0.],[-1., 0., 1.]], tf.float32) / (4.0*dx*dx)
+    kxy = tf.constant([[ 1., -1., 0.],[ -1., 2., -1.],[0., -1., 1.]], tf.float32) / (2.0*dx*dx)
     expand = lambda K: tf.reshape(K, [3,3,1,1])
     return expand(kx), expand(ky), expand(kxx), expand(kyy), expand(kxy)
  
