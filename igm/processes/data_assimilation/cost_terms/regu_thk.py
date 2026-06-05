@@ -150,6 +150,17 @@ def regu_thk_v3(cfg, state):
 
     anis_factor = cfg.processes.data_assimilation.regularization.smooth_anisotropy_factor
 
+    # Comupute a rectification factor based on topg to favor 
+    # deep ice in the ablation (against shallow in the accumulation) 
+    if cfg.processes.data_assimilation.regularization.abl_acc_balance == 1:
+        rect = 1
+    else:
+        ELA = np.percentile(state.usurf[state.usurf > 0], 66.7, method="linear")       
+        r_acc = cfg.processes.data_assimilation.regularization.abl_acc_balance
+        r_abl = 1/cfg.processes.data_assimilation.regularization.abl_acc_balance
+        w_acc = 0.5 * (1.0 + tf.math.tanh((state.usurf - ELA) / 100.0)) 
+        rect = (r_acc * w_acc + r_abl * (1.0 - w_acc))
+
     # Compute derivatives directly on 2D tensors
     kx, ky, kxx, kyy, kxy = _kernels(state.dx)           # Derivative stencils
 
@@ -187,15 +198,15 @@ def regu_thk_v3(cfg, state):
 
     if anis_factor == 1:
         R_1 = tf.reduce_mean(tf.square(bx)) + tf.reduce_mean(tf.square(by))
-        R_2 = tf.reduce_mean(tf.square(bxx) + 2 * tf.square(bxy) + tf.square(byy))
+        R_2 = tf.reduce_mean(rect * (tf.square(bxx) + 2 * tf.square(bxy) + tf.square(byy)))
     else:
         ux, uy = state.flowdirx, state.flowdiry
         ux1, uy1 = ave4(ux), ave4(uy)
         R_1 = tf.reduce_mean(tf.square(ux1*bx + uy1*by) + anis_factor * tf.square(uy1*bx - ux1*by))
-        R_2 = tf.reduce_mean(
+        R_2 = tf.reduce_mean(rect * (
             tf.square(ux*ux*bxx + 2*ux*uy*bxy + uy*uy*byy) \
             + 2 * anis_factor * tf.square(ux*uy*bxx + (uy*uy-ux*ux)*bxy + ux*uy*byy) \
-            + anis_factor * anis_factor * tf.square(uy*uy*bxx - 2*ux*uy*bxy + ux*ux*byy)
+            + anis_factor * anis_factor * tf.square(uy*uy*bxx - 2*ux*uy*bxy + ux*ux*byy) )
         )
     R = alpha_1 * R_1 + alpha_2 * R_2
     return R
