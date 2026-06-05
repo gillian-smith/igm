@@ -48,10 +48,6 @@ def initialize(cfg, state):
                 f"Unknown optim. method: {cfg.processes.data_assimilation.optimization.method}"
             )
 
-        if i == cfg.processes.data_assimilation.optimization.nbitmax:
-            if cfg.processes.data_assimilation.optimization.nb_relaxation_steps > 0:
-                apply_relaxation(cfg, state)
-
         compute_rms_std_optimization(state, i)
 
         # retraning the iceflow emulator
@@ -86,6 +82,15 @@ def initialize(cfg, state):
 
     if not cfg.processes.data_assimilation.output.save_result_in_ncdf == "":
         output_ncdf_optimize_final(cfg, state)
+
+    if cfg.processes.data_assimilation.optimization.nb_relaxation_steps > 0:
+        apply_relaxation(cfg, state)
+        # TODO add update_ncdf_relax
+
+        if not cfg.processes.data_assimilation.output.save_result_in_ncdf == "":
+            cfg_r = cfg.copy()
+            cfg_r.processes.data_assimilation.output.save_result_in_ncdf = cfg_r.processes.data_assimilation.output.save_result_in_ncdf.split(".")[0] + "_relax.nc"
+            output_ncdf_optimize_final(cfg_r, state)
 
     plot_cost_functions()  # ! Bug right now with plotting values... (extra headers)
 
