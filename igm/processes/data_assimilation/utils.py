@@ -207,7 +207,7 @@ def apply_relaxation(cfg, state):
 
     # time = 0
 
-    print("-------------- Relaxation steps -----------------")
+    print("\n-------------- Relaxation steps -----------------")
 
     for ll in range(cfg.processes.data_assimilation.optimization.nb_relaxation_steps):
 
@@ -223,10 +223,15 @@ def apply_relaxation(cfg, state):
             state.ubar, state.vbar, cfl, state.dx, step_max
         )
 
+        if hasattr(cfg.processes, "thk"):
+            slope_type = cfg.processes.thk.slope_type
+        else:
+            slope_type = "superbee"  # the default
+
         state.divflux = compute_divflux_slope_limiter(
             state.ubar, state.vbar, state.thk, 
             state.dx, state.dx, state.dt, 
-            slope_type=cfg.processes.thk.slope_type
+            slope_type=slope_type
         )
 
         ACT = state.thk > 0.5
