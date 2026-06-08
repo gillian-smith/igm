@@ -2,5 +2,6 @@ time:
   start: 2000.0
   end: 2100.0
   save: 10.0
+  save_first_n: -1
   cfl: 0.3
   step_max: 1.0

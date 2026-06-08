@@ -62,6 +62,8 @@ def update(cfg, state):
         state.dt = state.time_save[state.itsave + 1] - state.t
         state.saveresult = True
         state.itsave += 1
+    elif state.it < cfg.processes.time.save_first_n:  # save first n iters
+        state.saveresult = True
     else:
         state.saveresult = False 
 
