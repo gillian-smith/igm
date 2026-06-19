@@ -85,8 +85,8 @@ def update_iceflow_emulator(
     run_it = cfg_emulator.retrain_freq > 0 and it % cfg_emulator.retrain_freq == 0
 
     if initial or run_it or warm_up:
-        nbit = cfg_emulator.nbit_init if initial else cfg_emulator.nbit
-        lr = cfg_emulator.lr_init if initial else cfg_emulator.lr
+        nbit = cfg_emulator.nbit_init if (initial or warm_up) else cfg_emulator.nbit
+        lr = cfg_emulator.lr_init if (initial or warm_up) else cfg_emulator.lr
 
         fieldin = fieldin_state_to_X(cfg, state)
         X = prepare_X(
