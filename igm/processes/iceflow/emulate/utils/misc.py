@@ -120,3 +120,11 @@ def save_iceflow_model(cfg, state):
         )
     )
     fid.close()
+
+def save_nn_training_iters(state):
+    iter = getattr(state, "it", 0)
+    with open('training_costs.dat','a') as f:
+        if f.tell() == 0:
+            print("iter    training_iter    cost", file=f)
+        for training_iter, cost in enumerate(state.cost_emulator):
+            print(f"{iter}    {training_iter}    {cost:>12.8f}", file=f)

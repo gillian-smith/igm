@@ -16,6 +16,7 @@ from igm.processes.iceflow.emulate.emulated import get_emulated_params_args
 from igm.processes.iceflow.emulate.utils.misc import (
     get_pretrained_emulator_path,
     load_model_from_path,
+    save_nn_training_iters,
 )
 
 from igm.processes.iceflow.utils.data_preprocessing import (
@@ -258,3 +259,5 @@ def initialize_iceflow_emulator(cfg: Dict, state: State) -> None:
 
     # Update the emulator and evaluate it once
     update_iceflow_emulator(cfg, state, initial=True)
+    if cfg.processes.iceflow.emulator.save_all_training_costs or cfg.processes.iceflow.emulator.method=="diagnostic":
+        save_nn_training_iters(state)

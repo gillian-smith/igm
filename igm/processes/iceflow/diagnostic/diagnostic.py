@@ -18,6 +18,8 @@ from igm.processes.iceflow.solve.solve import (
 )
 from igm.processes.iceflow.utils.velocities import get_misfit
 
+from igm.processes.iceflow.emulate.utils.misc import save_nn_training_iters
+
 
 def initialize_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
     """Initialize the diagnostic mode for the iceflow module."""
@@ -69,6 +71,8 @@ def update_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
         error_L1.numpy(),
         error_L2.numpy(),
     ]
+
+    save_nn_training_iters(state)
 
     state.iceflow.diag_metrics.append(metrics)
 

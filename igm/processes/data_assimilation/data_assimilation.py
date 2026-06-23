@@ -18,6 +18,8 @@ from .outputs.write_vtp import update_vtp
 
 from igm.processes.iceflow.emulate.emulator import update_iceflow_emulator
 
+from igm.processes.iceflow.emulate.utils.misc import save_nn_training_iters
+
 from igm.processes.iceflow import initialize as iceflow_initialize
 
 
@@ -61,6 +63,9 @@ def initialize(cfg, state):
                 if hasattr(state, "cost_emulator")
                 else tf.constant(0.0)
             )
+            
+            if cfg.processes.iceflow.emulator.save_all_training_costs:
+                save_nn_training_iters(state)
 
         print_costs(cfg, state, cost, i)
         print_info_data_assimilation(cfg, state, cost, i)
