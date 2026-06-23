@@ -71,8 +71,8 @@ def update_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
         error_L1.numpy(),
         error_L2.numpy(),
     ]
-
-    save_nn_training_iters(state)
+    if state.it % cfg.processes.iceflow.emulator.retrain_freq == 0:
+        save_nn_training_iters(state)
 
     state.iceflow.diag_metrics.append(metrics)
 
