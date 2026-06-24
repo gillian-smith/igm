@@ -47,7 +47,8 @@ def update_iceflow_diagnostic(cfg: DictConfig, state: State) -> None:
     cfg_diag = cfg.processes.iceflow.diagnostic
     if state.it % cfg_diag.save_freq != 0:
         return
-    if tf.equal(cost_emulator.size(), 0):
+    
+    if cost_emulator.shape==(0,):
         return
 
     volume = tf.reduce_sum(state.thk) * tf.pow(state.dx, 2.0) / 1e9
