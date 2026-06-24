@@ -24,6 +24,7 @@ from igm.processes.iceflow.unified.unified import (
     update_iceflow_unified,
 )
 from igm.processes.iceflow.emulate.utils import save_iceflow_model
+from igm.processes.iceflow.emulate.utils.misc import save_nn_training_iters
 from igm.processes.iceflow.utils.fields import initialize_iceflow_fields
 from igm.processes.iceflow.utils.vertical_discretization import define_vertical_weight
 from igm.processes.iceflow.vertical import VerticalDiscrs
@@ -81,6 +82,9 @@ def initialize(cfg: DictConfig, state: State) -> None:
 
     initialize_iceflow(cfg, state)
 
+    if cfg.processes.iceflow.emulator.save_all_training_costs or cfg.processes.iceflow.method=="diagnostic":
+        save_nn_training_iters(state)
+
 
 def update(cfg: DictConfig, state: State) -> None:
     """Update the iceflow module."""
@@ -104,6 +108,9 @@ def update(cfg: DictConfig, state: State) -> None:
         raise ValueError(f"❌ Unknown ice flow method: <{iceflow_method}>.")
 
     update_iceflow(cfg, state)
+
+    if state.it % cfg.processes.iceflow.emulator.retrain_freq == 0 and cfg.processes.iceflow.emulator.save_all_training_costs:
+        save_nn_training_iters(state)
 
 
 def finalize(cfg: DictConfig, state: State) -> None:
