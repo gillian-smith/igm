@@ -101,6 +101,13 @@ def initialize(cfg, state):
 
     save_rms_std(cfg, state)
 
+    # can't avoid running iceflow.update, but this should make it a no-op
+    if not hasattr(cfg.processes, "time"):
+        cfg.processes.iceflow.emulator.nbit = 0
+        cfg.processes.iceflow.emulator.lr = 0
+        cfg.processes.iceflow.emulator.nbit_init = 0
+        cfg.processes.iceflow.emulator.lr_init = 0
+
 
 def update(cfg, state):
     pass
