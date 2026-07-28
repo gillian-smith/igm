@@ -45,8 +45,9 @@ def optimize(params, state):
     else:
         state.thk = tf.zeros_like(state.thk)
 
-    if params.opti_init_zero_thk:
-        state.thk = state.thk*0.0
+    if params.opti_init_const_thk > 0:
+        state.thk = tf.ones_like(state.thk)*params.opti_init_const_thk
+        state.thk = tf.where(state.icemaskobs > 0.5, state.thk, 0.0)
         
     # this is a density matrix that will be used to weight the cost function
     if params.opti_uniformize_thkobs:

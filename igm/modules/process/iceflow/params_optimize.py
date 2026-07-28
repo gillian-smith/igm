@@ -18,10 +18,10 @@ def params_optimize(parser):
         help="List of variables to be recorded in the ncdef file",
     )
     parser.add_argument(
-        "--opti_init_zero_thk",
-        type=str2bool,
-        default="False",
-        help="Initialize the optimization with zero ice thickness",
+        "--opti_init_const_thk",
+        type=float,
+        default=-9999.0,
+        help="Initialize the optimization with constant ice thickness",
     )
     parser.add_argument(
         "--opti_regu_param_thk",
